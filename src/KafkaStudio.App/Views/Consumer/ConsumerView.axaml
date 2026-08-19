@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:KafkaStudio.App.ViewModels.Consumer"
+             xmlns:conv="using:KafkaStudio.App.Converters"
              x:Class="KafkaStudio.App.Views.Consumer.ConsumerView"
              x:DataType="vm:ConsumerViewModel">
 
@@ -9,17 +10,25 @@
 
     <Border Grid.Row="1" Classes="card" Margin="0,0,0,16">
       <StackPanel Spacing="10">
-        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto">
           <TextBlock Grid.Column="0" Text="Connection" VerticalAlignment="Center" Classes="muted" />
           <ComboBox Grid.Column="1" ItemsSource="{Binding ConnectionNames}" SelectedItem="{Binding SelectedConnection}" HorizontalAlignment="Stretch" />
           <AutoCompleteBox Grid.Column="2" ItemsSource="{Binding TopicNames}" Text="{Binding Topic}"
-                            FilterMode="Contains" Watermark="topic name" Width="200" />
-          <CheckBox Grid.Column="3" Content="From beginning" IsChecked="{Binding FromBeginning}" VerticalAlignment="Center" />
-          <Button Grid.Column="4" Content="Start" Classes="primary" Command="{Binding StartCommand}" />
-          <Button Grid.Column="5" Content="Stop" Command="{Binding StopCommand}" />
+                            FilterMode="Contains" Watermark="topic name" Width="200" Margin="8,0,0,0" />
+          <CheckBox Grid.Column="3" Content="From beginning" IsChecked="{Binding FromBeginning}" VerticalAlignment="Center" Margin="8,0,0,0" />
+          <TextBlock Grid.Column="4" Text="Limit" VerticalAlignment="Center" Classes="muted" Margin="8,0,0,0" />
+          <NumericUpDown Grid.Column="5" Value="{Binding MessageLimit}" Minimum="0" Maximum="10000" Increment="1"
+                          Width="110" ToolTip.Tip="Maximum number of most-recent messages to keep (0 = unlimited)" Margin="4,0,8,0" />
+          <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="8">
+            <Button Content="Start" Classes="primary" Command="{Binding StartCommand}" />
+            <Button Content="Stop" Command="{Binding StopCommand}" />
+          </StackPanel>
         </Grid>
         <StackPanel Orientation="Horizontal" Spacing="10">
           <TextBlock Text="{Binding StatusMessage}" Classes="muted" />
+          <TextBlock Classes="muted">
+            <Run Text="(" /><Run Text="{Binding Messages.Count}" /><Run Text=" shown" /><Run Text=")" />
+          </TextBlock>
           <Button Content="Clear" Command="{Binding ClearCommand}" />
         </StackPanel>
       </StackPanel>
@@ -30,14 +39,24 @@
         <ItemsControl ItemsSource="{Binding Messages}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <Border Padding="10" Margin="0,0,0,6" Background="{DynamicResource SidebarBrush}" CornerRadius="6">
-                <StackPanel>
-                  <SelectableTextBlock Classes="muted">
-                    <Run Text="{Binding Topic}" /><Run Text="#" /><Run Text="{Binding Partition}" /><Run Text="@" /><Run Text="{Binding Offset}" />
-                    <Run Text=" · key " /><Run Text="{Binding Key}" />
-                  </SelectableTextBlock>
-                  <SelectableTextBlock Text="{Binding PrettyValue}" Foreground="White" TextWrapping="Wrap" FontFamily="Consolas,monospace" />
-                </StackPanel>
+              <Border Margin="0,0,0,8" Background="{DynamicResource SidebarBrush}" CornerRadius="6">
+                <Grid ColumnDefinitions="4,*">
+                  <Border Grid.Column="0" Background="{Binding Partition, Converter={x:Static conv:PartitionToBrushConverter.Instance}}" CornerRadius="3,0,0,3" />
+                  <StackPanel Grid.Column="1" Spacing="6" Margin="12,10,10,10">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <WrapPanel Grid.Column="0" Orientation="Horizontal">
+                        <Border Background="{Binding Partition, Converter={x:Static conv:PartitionToBrushConverter.Instance}}" CornerRadius="4" Padding="6,2" Margin="0,0,6,0">
+                          <TextBlock Text="{Binding Topic}" FontWeight="SemiBold" FontSize="11" Foreground="Black" />
+                        </Border>
+                        <TextBlock Text="{Binding Partition, StringFormat='partition {0}'}" Classes="muted" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBlock Text="{Binding Offset, StringFormat='offset {0}'}" Classes="muted" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBlock Text="{Binding Key, TargetNullValue='(no key)'}" Classes="muted" VerticalAlignment="Center" FontStyle="Italic" />
+                      </WrapPanel>
+                      <TextBlock Grid.Column="1" Text="{Binding Timestamp, StringFormat='HH:mm:ss.fff'}" Classes="muted" VerticalAlignment="Center" />
+                    </Grid>
+                    <SelectableTextBlock Inlines="{Binding PrettyValue, Converter={x:Static conv:JsonInlinesConverter.Instance}}" Foreground="White" TextWrapping="Wrap" FontFamily="Consolas,monospace" FontSize="12" />
+                  </StackPanel>
+                </Grid>
               </Border>
             </DataTemplate>
           </ItemsControl.ItemTemplate>

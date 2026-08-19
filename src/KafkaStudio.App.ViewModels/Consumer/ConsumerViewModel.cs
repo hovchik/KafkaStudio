@@ -32,15 +32,42 @@ public sealed class ConsumerViewModel : ObservableObject
             if (SetProperty(ref _selectedConnection, value))
             {
                 _ = RefreshTopicNamesAsync();
+                StartCommand.RaiseCanExecuteChanged();
             }
         }
     }
 
     private string _topic = "";
-    public string Topic { get => _topic; set => SetProperty(ref _topic, value); }
+    public string Topic
+    {
+        get => _topic;
+        set
+        {
+            if (SetProperty(ref _topic, value))
+            {
+                StartCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
 
     private bool _fromBeginning;
     public bool FromBeginning { get => _fromBeginning; set => SetProperty(ref _fromBeginning, value); }
+
+    private int _messageLimit = 10;
+    /// <summary>Caps how many of the most recent messages are kept/displayed - older messages are
+    /// dropped off the end as new ones arrive, so the view always shows just the top N (e.g. 10).
+    /// A value of 0 or less means "unlimited".</summary>
+    public int MessageLimit
+    {
+        get => _messageLimit;
+        set
+        {
+            if (SetProperty(ref _messageLimit, value))
+            {
+                TrimMessages();
+            }
+        }
+    }
 
     private bool _isWatching;
     public bool IsWatching
@@ -129,6 +156,7 @@ public sealed class ConsumerViewModel : ObservableObject
                     // Marshal back onto whatever thread owns the UI - the App project's dispatcher
                     // wraps this ViewModel's collection mutations appropriately (see MainWindow.axaml.cs).
                     Messages.Insert(0, message);
+                    TrimMessages();
                 }
             }
             catch (OperationCanceledException)
@@ -147,5 +175,16 @@ public sealed class ConsumerViewModel : ObservableObject
         _watchCts?.Cancel();
         IsWatching = false;
         StatusMessage = "Stopped.";
+    }
+
+    /// <summary>Drops the oldest messages (from the end, since new ones are inserted at index 0) so the
+    /// list never exceeds <see cref="MessageLimit"/>.</summary>
+    private void TrimMessages()
+    {
+        if (MessageLimit <= 0) return;
+        while (Messages.Count > MessageLimit)
+        {
+            Messages.RemoveAt(Messages.Count - 1);
+        }
     }
 }
