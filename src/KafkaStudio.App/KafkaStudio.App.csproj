@@ -35,4 +35,8 @@
     <ProjectReference Include="..\KafkaStudio.Kafka\KafkaStudio.Kafka.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Controls\" />
+  </ItemGroup>
+
 </Project>

@@ -108,6 +108,11 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
 
             if (options.MaxMessages is { } cap2 && emitted >= cap2) yield break;
 
+            // Bounded "scan and display" style reads (StopAtPartitionEnd) should stop once history has
+            // been drained, mirroring how the real gateway stops at partition EOF, rather than blocking
+            // on the live stream forever like an unbounded "watch" subscription does.
+            if (options.StopAtPartitionEnd) yield break;
+
             await foreach (var msg in live.ReadAllAsync(cancellationToken))
             {
                 if (msg.Offset < nextExpectedOffset) continue; // already emitted from history

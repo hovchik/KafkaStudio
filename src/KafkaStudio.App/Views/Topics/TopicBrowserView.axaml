@@ -1,80 +1,147 @@
 <UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:KafkaStudio.App.ViewModels.Topics"
-             x:Class="KafkaStudio.App.Views.Topics.TopicBrowserView"
-             x:DataType="vm:TopicBrowserViewModel">
+			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+			 xmlns:vm="using:KafkaStudio.App.ViewModels.Topics"
+			 xmlns:conv="using:KafkaStudio.App.Converters"
+			 x:Class="KafkaStudio.App.Views.Topics.TopicBrowserView"
+			 x:DataType="vm:TopicBrowserViewModel">
 
   <Grid RowDefinitions="Auto,Auto,*" Margin="0">
-    <TextBlock Grid.Row="0" Text="Topics" Classes="h1" Foreground="White" Margin="0,0,0,16" />
 
-    <Border Grid.Row="1" Classes="card" Margin="0,0,0,16">
-      <StackPanel Spacing="10">
-        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
-          <TextBlock Grid.Column="0" Text="Connection" VerticalAlignment="Center" Classes="muted" />
-          <ComboBox Grid.Column="1" ItemsSource="{Binding ConnectionNames}" SelectedItem="{Binding SelectedConnection}" HorizontalAlignment="Stretch" />
-          <Button Grid.Column="2" Content="Refresh topics" Command="{Binding RefreshTopicsCommand}" />
-        </Grid>
+	<!-- Header -->
+	<StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" Margin="0,0,0,16">
+	  <TextBlock Text="Topics" Classes="h1" Foreground="White" VerticalAlignment="Center" />
+	  <TextBlock Text="{Binding StatusMessage}" Classes="muted" VerticalAlignment="Center" Margin="8,4,0,0" />
+	</StackPanel>
 
-        <Grid ColumnDefinitions="Auto,*">
-          <TextBlock Grid.Column="0" Text="Filter" VerticalAlignment="Center" Classes="muted" />
-          <TextBox Grid.Column="1" Text="{Binding TopicFilter}" Watermark="Filter topics (contains)..." Margin="8,0,0,0" />
-        </Grid>
+	<!-- Toolbar -->
+	<Border Grid.Row="1" Classes="card" Margin="0,0,0,16">
+	  <StackPanel Spacing="14">
 
-        <Grid ColumnDefinitions="Auto,Auto,Auto,*">
-          <TextBlock Grid.Column="0" Text="Selected topic" VerticalAlignment="Center" Classes="muted" />
-          <TextBlock Grid.Column="1" Text="{Binding SelectedTopic, TargetNullValue='(none)'}" VerticalAlignment="Center" Foreground="White" Margin="8,0,16,0" />
-          <TextBlock Grid.Column="2" Text="Limit" VerticalAlignment="Center" Classes="muted" />
-          <TextBox Grid.Column="3" Text="{Binding ScanLimit}" Width="80" HorizontalAlignment="Left" Watermark="limit" />
-        </Grid>
-        <Button Content="Reload messages" Classes="primary" Command="{Binding ScanCommand}" HorizontalAlignment="Left" />
+		<!-- Connection row -->
+		<Grid ColumnDefinitions="Auto,*,Auto">
+		  <TextBlock Grid.Column="0" Text="Connection" VerticalAlignment="Center" Classes="muted" Width="90" />
+		  <ComboBox Grid.Column="1" ItemsSource="{Binding ConnectionNames}" SelectedItem="{Binding SelectedConnection}" HorizontalAlignment="Stretch" />
+		  <Button Grid.Column="2" Content="Refresh topics" Command="{Binding RefreshTopicsCommand}" Margin="8,0,0,0" />
+		</Grid>
 
-        <TextBlock Text="{Binding StatusMessage}" Classes="muted" />
-      </StackPanel>
-    </Border>
+		<Border Height="1" Background="#33FFFFFF" Margin="0,2" />
 
-    <Grid Grid.Row="2" ColumnDefinitions="1*,1.4*">
-      <Border Grid.Column="0" Classes="card">
-        <DockPanel>
-          <TextBlock DockPanel.Dock="Top" Text="Topics" FontWeight="SemiBold" Foreground="White" Margin="0,0,0,8" />
-          <ScrollViewer>
-            <ListBox ItemsSource="{Binding Topics}" SelectedItem="{Binding SelectedTopicRow}" DoubleTapped="OnTopicDoubleTapped">
-              <ListBox.ItemTemplate>
-                <DataTemplate x:DataType="vm:TopicRowViewModel">
-                  <StackPanel>
-                    <TextBlock Text="{Binding Name}" Foreground="White" />
-                    <TextBlock Classes="muted">
-                      <Run Text="{Binding PartitionCount, TargetNullValue='…'}" /><Run Text=" partitions, " /><Run Text="{Binding TotalMessageCount, TargetNullValue='…'}" /><Run Text=" messages" />
-                    </TextBlock>
-                  </StackPanel>
-                </DataTemplate>
-              </ListBox.ItemTemplate>
-            </ListBox>
-          </ScrollViewer>
-        </DockPanel>
-      </Border>
+		<!-- Topic browsing row -->
+		<Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
+		  <TextBlock Grid.Column="0" Text="Topic filter" VerticalAlignment="Center" Classes="muted" Width="90" />
+		  <TextBox Grid.Column="1" Text="{Binding TopicFilter}" Watermark="Filter topics (contains)..." />
+		  <TextBlock Grid.Column="2" Text="Selected" VerticalAlignment="Center" Classes="muted" Margin="16,0,0,0" />
+		  <TextBlock Grid.Column="3" Text="{Binding SelectedTopic, TargetNullValue='(none)'}" VerticalAlignment="Center" Foreground="White" Margin="8,0,16,0" FontWeight="SemiBold" />
+		  <TextBlock Grid.Column="4" Text="Limit" VerticalAlignment="Center" Classes="muted" />
+		  <TextBox Grid.Column="5" Text="{Binding ScanLimit, TargetNullValue=''}" Width="70" HorizontalAlignment="Left" Watermark="all" Margin="8,0,0,0" />
+		</Grid>
 
-      <Border Grid.Column="1" Classes="card">
-        <DockPanel>
-          <TextBlock DockPanel.Dock="Top" Text="Messages (newest first)" FontWeight="SemiBold" Foreground="White" Margin="0,0,0,8" />
-          <ScrollViewer>
-            <ItemsControl ItemsSource="{Binding ScannedMessages}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Border Padding="8" Margin="0,0,0,4" Background="{DynamicResource SidebarBrush}" CornerRadius="6">
-                    <StackPanel>
-                      <SelectableTextBlock Classes="muted">
-                        <Run Text="offset " /><Run Text="{Binding Offset}" /><Run Text=" · key " /><Run Text="{Binding Key}" />
-                      </SelectableTextBlock>
-                      <SelectableTextBlock Text="{Binding PrettyValue}" Foreground="White" TextWrapping="Wrap" FontFamily="Consolas,monospace" />
-                    </StackPanel>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </ScrollViewer>
-        </DockPanel>
-      </Border>
-    </Grid>
+		<Grid ColumnDefinitions="Auto,*,Auto">
+		  <Button Grid.Column="0" Content="Reload messages" Classes="primary" Command="{Binding ScanCommand}" />
+		  <TextBox Grid.Column="1" Text="{Binding MessageFilter}" Watermark="Search within loaded messages (contains)..." Margin="12,0,0,0" />
+		  <TextBlock Grid.Column="2" VerticalAlignment="Center" Classes="muted" Margin="12,0,0,0">
+			<Run Text="{Binding MatchedMessageCount}" /><Run Text=" / " /><Run Text="{Binding TotalMessageCount}" /><Run Text=" messages" />
+		  </TextBlock>
+		</Grid>
+
+		<Border Height="1" Background="#33FFFFFF" Margin="0,2" />
+
+		<!-- Global (cross-topic) search row -->
+		<Grid ColumnDefinitions="Auto,*,Auto,Auto">
+		  <TextBlock Grid.Column="0" Text="Find anywhere" VerticalAlignment="Center" Classes="muted" Width="90" />
+		  <TextBox Grid.Column="1" Text="{Binding GlobalSearchTerm}" Watermark="Search every loaded topic's messages (contains)..." />
+		  <Button Grid.Column="2" Content="Search all topics" Classes="primary" Command="{Binding GlobalSearchCommand}" Margin="8,0,0,0" />
+		  <Button Grid.Column="3" Content="Cancel" Command="{Binding CancelGlobalSearchCommand}" Margin="8,0,0,0" IsVisible="{Binding IsGlobalSearching}" />
+		</Grid>
+		<TextBlock Classes="muted" IsVisible="{Binding IsGlobalSearching}">
+		  <Run Text="Scanning topic " /><Run Text="{Binding GlobalSearchTopicsScanned}" /><Run Text=" / " /><Run Text="{Binding GlobalSearchTopicsTotal}" /><Run Text="..." />
+		</TextBlock>
+
+	  </StackPanel>
+	</Border>
+
+	<!-- Main content: topics list + messages, plus global search results underneath when present -->
+	<Grid Grid.Row="2" RowDefinitions="*,Auto">
+	  <Grid Grid.Row="0" ColumnDefinitions="1*,1.5*" Margin="0,0,0,16">
+		<Border Classes="card" Margin="4,0" Grid.Column="{Binding ArePanelsSwapped, Converter={x:Static conv:SwapColumnConverter.Instance}, ConverterParameter=0}"
+				VerticalAlignment="{Binding IsTopicsPanelExpanded, Converter={x:Static conv:BoolToVerticalAlignmentConverter.Instance}}">
+		  <DockPanel>
+			<Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,8">
+			  <TextBlock Grid.Column="0" Text="Topics" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center" />
+			  <Button Grid.Column="1" Content="⇄" ToolTip.Tip="Swap Topics/Messages panels" Command="{Binding SwapPanelsCommand}" Padding="6,2" Margin="0,0,4,0" />
+			  <Button Grid.Column="2" Content="{Binding IsTopicsPanelExpanded, Converter={x:Static conv:BoolToChevronConverter.Instance}}" ToolTip.Tip="Collapse/expand" Command="{Binding ToggleTopicsPanelCommand}" Padding="6,2" />
+			</Grid>
+			<ScrollViewer IsVisible="{Binding IsTopicsPanelExpanded}">
+			  <ListBox ItemsSource="{Binding Topics}" SelectedItem="{Binding SelectedTopicRow}" DoubleTapped="OnTopicDoubleTapped">
+				<ListBox.ItemTemplate>
+				  <DataTemplate x:DataType="vm:TopicRowViewModel">
+					<StackPanel Margin="2,4">
+					  <TextBlock Text="{Binding Name}" Foreground="White" FontWeight="Medium" />
+					  <TextBlock Classes="muted">
+						<Run Text="{Binding PartitionCount, TargetNullValue='…'}" /><Run Text=" partitions, " /><Run Text="{Binding TotalMessageCount, TargetNullValue='…'}" /><Run Text=" messages" />
+					  </TextBlock>
+					</StackPanel>
+				  </DataTemplate>
+				</ListBox.ItemTemplate>
+			  </ListBox>
+			</ScrollViewer>
+		  </DockPanel>
+		</Border>
+
+		<Border Classes="card" Margin="4,0" Grid.Column="{Binding ArePanelsSwapped, Converter={x:Static conv:SwapColumnConverter.Instance}, ConverterParameter=1}"
+				VerticalAlignment="{Binding IsMessagesPanelExpanded, Converter={x:Static conv:BoolToVerticalAlignmentConverter.Instance}}">
+		  <DockPanel>
+			<Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+			  <TextBlock Grid.Column="0" Text="Messages (newest first)" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center" />
+			  <Button Grid.Column="1" Content="{Binding IsMessagesPanelExpanded, Converter={x:Static conv:BoolToChevronConverter.Instance}}" ToolTip.Tip="Collapse/expand" Command="{Binding ToggleMessagesPanelCommand}" Padding="6,2" />
+			</Grid>
+			<ScrollViewer IsVisible="{Binding IsMessagesPanelExpanded}">
+			  <ItemsControl ItemsSource="{Binding ScannedMessages}">
+				<ItemsControl.ItemTemplate>
+				  <DataTemplate>
+					<Border Padding="10" Margin="0,0,0,6" Background="{DynamicResource SidebarBrush}" CornerRadius="8">
+					  <StackPanel Spacing="4">
+						<SelectableTextBlock Classes="muted">
+						  <Run Text="offset " /><Run Text="{Binding Offset}" /><Run Text=" · partition " /><Run Text="{Binding Partition}" /><Run Text=" · key " /><Run Text="{Binding Key}" />
+						</SelectableTextBlock>
+						<SelectableTextBlock Inlines="{Binding PrettyValue, Converter={x:Static conv:JsonInlinesConverter.Instance}}" Foreground="White" TextWrapping="Wrap" FontFamily="Consolas,monospace" FontSize="12" />
+					  </StackPanel>
+					</Border>
+				  </DataTemplate>
+				</ItemsControl.ItemTemplate>
+			  </ItemsControl>
+			</ScrollViewer>
+		  </DockPanel>
+		</Border>
+	  </Grid>
+
+	  <!-- Cross-topic search results -->
+	  <Border Grid.Row="1" Classes="card" IsVisible="{Binding GlobalSearchResults.Count}" MaxHeight="260">
+		<DockPanel>
+		  <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+			<TextBlock Grid.Column="0" Text="Search results (all topics)" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center" />
+			<Button Grid.Column="1" Content="{Binding IsSearchResultsPanelExpanded, Converter={x:Static conv:BoolToChevronConverter.Instance}}" ToolTip.Tip="Collapse/expand" Command="{Binding ToggleSearchResultsPanelCommand}" Padding="6,2" />
+		  </Grid>
+		  <ScrollViewer IsVisible="{Binding IsSearchResultsPanelExpanded}">
+			<ItemsControl ItemsSource="{Binding GlobalSearchResults}">
+			  <ItemsControl.ItemTemplate>
+				<DataTemplate x:DataType="vm:GlobalSearchHit">
+				  <Border Padding="10" Margin="0,0,0,6" Background="{DynamicResource SidebarBrush}" CornerRadius="8"
+						  DoubleTapped="OnGlobalSearchHitDoubleTapped">
+					<StackPanel Spacing="4">
+					  <SelectableTextBlock Classes="muted">
+						<Run Text="topic " FontWeight="SemiBold" /><Run Text="{Binding Topic}" Foreground="{DynamicResource AccentBrush}" /><Run Text=" · offset " /><Run Text="{Binding Message.Offset}" /><Run Text=" · key " /><Run Text="{Binding Message.Key}" />
+					  </SelectableTextBlock>
+					  <SelectableTextBlock Inlines="{Binding Message.PrettyValue, Converter={x:Static conv:JsonInlinesConverter.Instance}}" Foreground="White" TextWrapping="Wrap" FontFamily="Consolas,monospace" FontSize="12" />
+					</StackPanel>
+				  </Border>
+				</DataTemplate>
+			  </ItemsControl.ItemTemplate>
+			</ItemsControl>
+		  </ScrollViewer>
+		</DockPanel>
+	  </Border>
+	</Grid>
   </Grid>
 
 </UserControl>

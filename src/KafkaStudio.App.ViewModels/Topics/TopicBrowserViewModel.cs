@@ -18,6 +18,14 @@ public sealed class TopicRowViewModel : ObservableObject
     public long? TotalMessageCount { get => _totalMessageCount; set => SetProperty(ref _totalMessageCount, value); }
 }
 
+/// <summary>A message found by <see cref="TopicBrowserViewModel.GlobalSearchCommand"/>, tagged with the
+/// topic it came from so mixed-topic results are still identifiable in a single list.</summary>
+public sealed class GlobalSearchHit
+{
+    public required string Topic { get; init; }
+    public required KafkaMessage Message { get; init; }
+}
+
 /// <summary>Lists topics for the selected connection and lets you scan a backlog on demand (the same
 /// "scan and acknowledge" capability the DSL exposes, surfaced as a point-and-click tool).
 ///
@@ -36,11 +44,37 @@ public sealed class TopicBrowserViewModel : ObservableObject
     private readonly AppState _state;
     private CancellationTokenSource? _topicsLoadCts;
     private CancellationTokenSource? _messagesLoadCts;
+    private CancellationTokenSource? _globalSearchCts;
     private readonly List<TopicRowViewModel> _allTopics = new();
 
     public ObservableCollection<string> ConnectionNames { get; } = new();
     public ObservableCollection<TopicRowViewModel> Topics { get; } = new();
     public ObservableCollection<KafkaMessage> ScannedMessages { get; } = new();
+    public ObservableCollection<GlobalSearchHit> GlobalSearchResults { get; } = new();
+
+    private bool _isTopicsPanelExpanded = true;
+    /// <summary>Whether the "Topics" list panel is expanded or collapsed to its header.</summary>
+    public bool IsTopicsPanelExpanded { get => _isTopicsPanelExpanded; set => SetProperty(ref _isTopicsPanelExpanded, value); }
+
+    private bool _isMessagesPanelExpanded = true;
+    /// <summary>Whether the "Messages" panel is expanded or collapsed to its header.</summary>
+    public bool IsMessagesPanelExpanded { get => _isMessagesPanelExpanded; set => SetProperty(ref _isMessagesPanelExpanded, value); }
+
+    private bool _isSearchResultsPanelExpanded = true;
+    /// <summary>Whether the "Search results (all topics)" panel is expanded or collapsed to its header.</summary>
+    public bool IsSearchResultsPanelExpanded { get => _isSearchResultsPanelExpanded; set => SetProperty(ref _isSearchResultsPanelExpanded, value); }
+
+    private bool _arePanelsSwapped;
+    /// <summary>When true, the "Topics" and "Messages" panels are shown in reverse order (Messages on the left).</summary>
+    public bool ArePanelsSwapped { get => _arePanelsSwapped; set => SetProperty(ref _arePanelsSwapped, value); }
+
+    /// <summary>Collapses/expands the "Topics", "Messages" and "Search results" panels to just their
+    /// header, and lets the Topics/Messages panels be swapped left-to-right, so the layout can be
+    /// reorganized to focus on whichever panel matters right now.</summary>
+    public RelayCommand ToggleTopicsPanelCommand { get; }
+    public RelayCommand ToggleMessagesPanelCommand { get; }
+    public RelayCommand ToggleSearchResultsPanelCommand { get; }
+    public RelayCommand SwapPanelsCommand { get; }
 
     private string? _selectedConnection;
     public string? SelectedConnection
@@ -53,7 +87,9 @@ public sealed class TopicBrowserViewModel : ObservableObject
                 SelectedTopicRow = null;
                 _allTopics.Clear();
                 Topics.Clear();
+                GlobalSearchResults.Clear();
                 _ = RefreshTopicsAsync();
+                GlobalSearchCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -91,26 +127,107 @@ public sealed class TopicBrowserViewModel : ObservableObject
 
     public string? SelectedTopic => SelectedTopicRow?.Name;
 
-    private int _scanLimit = 50;
-    public int ScanLimit { get => _scanLimit; set => SetProperty(ref _scanLimit, value); }
+    /// <summary>Max messages to pull, newest first. Leave empty/null to load the entire topic backlog.</summary>
+    private int? _scanLimit = 50;
+    public int? ScanLimit { get => _scanLimit; set => SetProperty(ref _scanLimit, value); }
+
+    private string? _messageFilter;
+    /// <summary>Case-insensitive "contains" search applied to key + value of <see cref="ScannedMessages"/>,
+    /// against the full set of loaded messages.</summary>
+    public string? MessageFilter
+    {
+        get => _messageFilter;
+        set
+        {
+            if (SetProperty(ref _messageFilter, value))
+            {
+                ApplyMessageFilter();
+            }
+        }
+    }
+
+    private readonly List<KafkaMessage> _allScannedMessages = new();
+
+    private int _matchedMessageCount;
+    /// <summary>Number of messages currently shown in <see cref="ScannedMessages"/> after applying
+    /// <see cref="MessageFilter"/> (equal to <see cref="TotalMessageCount"/> when the filter is empty).</summary>
+    public int MatchedMessageCount { get => _matchedMessageCount; private set => SetProperty(ref _matchedMessageCount, value); }
+
+    private int _totalMessageCount;
+    /// <summary>Total number of messages loaded for the current topic, before filtering.</summary>
+    public int TotalMessageCount { get => _totalMessageCount; private set => SetProperty(ref _totalMessageCount, value); }
 
     private string? _statusMessage;
     public string? StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
 
+    private string? _globalSearchTerm;
+    /// <summary>Case-insensitive "contains" search executed by <see cref="GlobalSearchCommand"/> against
+    /// every currently loaded topic's message backlog (key + value), across the whole connection.</summary>
+    public string? GlobalSearchTerm
+    {
+        get => _globalSearchTerm;
+        set
+        {
+            if (SetProperty(ref _globalSearchTerm, value))
+            {
+                GlobalSearchCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    private bool _isGlobalSearching;
+    /// <summary>True while <see cref="GlobalSearchCommand"/> is fanning out scans across topics.</summary>
+    public bool IsGlobalSearching
+    {
+        get => _isGlobalSearching;
+        private set
+        {
+            if (SetProperty(ref _isGlobalSearching, value))
+            {
+                CancelGlobalSearchCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    private int _globalSearchTopicsScanned;
+    public int GlobalSearchTopicsScanned { get => _globalSearchTopicsScanned; private set => SetProperty(ref _globalSearchTopicsScanned, value); }
+
+    private int _globalSearchTopicsTotal;
+    public int GlobalSearchTopicsTotal { get => _globalSearchTopicsTotal; private set => SetProperty(ref _globalSearchTopicsTotal, value); }
+
     public AsyncRelayCommand RefreshTopicsCommand { get; }
     public AsyncRelayCommand ScanCommand { get; }
+
+    /// <summary>Scans every loaded topic's current backlog in parallel and collects every message whose
+    /// key or value contains <see cref="GlobalSearchTerm"/> - a "find this message, but I don't remember
+    /// which topic it's on" tool. Heavier than the per-topic <see cref="MessageFilter"/> (it talks to the
+    /// broker for every topic), so it only runs on demand.</summary>
+    public AsyncRelayCommand GlobalSearchCommand { get; }
+    public RelayCommand CancelGlobalSearchCommand { get; }
 
     /// <summary>Bound to a topic row's double-click in the view - opens that topic (selecting it and
     /// loading its messages) regardless of what's currently selected.</summary>
     public AsyncRelayCommand<TopicRowViewModel> OpenTopicCommand { get; }
 
+    /// <summary>Bound to a global search result row's double-click - jumps to that message's topic and
+    /// loads it in the main message pane.</summary>
+    public AsyncRelayCommand<GlobalSearchHit> OpenGlobalSearchHitCommand { get; }
+
     public TopicBrowserViewModel(AppState state)
     {
         _state = state;
         _state.ConnectionsChanged += RefreshConnectionNames;
+        ToggleTopicsPanelCommand = new RelayCommand(() => IsTopicsPanelExpanded = !IsTopicsPanelExpanded);
+        ToggleMessagesPanelCommand = new RelayCommand(() => IsMessagesPanelExpanded = !IsMessagesPanelExpanded);
+        ToggleSearchResultsPanelCommand = new RelayCommand(() => IsSearchResultsPanelExpanded = !IsSearchResultsPanelExpanded);
+        SwapPanelsCommand = new RelayCommand(() => ArePanelsSwapped = !ArePanelsSwapped);
         RefreshTopicsCommand = new AsyncRelayCommand(RefreshTopicsAsync, () => SelectedConnection is not null);
         ScanCommand = new AsyncRelayCommand(ScanAsync, () => SelectedConnection is not null && SelectedTopic is not null);
         OpenTopicCommand = new AsyncRelayCommand<TopicRowViewModel>(OpenTopicAsync);
+        GlobalSearchCommand = new AsyncRelayCommand(GlobalSearchAsync,
+            () => SelectedConnection is not null && !string.IsNullOrWhiteSpace(GlobalSearchTerm));
+        CancelGlobalSearchCommand = new RelayCommand(() => _globalSearchCts?.Cancel(), () => IsGlobalSearching);
+        OpenGlobalSearchHitCommand = new AsyncRelayCommand<GlobalSearchHit>(OpenGlobalSearchHitAsync);
         RefreshConnectionNames();
     }
 
@@ -129,6 +246,21 @@ public sealed class TopicBrowserViewModel : ObservableObject
 
         Topics.Clear();
         foreach (var topic in matching) Topics.Add(topic);
+    }
+
+    private void ApplyMessageFilter()
+    {
+        var filter = MessageFilter;
+        IEnumerable<KafkaMessage> matching = string.IsNullOrWhiteSpace(filter)
+            ? _allScannedMessages
+            : _allScannedMessages.Where(m =>
+                (m.Value is not null && m.Value.Contains(filter, StringComparison.OrdinalIgnoreCase)) ||
+                (m.Key is not null && m.Key.Contains(filter, StringComparison.OrdinalIgnoreCase)));
+
+        ScannedMessages.Clear();
+        foreach (var message in matching) ScannedMessages.Add(message);
+        TotalMessageCount = _allScannedMessages.Count;
+        MatchedMessageCount = ScannedMessages.Count;
     }
 
     private Task OpenTopicAsync(TopicRowViewModel? topic)
@@ -195,7 +327,12 @@ public sealed class TopicBrowserViewModel : ObservableObject
                 Topic = topic,
                 ConsumerGroup = $"kafka-studio-browser-{Guid.NewGuid():N}",
                 StartPosition = ConsumeStartPosition.Earliest,
-                MaxMessages = ScanLimit
+                MaxMessages = ScanLimit,
+                // Whether or not a cap is set, a browser scan is a bounded "load current backlog" read -
+                // stop once the topic's current messages are exhausted rather than waiting for more to
+                // arrive (that's what live "watch" is for). This is also what makes an empty ScanLimit
+                // mean "load all messages" instead of hanging forever.
+                StopAtPartitionEnd = true
             };
 
             var describeTask = gateway.DescribeTopicAsync(topic, cts.Token);
@@ -224,12 +361,10 @@ public sealed class TopicBrowserViewModel : ObservableObject
                 return byTimestamp != 0 ? byTimestamp : b.Offset.CompareTo(a.Offset);
             });
 
-            ScannedMessages.Clear();
-            foreach (var message in buffer)
-            {
-                ScannedMessages.Add(message);
-            }
-            StatusMessage = $"Loaded {ScannedMessages.Count} message(s), newest first.";
+            _allScannedMessages.Clear();
+            _allScannedMessages.AddRange(buffer);
+            ApplyMessageFilter();
+            StatusMessage = $"Loaded {_allScannedMessages.Count} message(s), newest first.";
         }
         catch (OperationCanceledException)
         {
@@ -239,5 +374,106 @@ public sealed class TopicBrowserViewModel : ObservableObject
         {
             StatusMessage = $"Scan failed: {ex.Message}";
         }
+    }
+
+    /// <summary>Fans out a bounded, "load current backlog" scan across every currently loaded topic in
+    /// parallel and collects every message whose key or value contains <see cref="GlobalSearchTerm"/>.
+    /// This is deliberately heavier than <see cref="MessageFilter"/> - it talks to the broker for every
+    /// topic - so it's only triggered explicitly via <see cref="GlobalSearchCommand"/>, not on every
+    /// keystroke.</summary>
+    private async Task GlobalSearchAsync()
+    {
+        _globalSearchCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _globalSearchCts = cts;
+
+        var term = GlobalSearchTerm;
+        if (SelectedConnection is null || string.IsNullOrWhiteSpace(term)) return;
+        if (!_state.Connections.TryGetValue(SelectedConnection, out var gateway)) return;
+
+        var topics = _allTopics.Select(t => t.Name).ToList();
+        if (topics.Count == 0)
+        {
+            StatusMessage = "No topics loaded to search.";
+            return;
+        }
+
+        IsGlobalSearching = true;
+        GlobalSearchResults.Clear();
+        GlobalSearchTopicsScanned = 0;
+        GlobalSearchTopicsTotal = topics.Count;
+        StatusMessage = $"Searching {topics.Count} topic(s) for \"{term}\"...";
+
+        try
+        {
+            // Bound the number of topics scanned concurrently so a large cluster doesn't open hundreds
+            // of consumer connections at once.
+            using var throttle = new SemaphoreSlim(8);
+            var scanned = 0;
+
+            var perTopicTasks = topics.Select(async topic =>
+            {
+                await throttle.WaitAsync(cts.Token).ConfigureAwait(true);
+                try
+                {
+                    var options = new ConsumeOptions
+                    {
+                        Topic = topic,
+                        ConsumerGroup = $"kafka-studio-global-search-{Guid.NewGuid():N}",
+                        StartPosition = ConsumeStartPosition.Earliest,
+                        StopAtPartitionEnd = true
+                    };
+
+                    await foreach (var message in gateway.ConsumeAsync(options, cts.Token).ConfigureAwait(true))
+                    {
+                        var isMatch = (message.Value is not null && message.Value.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
+                                      (message.Key is not null && message.Key.Contains(term, StringComparison.OrdinalIgnoreCase));
+                        if (isMatch)
+                        {
+                            GlobalSearchResults.Add(new GlobalSearchHit { Topic = topic, Message = message });
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    // superseded by a newer search / cancel - ignore this topic's partial results.
+                }
+                catch (Exception)
+                {
+                    // one unreachable/misbehaving topic shouldn't abort the whole cross-topic search.
+                }
+                finally
+                {
+                    Interlocked.Increment(ref scanned);
+                    GlobalSearchTopicsScanned = scanned;
+                    throttle.Release();
+                }
+            });
+
+            await Task.WhenAll(perTopicTasks).ConfigureAwait(true);
+
+            if (cts.IsCancellationRequested) return;
+
+            StatusMessage = $"Found {GlobalSearchResults.Count} message(s) matching \"{term}\" across {topics.Count} topic(s).";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Search cancelled.";
+        }
+        finally
+        {
+            IsGlobalSearching = false;
+        }
+    }
+
+    private Task OpenGlobalSearchHitAsync(GlobalSearchHit? hit)
+    {
+        if (hit is null) return Task.CompletedTask;
+
+        var topicRow = _allTopics.FirstOrDefault(t => t.Name == hit.Topic);
+        if (topicRow is null) return Task.CompletedTask;
+
+        SelectedTopicRow = topicRow;
+        return ScanAsync();
     }
 }

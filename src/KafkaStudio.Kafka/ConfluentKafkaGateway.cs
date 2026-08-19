@@ -223,10 +223,10 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
                 SeekToTimestamp(consumer, consumerLock, options.Topic, from, cancellationToken);
             }
 
-            // For bounded scans (MaxMessages set - e.g. Topic Browser / "scan and acknowledge"), we need
-            // to stop once every assigned partition has reached its current end, rather than blocking
-            // forever waiting for messages that may never arrive (fewer records exist than MaxMessages).
-            // Unbounded "watch" subscriptions (MaxMessages is null) ignore EOF and keep polling.
+            // Stop once every assigned partition has reached its current end when the caller asked for
+            // that (StopAtPartitionEnd - e.g. Topic Browser / "scan and acknowledge", with or without a
+            // MaxMessages cap), rather than blocking forever waiting for messages that may never arrive.
+            // Unbounded "watch" subscriptions leave StopAtPartitionEnd false and keep polling past EOF.
             var eofPartitions = new HashSet<TopicPartition>();
 
             while (!cancellationToken.IsCancellationRequested)
@@ -241,7 +241,7 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
 
                 if (result.IsPartitionEOF)
                 {
-                    if (options.MaxMessages is not null)
+                    if (options.StopAtPartitionEnd)
                     {
                         eofPartitions.Add(result.TopicPartition);
 

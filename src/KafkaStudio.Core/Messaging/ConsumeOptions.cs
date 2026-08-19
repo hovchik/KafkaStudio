@@ -40,4 +40,13 @@ public sealed record ConsumeOptions
 
     /// <summary>Optional cap so "scan topic" steps can bound how many records they pull.</summary>
     public int? MaxMessages { get; init; }
+
+    /// <summary>
+    /// When true, the gateway stops as soon as every currently-assigned partition reports "no more
+    /// messages right now" (partition EOF), instead of waiting indefinitely for new messages to arrive.
+    /// Used by bounded "scan and display" operations (e.g. the Topic Browser) so that a scan with no
+    /// <see cref="MaxMessages"/> cap ("load all") still terminates once the topic's current backlog has
+    /// been drained, rather than behaving like an unbounded live "watch" subscription.
+    /// </summary>
+    public bool StopAtPartitionEnd { get; init; }
 }

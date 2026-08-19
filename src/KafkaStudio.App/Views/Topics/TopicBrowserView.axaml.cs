@@ -21,4 +21,15 @@ public partial class TopicBrowserView : UserControl
             vm.OpenTopicCommand.Execute(row);
         }
     }
+
+    private void OnGlobalSearchHitDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (DataContext is not TopicBrowserViewModel vm) return;
+        if (sender is not Control { DataContext: GlobalSearchHit hit }) return;
+
+        if (vm.OpenGlobalSearchHitCommand.CanExecute(hit))
+        {
+            vm.OpenGlobalSearchHitCommand.Execute(hit);
+        }
+    }
 }
