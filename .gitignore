@@ -4,3 +4,5 @@ obj/
 .vs/
 .vscode/
 *.DotSettings.user
+publish/
+installer/output/

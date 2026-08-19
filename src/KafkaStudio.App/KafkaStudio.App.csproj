@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -8,7 +8,10 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <RootNamespace>KafkaStudio.App</RootNamespace>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
 
+
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <!-- Windows first, per the brief; Avalonia would also let this run on macOS/Linux without code
          changes if that's ever wanted later - just add the matching RuntimeIdentifier. -->
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>

@@ -4,6 +4,7 @@
         x:Class="KafkaStudio.App.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="KafkaStudio"
+        Icon="/Assets/app.ico"
         Width="1280" Height="800"
         MinWidth="960" MinHeight="600"
         Background="{DynamicResource AppBackgroundBrush}">
