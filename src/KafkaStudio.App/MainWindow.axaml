@@ -1,0 +1,41 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:KafkaStudio.App.ViewModels"
+        x:Class="KafkaStudio.App.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="KafkaStudio"
+        Width="1280" Height="800"
+        MinWidth="960" MinHeight="600"
+        Background="{DynamicResource AppBackgroundBrush}">
+
+  <Grid ColumnDefinitions="240,*">
+
+    <!-- Sidebar -->
+    <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}" Padding="0,16">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Margin="20,0,20,24" Spacing="2">
+          <TextBlock Text="KafkaStudio" FontSize="20" FontWeight="Bold" Foreground="White" />
+          <TextBlock Text="Kafka checks &amp; automation" FontSize="12" Opacity="0.6" Foreground="White" />
+        </StackPanel>
+
+        <ListBox ItemsSource="{Binding NavigationItems}"
+                 SelectedItem="{Binding SelectedItem}"
+                 Background="Transparent"
+                 Margin="8,0">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding Label}" Padding="12,10" FontSize="14" />
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Border>
+
+    <!-- Content -->
+    <Border Grid.Column="1" Background="{DynamicResource ContentBackgroundBrush}">
+      <ContentControl Content="{Binding SelectedItem.ViewModel}" Margin="24" />
+    </Border>
+
+  </Grid>
+
+</Window>

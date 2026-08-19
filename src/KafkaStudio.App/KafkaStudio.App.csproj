@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RootNamespace>KafkaStudio.App</RootNamespace>
+
+    <!-- Windows first, per the brief; Avalonia would also let this run on macOS/Linux without code
+         changes if that's ever wanted later - just add the matching RuntimeIdentifier. -->
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The other NuGet-dependent piece of this solution (alongside KafkaStudio.Kafka) - could not be
+         restore-verified in the sandbox this project was authored in (no nuget.org access there).
+         Restores normally with `dotnet restore` on a machine with regular internet access. See the
+         top-level README's "What's verified" section. -->
+    <PackageReference Include="Avalonia" Version="11.1.3" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.1.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.1.3" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.1.3" />
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.1.3" Condition="'$(Configuration)' == 'Debug'" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\KafkaStudio.App.ViewModels\KafkaStudio.App.ViewModels.csproj" />
+    <ProjectReference Include="..\KafkaStudio.Kafka\KafkaStudio.Kafka.csproj" />
+  </ItemGroup>
+
+</Project>

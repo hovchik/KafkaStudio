@@ -1,0 +1,16 @@
+# Scan a topic's backlog (e.g. a dead-letter queue) and acknowledge every message once you've looked
+# at it - the "scanning topics and acknowledge about consuming" priority from the brief.
+#
+# This seeds three throwaway messages first so the scenario is runnable standalone; against a real
+# queue you'd usually skip the "produce" steps and just scan+acknowledge what's already there.
+
+Scenario: Drain and acknowledge the dead-letter queue
+Given use connection "local"
+When produce message to topic "orders-dlq" value "poison message 1"
+And produce message to topic "orders-dlq" value "poison message 2"
+And produce message to topic "orders-dlq" value "poison message 3"
+Then scan topic "orders-dlq" from beginning limit 50
+And log message
+# "log message" reports the most recently scanned message; all scanned messages get acknowledged below
+# regardless of what was last logged.
+And acknowledge each scanned message

@@ -1,0 +1,17 @@
+# Cross-topic timing check: produce on "orders", then require a correlated message to show up on
+# "shipment-notices" within 30 seconds. This is the exact pattern from the brief: "when in one topic
+# we produce the message then the other message should be thrown in other during X seconds, that
+# should be checked."
+#
+# The "Given watch topic ... from now" step matters: it opens the subscription on the destination
+# topic *before* we produce to the source topic, so a fast reacting downstream service can't race
+# past us and get missed.
+
+Scenario: Order confirmation triggers a shipment notice within 30 seconds
+Given use connection "local"
+Given set variable orderId to "ORD-1042"
+Given watch topic "shipment-notices" from now
+When produce message to topic "orders" key "{{orderId}}" value """
+{ "orderId": "{{orderId}}", "status": "CONFIRMED" }
+"""
+Then expect message on topic "shipment-notices" within 30 seconds where json "$.orderId" equals "{{orderId}}" and json "$.status" equals "NOTIFIED"

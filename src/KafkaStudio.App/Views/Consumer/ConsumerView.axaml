@@ -1,0 +1,48 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.Consumer"
+             x:Class="KafkaStudio.App.Views.Consumer.ConsumerView"
+             x:DataType="vm:ConsumerViewModel">
+
+  <Grid RowDefinitions="Auto,Auto,*">
+    <TextBlock Grid.Row="0" Text="Consume (live)" Classes="h1" Foreground="White" Margin="0,0,0,16" />
+
+    <Border Grid.Row="1" Classes="card" Margin="0,0,0,16">
+      <StackPanel Spacing="10">
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" ColumnSpacing="10">
+          <TextBlock Grid.Column="0" Text="Connection" VerticalAlignment="Center" Classes="muted" />
+          <ComboBox Grid.Column="1" ItemsSource="{Binding ConnectionNames}" SelectedItem="{Binding SelectedConnection}" HorizontalAlignment="Stretch" />
+          <TextBox Grid.Column="2" Text="{Binding Topic}" Watermark="topic name" Width="200" />
+          <CheckBox Grid.Column="3" Content="From beginning" IsChecked="{Binding FromBeginning}" VerticalAlignment="Center" />
+          <Button Grid.Column="4" Content="Start" Classes="primary" Command="{Binding StartCommand}" />
+          <Button Grid.Column="5" Content="Stop" Command="{Binding StopCommand}" />
+        </Grid>
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <TextBlock Text="{Binding StatusMessage}" Classes="muted" />
+          <Button Content="Clear" Command="{Binding ClearCommand}" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="2" Classes="card">
+      <ScrollViewer>
+        <ItemsControl ItemsSource="{Binding Messages}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border Padding="10" Margin="0,0,0,6" Background="{DynamicResource SidebarBrush}" CornerRadius="6">
+                <StackPanel>
+                  <TextBlock Classes="muted">
+                    <Run Text="{Binding Topic}" /><Run Text="#" /><Run Text="{Binding Partition}" /><Run Text="@" /><Run Text="{Binding Offset}" />
+                    <Run Text=" · key " /><Run Text="{Binding Key}" />
+                  </TextBlock>
+                  <TextBlock Text="{Binding Value}" Foreground="White" TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </Border>
+  </Grid>
+
+</UserControl>

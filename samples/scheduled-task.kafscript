@@ -1,0 +1,14 @@
+# Tasks are the automation half of KafScript: register this on the "Tasks & Checks" screen (or via
+# AutomationScheduler in code) and it runs on its own schedule, independent of the interactive
+# Script Editor's "Run all" button.
+
+Task: Heartbeat producer
+schedule every 5 minutes
+Given use connection "local"
+When produce message to topic "heartbeats" value "ping"
+
+Task: Nightly DLQ sweep
+schedule at 2:00
+Given use connection "local"
+Then scan topic "orders-dlq" from beginning limit 500
+And acknowledge each scanned message

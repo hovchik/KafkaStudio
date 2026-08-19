@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/KafkaStudio.App.ViewModels/KafkaStudio.App.ViewModels.csproj" />
+    <Project Path="src/KafkaStudio.App/KafkaStudio.App.csproj" />
+    <Project Path="src/KafkaStudio.Automation/KafkaStudio.Automation.csproj" />
+    <Project Path="src/KafkaStudio.Core/KafkaStudio.Core.csproj" />
+    <Project Path="src/KafkaStudio.Kafka/KafkaStudio.Kafka.csproj" />
+    <Project Path="src/KafkaStudio.Scripting/KafkaStudio.Scripting.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/KafkaStudio.Tests/KafkaStudio.Tests.csproj" />
+  </Folder>
+</Solution>

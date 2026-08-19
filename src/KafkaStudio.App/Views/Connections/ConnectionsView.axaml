@@ -1,0 +1,70 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.Connections"
+             x:Class="KafkaStudio.App.Views.Connections.ConnectionsView"
+             x:DataType="vm:ConnectionsViewModel">
+
+  <ScrollViewer>
+    <StackPanel Spacing="20" MaxWidth="820" HorizontalAlignment="Left">
+
+      <TextBlock Text="Connections" Classes="h1" Foreground="White" />
+      <TextBlock Text="Add the Kafka clusters you work with. Use a demo (in-memory) connection to try KafkaStudio without a broker."
+                 Classes="muted" TextWrapping="Wrap" />
+
+      <Border Classes="card">
+        <StackPanel Spacing="10">
+          <TextBlock Text="Add connection" FontWeight="SemiBold" Foreground="White" />
+
+          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="8">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Name" VerticalAlignment="Center" Classes="muted" />
+            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding NewConnectionName}" Watermark="e.g. Staging" />
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Bootstrap servers" VerticalAlignment="Center" Classes="muted" />
+            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding NewBootstrapServers}" Watermark="host:9092,host2:9092" />
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Security" VerticalAlignment="Center" Classes="muted" />
+            <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding SecurityProtocolOptions}"
+                      SelectedItem="{Binding NewSecurityProtocol}" HorizontalAlignment="Stretch" />
+
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="SASL username" VerticalAlignment="Center" Classes="muted" />
+            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding NewSaslUsername}" Watermark="optional" />
+
+            <TextBlock Grid.Row="4" Grid.Column="0" Text="SASL password" VerticalAlignment="Center" Classes="muted" />
+            <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding NewSaslPassword}" Watermark="optional" PasswordChar="*" />
+          </Grid>
+
+          <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,8,0,0">
+            <Button Content="Connect" Classes="primary" Command="{Binding AddConnectionCommand}" />
+            <Button Content="Add demo (in-memory) connection" Command="{Binding AddDemoConnectionCommand}" />
+          </StackPanel>
+
+          <TextBlock Text="{Binding StatusMessage}" Classes="muted" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <ItemsControl Name="ConnectionsList" ItemsSource="{Binding Connections}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:ConnectionRowViewModel">
+            <Border Classes="card" Margin="0,0,0,10">
+              <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                <StackPanel Grid.Column="0" Spacing="2">
+                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="White" />
+                  <TextBlock Text="{Binding BootstrapServers}" Classes="muted" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="{Binding Status}" Classes="muted" VerticalAlignment="Center" Margin="0,0,12,0" />
+                <Button Grid.Column="2" Content="Test"
+                        Command="{Binding #ConnectionsList.DataContext.TestConnectionCommand}"
+                        CommandParameter="{Binding}" Margin="0,0,8,0" />
+                <Button Grid.Column="3" Content="Remove"
+                        Command="{Binding #ConnectionsList.DataContext.RemoveConnectionCommand}"
+                        CommandParameter="{Binding}" />
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+    </StackPanel>
+  </ScrollViewer>
+
+</UserControl>

@@ -1,0 +1,63 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.Producer"
+             x:Class="KafkaStudio.App.Views.Producer.ProducerView"
+             x:DataType="vm:ProducerViewModel">
+
+  <ScrollViewer>
+    <StackPanel Spacing="16" MaxWidth="820" HorizontalAlignment="Left">
+      <TextBlock Text="Produce a message" Classes="h1" Foreground="White" />
+
+      <Border Classes="card">
+        <StackPanel Spacing="10">
+          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="8">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Connection" VerticalAlignment="Center" Classes="muted" />
+            <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding ConnectionNames}" SelectedItem="{Binding SelectedConnection}" HorizontalAlignment="Stretch" />
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Topic" VerticalAlignment="Center" Classes="muted" />
+            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Topic}" Watermark="orders" />
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Key" VerticalAlignment="Center" Classes="muted" />
+            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Key}" Watermark="optional" />
+          </Grid>
+
+          <TextBlock Text="Value" Classes="muted" />
+          <TextBox Text="{Binding Value}" AcceptsReturn="True" TextWrapping="Wrap" Height="120" Watermark="{}{ &quot;example&quot;: true }" />
+
+          <TextBlock Text="Headers" Classes="muted" />
+          <ItemsControl Name="HeadersList" ItemsSource="{Binding Headers}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:HeaderEntryViewModel">
+                <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="8" Margin="0,0,0,6">
+                  <TextBox Grid.Column="0" Text="{Binding Name}" Watermark="header name" />
+                  <TextBox Grid.Column="1" Text="{Binding Value}" Watermark="header value" />
+                  <Button Grid.Column="2" Content="✕" Command="{Binding #HeadersList.DataContext.RemoveHeaderCommand}" CommandParameter="{Binding}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Button Content="Add header" Command="{Binding AddHeaderCommand}" HorizontalAlignment="Left" />
+
+          <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,8,0,0">
+            <Button Content="Send" Classes="primary" Command="{Binding SendCommand}" />
+          </StackPanel>
+          <TextBlock Text="{Binding StatusMessage}" Classes="muted" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Recently sent" FontWeight="SemiBold" Foreground="White" />
+          <ItemsControl ItemsSource="{Binding History}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding}" Classes="muted" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+
+</UserControl>

@@ -1,0 +1,67 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.Rethrow"
+             x:Class="KafkaStudio.App.Views.Rethrow.RethrowRulesView"
+             x:DataType="vm:RethrowRulesViewModel">
+
+  <ScrollViewer>
+    <StackPanel Spacing="20" MaxWidth="900" HorizontalAlignment="Left">
+
+      <TextBlock Text="Rethrow rules" Classes="h1" Foreground="White" />
+      <TextBlock Classes="muted" TextWrapping="Wrap"
+                 Text="Continuously relay messages from one topic to another. This is the always-on version of a KafScript 'watch / message arrives / rethrow' scenario." />
+
+      <Border Classes="card">
+        <StackPanel Spacing="10">
+          <TextBlock Text="New rule" FontWeight="SemiBold" Foreground="White" />
+          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="8">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Name" VerticalAlignment="Center" Classes="muted" />
+            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding NewName}" Watermark="confirmed-only" />
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Source" VerticalAlignment="Center" Classes="muted" />
+            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+              <ComboBox ItemsSource="{Binding ConnectionNames}" SelectedItem="{Binding NewSourceConnection}" Width="180" />
+              <TextBox Text="{Binding NewSourceTopic}" Watermark="source topic" Width="220" />
+            </StackPanel>
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Destination" VerticalAlignment="Center" Classes="muted" />
+            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+              <ComboBox ItemsSource="{Binding ConnectionNames}" SelectedItem="{Binding NewDestinationConnection}" Width="180" />
+              <TextBox Text="{Binding NewDestinationTopic}" Watermark="destination topic" Width="220" />
+            </StackPanel>
+          </Grid>
+          <Button Content="Add rule" Classes="primary" Command="{Binding AddRuleCommand}" HorizontalAlignment="Left" />
+          <TextBlock Text="{Binding StatusMessage}" Classes="muted" />
+        </StackPanel>
+      </Border>
+
+      <ItemsControl Name="RulesList" ItemsSource="{Binding Rules}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:RethrowRuleRowViewModel">
+            <Border Classes="card" Margin="0,0,0,10">
+              <Grid ColumnDefinitions="*,Auto,Auto,Auto" RowDefinitions="Auto,Auto">
+                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="2">
+                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="White" />
+                  <TextBlock Text="{Binding Description}" Classes="muted" />
+                </StackPanel>
+                <TextBlock Grid.Row="0" Grid.Column="1" Classes="muted" VerticalAlignment="Center" Margin="0,0,12,0">
+                  <Run Text="relayed: " /><Run Text="{Binding RelayedCount}" />
+                </TextBlock>
+                <Button Grid.Row="0" Grid.Column="2" Content="Start"
+                        Command="{Binding #RulesList.DataContext.StartCommand}" CommandParameter="{Binding}"
+                        IsEnabled="{Binding !IsRunning}" Margin="0,0,8,0" />
+                <Button Grid.Row="0" Grid.Column="3" Content="Stop"
+                        Command="{Binding #RulesList.DataContext.StopCommand}" CommandParameter="{Binding}"
+                        IsEnabled="{Binding IsRunning}" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4" Text="{Binding LastError}"
+                           Classes="status-failed" TextWrapping="Wrap" Margin="0,8,0,0" />
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+    </StackPanel>
+  </ScrollViewer>
+
+</UserControl>

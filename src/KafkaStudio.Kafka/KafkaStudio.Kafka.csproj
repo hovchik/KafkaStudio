@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\KafkaStudio.Core\KafkaStudio.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The real Kafka client. This is the one PackageReference in the whole solution that could not
+         be restore-verified in the sandbox this project was built in (no nuget.org access there) -
+         see /docs/kafscript-language.md and the top-level README's "What's verified" section. It
+         restores normally with `dotnet restore` on a machine with regular internet access. -->
+    <PackageReference Include="Confluent.Kafka" Version="2.6.1" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

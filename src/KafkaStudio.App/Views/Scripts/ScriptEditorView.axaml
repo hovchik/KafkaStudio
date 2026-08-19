@@ -1,0 +1,54 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.Scripts"
+             xmlns:conv="using:KafkaStudio.App.Converters"
+             x:Class="KafkaStudio.App.Views.Scripts.ScriptEditorView"
+             x:DataType="vm:ScriptEditorViewModel">
+
+  <Grid ColumnDefinitions="1.3*,1*" ColumnSpacing="16">
+
+    <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto,Auto">
+      <TextBlock Grid.Row="0" Text="Script (KafScript)" Classes="h1" Foreground="White" Margin="0,0,0,12" />
+
+      <Border Grid.Row="1" Classes="card" Padding="0">
+        <TextBox Text="{Binding Source}"
+                  AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
+                  FontFamily="Consolas,Menlo,monospace" FontSize="13"
+                  Background="Transparent" BorderThickness="0" Padding="12" />
+      </Border>
+
+      <TextBlock Grid.Row="2" Text="{Binding ParseError}" Classes="status-failed" TextWrapping="Wrap" Margin="0,8,0,0" />
+
+      <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="10" Margin="0,10,0,0">
+        <Button Content="Run all" Classes="primary" Command="{Binding RunAllCommand}" />
+        <TextBlock Text="{Binding RunSummary}" VerticalAlignment="Center" Classes="muted" />
+      </StackPanel>
+    </Grid>
+
+    <Border Grid.Column="1" Classes="card">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Text="Step results" FontWeight="SemiBold" Foreground="White" Margin="0,0,0,10" />
+        <ScrollViewer>
+          <ItemsControl ItemsSource="{Binding StepResults}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:StepResultRowViewModel">
+                <Border Padding="8" Margin="0,0,0,6" Background="{DynamicResource SidebarBrush}" CornerRadius="6">
+                  <StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Text="{Binding Keyword}" Classes="muted" />
+                      <TextBlock Text="{Binding Description}" Foreground="White" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding Message}" TextWrapping="Wrap"
+                               Foreground="{Binding Status, Converter={x:Static conv:StepStatusToBrushConverter.Instance}}" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+
+  </Grid>
+
+</UserControl>

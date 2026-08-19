@@ -1,0 +1,17 @@
+# Rethrow: relay a message from "orders" to "orders-fulfillment" as soon as it arrives, keeping the
+# same key and stamping a header so downstream consumers know it was relayed by KafkaStudio.
+#
+# Run this once to check the relay logic works end to end (produce a test message, then relay it).
+# For a rethrow rule that runs continuously in the background instead of once, use the "Rethrow Rules"
+# screen in the app - it's the same idea, just always-on rather than a single check.
+
+Scenario: Relay confirmed orders to the fulfillment queue
+Given use connection "local"
+Given watch topic "orders" from now
+When produce message to topic "orders" key "ORD-9001" value """
+{ "orderId": "ORD-9001", "status": "CONFIRMED" }
+"""
+And a message arrives on topic "orders" within 10 seconds where json "$.status" equals "CONFIRMED"
+Then rethrow last message to topic "orders-fulfillment" with key same header "relayed-by" to "kafka-studio"
+And capture json "$.orderId" as orderId
+And assert orderId equals "ORD-9001"
