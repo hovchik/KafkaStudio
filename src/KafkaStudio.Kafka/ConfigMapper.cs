@@ -20,7 +20,13 @@ internal static class ConfigMapper
         {
             GroupId = groupId,
             AutoOffsetReset = autoOffsetReset,
-            EnableAutoCommit = false // KafkaStudio always commits explicitly (see ConfluentKafkaGateway)
+            EnableAutoCommit = false, // KafkaStudio always commits explicitly (see ConfluentKafkaGateway)
+
+            // Lets the pump loop detect "no more messages available right now" per partition (via
+            // ConsumeResult.IsPartitionEOF) so bounded scans (e.g. Topic Browser / "scan and acknowledge")
+            // can stop once they've drained everything currently on the topic, instead of blocking
+            // forever waiting for MaxMessages that may never arrive.
+            EnablePartitionEof = true
         };
         ApplyCommon(config, profile);
         return config;
@@ -70,7 +76,7 @@ internal static class ConfigMapper
         // Escape hatch: anything the typed properties above don't cover yet.
         foreach (var (key, value) in profile.AdvancedProperties)
         {
-            config[key] = value;
+            config.Set(key, value);
         }
     }
 }

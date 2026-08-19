@@ -9,10 +9,11 @@
 
     <Border Grid.Row="1" Classes="card" Margin="0,0,0,16">
       <StackPanel Spacing="10">
-        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" ColumnSpacing="10">
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
           <TextBlock Grid.Column="0" Text="Connection" VerticalAlignment="Center" Classes="muted" />
           <ComboBox Grid.Column="1" ItemsSource="{Binding ConnectionNames}" SelectedItem="{Binding SelectedConnection}" HorizontalAlignment="Stretch" />
-          <TextBox Grid.Column="2" Text="{Binding Topic}" Watermark="topic name" Width="200" />
+          <AutoCompleteBox Grid.Column="2" ItemsSource="{Binding TopicNames}" Text="{Binding Topic}"
+                            FilterMode="Contains" Watermark="topic name" Width="200" />
           <CheckBox Grid.Column="3" Content="From beginning" IsChecked="{Binding FromBeginning}" VerticalAlignment="Center" />
           <Button Grid.Column="4" Content="Start" Classes="primary" Command="{Binding StartCommand}" />
           <Button Grid.Column="5" Content="Stop" Command="{Binding StopCommand}" />
@@ -31,11 +32,11 @@
             <DataTemplate>
               <Border Padding="10" Margin="0,0,0,6" Background="{DynamicResource SidebarBrush}" CornerRadius="6">
                 <StackPanel>
-                  <TextBlock Classes="muted">
+                  <SelectableTextBlock Classes="muted">
                     <Run Text="{Binding Topic}" /><Run Text="#" /><Run Text="{Binding Partition}" /><Run Text="@" /><Run Text="{Binding Offset}" />
                     <Run Text=" · key " /><Run Text="{Binding Key}" />
-                  </TextBlock>
-                  <TextBlock Text="{Binding Value}" Foreground="White" TextWrapping="Wrap" />
+                  </SelectableTextBlock>
+                  <SelectableTextBlock Text="{Binding PrettyValue}" Foreground="White" TextWrapping="Wrap" FontFamily="Consolas,monospace" />
                 </StackPanel>
               </Border>
             </DataTemplate>

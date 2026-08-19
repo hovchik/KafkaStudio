@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Channels;
 using Confluent.Kafka;
+using Confluent.Kafka.Admin;
 using KafkaStudio.Core.Abstractions;
 using KafkaStudio.Core.Connections;
 using KafkaStudio.Core.Messaging;
@@ -38,6 +39,24 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
         Profile = profile;
     }
 
+    /// <summary>
+    /// Wraps a local-transport <see cref="KafkaException"/> (e.g. "Local: Broker transport failure")
+    /// with the connection settings that were actually used, so callers/logs/UI status messages show
+    /// enough to diagnose a broker mismatch (wrong host:port, wrong security protocol, etc.) without
+    /// needing to inspect this gateway's state directly.
+    /// </summary>
+    private KafkaException WrapTransportError(KafkaException ex)
+    {
+        if (!ex.Error.IsLocalError)
+        {
+            return ex;
+        }
+
+        var enrichedReason = $"{ex.Error.Reason} [bootstrap.servers='{Profile.BootstrapServers}', " +
+            $"security.protocol={Profile.SecurityProtocol}, sasl.mechanism={Profile.SaslMechanism}]";
+        return new KafkaException(new Error(ex.Error.Code, enrichedReason, ex.Error.IsFatal), ex);
+    }
+
     public Task ConnectAsync(CancellationToken cancellationToken = default)
     {
         _producer = new ProducerBuilder<string?, string?>(ConfigMapper.ToProducerConfig(Profile))
@@ -50,48 +69,66 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyList<string>> ListTopicsAsync(CancellationToken cancellationToken = default)
-    {
-        var metadata = RequireAdmin().GetMetadata(MetadataTimeout);
-        IReadOnlyList<string> topics = metadata.Topics
-            .Select(t => t.Topic)
-            .Where(name => !name.StartsWith("__", StringComparison.Ordinal)) // hide internal topics (__consumer_offsets etc.)
-            .OrderBy(name => name, StringComparer.Ordinal)
-            .ToList();
-        return Task.FromResult(topics);
-    }
-
-    public Task<Core.Messaging.TopicMetadata> DescribeTopicAsync(string topic, CancellationToken cancellationToken = default)
-    {
-        var metadata = RequireAdmin().GetMetadata(topic, MetadataTimeout);
-        var topicMeta = metadata.Topics.FirstOrDefault(t => t.Topic == topic)
-            ?? throw new KeyNotFoundException($"topic '{topic}' not found");
-
-        using var probe = new ConsumerBuilder<string?, string?>(
-                ConfigMapper.ToConsumerConfig(Profile, $"kafka-studio-describe-{Guid.NewGuid():N}", AutoOffsetReset.Earliest))
-            .SetKeyDeserializer(Deserializers.Utf8!)
-            .SetValueDeserializer(Deserializers.Utf8!)
-            .Build();
-
-        var partitions = topicMeta.Partitions.Select(p =>
+    public Task<IReadOnlyList<string>> ListTopicsAsync(CancellationToken cancellationToken = default) =>
+        Task.Run(() =>
         {
-            var watermarks = probe.QueryWatermarkOffsets(new TopicPartition(topic, new Partition(p.PartitionId)), MetadataTimeout);
-            return new PartitionInfo
+            try
             {
-                Id = p.PartitionId,
-                LeaderBrokerId = p.Leader,
-                EarliestOffset = watermarks.Low.Value,
-                LatestOffset = watermarks.High.Value
-            };
-        }).ToList();
+                var metadata = RequireAdmin().GetMetadata(MetadataTimeout);
+                IReadOnlyList<string> topics = metadata.Topics
+                    .Select(t => t.Topic)
+                    .Where(name => !name.StartsWith("__", StringComparison.Ordinal)) // hide internal topics (__consumer_offsets etc.)
+                    .OrderBy(name => name, StringComparer.Ordinal)
+                    .ToList();
+                return topics;
+            }
+            catch (KafkaException ex)
+            {
+                throw WrapTransportError(ex);
+            }
+        }, cancellationToken);
 
-        return Task.FromResult(new Core.Messaging.TopicMetadata
+    public Task<Core.Messaging.TopicMetadata> DescribeTopicAsync(string topic, CancellationToken cancellationToken = default) =>
+        Task.Run(() =>
         {
-            Name = topic,
-            ReplicationFactor = topicMeta.Partitions.Count == 0 ? 0 : topicMeta.Partitions[0].Replicas.Length,
-            Partitions = partitions
-        });
-    }
+            Confluent.Kafka.Metadata metadata;
+            try
+            {
+                metadata = RequireAdmin().GetMetadata(topic, MetadataTimeout);
+            }
+            catch (KafkaException ex)
+            {
+                throw WrapTransportError(ex);
+            }
+
+            var topicMeta = metadata.Topics.FirstOrDefault(t => t.Topic == topic)
+                ?? throw new KeyNotFoundException($"topic '{topic}' not found");
+
+            using var probe = new ConsumerBuilder<string?, string?>(
+                    ConfigMapper.ToConsumerConfig(Profile, $"kafka-studio-describe-{Guid.NewGuid():N}", AutoOffsetReset.Earliest))
+                .SetKeyDeserializer(Deserializers.Utf8!)
+                .SetValueDeserializer(Deserializers.Utf8!)
+                .Build();
+
+            var partitions = topicMeta.Partitions.Select(p =>
+            {
+                var watermarks = probe.QueryWatermarkOffsets(new TopicPartition(topic, new Partition(p.PartitionId)), MetadataTimeout);
+                return new PartitionInfo
+                {
+                    Id = p.PartitionId,
+                    LeaderBrokerId = p.Leader,
+                    EarliestOffset = watermarks.Low.Value,
+                    LatestOffset = watermarks.High.Value
+                };
+            }).ToList();
+
+            return new Core.Messaging.TopicMetadata
+            {
+                Name = topic,
+                ReplicationFactor = topicMeta.Partitions.Count == 0 ? 0 : topicMeta.Partitions[0].Replicas.Length,
+                Partitions = partitions
+            };
+        }, cancellationToken);
 
     public async Task CreateTopicAsync(string topic, int partitions, short replicationFactor,
         CancellationToken cancellationToken = default)
@@ -186,6 +223,12 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
                 SeekToTimestamp(consumer, consumerLock, options.Topic, from, cancellationToken);
             }
 
+            // For bounded scans (MaxMessages set - e.g. Topic Browser / "scan and acknowledge"), we need
+            // to stop once every assigned partition has reached its current end, rather than blocking
+            // forever waiting for messages that may never arrive (fewer records exist than MaxMessages).
+            // Unbounded "watch" subscriptions (MaxMessages is null) ignore EOF and keep polling.
+            var eofPartitions = new HashSet<TopicPartition>();
+
             while (!cancellationToken.IsCancellationRequested)
             {
                 ConsumeResult<string?, string?>? result;
@@ -194,7 +237,26 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
                     result = consumer.Consume(200); // short poll so we keep checking for cancellation
                 }
 
-                if (result?.Message is null) continue;
+                if (result is null) continue;
+
+                if (result.IsPartitionEOF)
+                {
+                    if (options.MaxMessages is not null)
+                    {
+                        eofPartitions.Add(result.TopicPartition);
+
+                        List<TopicPartition> assignment;
+                        lock (consumerLock)
+                        {
+                            assignment = consumer.Assignment;
+                        }
+
+                        if (assignment.Count > 0 && eofPartitions.IsSupersetOf(assignment)) break;
+                    }
+                    continue;
+                }
+
+                if (result.Message is null) continue;
 
                 if (options.AutoAcknowledge)
                 {
@@ -211,7 +273,7 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
                     Offset = result.Offset.Value,
                     Key = result.Message.Key,
                     Value = result.Message.Value,
-                    Headers = result.Message.Headers?.ToDictionary(h => h.Key, h => h.Value is null ? string.Empty : Encoding.UTF8.GetString(h.Value))
+                    Headers = result.Message.Headers?.ToDictionary(h => h.Key, h => h.GetValueBytes() is { } bytes ? Encoding.UTF8.GetString(bytes) : string.Empty)
                               ?? new Dictionary<string, string>(),
                     Timestamp = new DateTimeOffset(result.Message.Timestamp.UtcDateTime),
                     ConsumerGroup = options.ConsumerGroup
@@ -279,15 +341,16 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
                 $"Cannot acknowledge message: the subscription for consumer group '{message.ConsumerGroup}' is no longer active.");
         }
 
-        lock (entry.Lock)
+        return Task.Run(() =>
         {
-            entry.Consumer.Commit(new[]
+            lock (entry.Lock)
             {
-                new TopicPartitionOffset(message.Topic, new Partition(message.Partition), new Offset(message.Offset + 1))
-            });
-        }
-
-        return Task.CompletedTask;
+                entry.Consumer.Commit(new[]
+                {
+                    new TopicPartitionOffset(message.Topic, new Partition(message.Partition), new Offset(message.Offset + 1))
+                });
+            }
+        }, cancellationToken);
     }
 
     private IProducer<string?, string?> RequireProducer() =>
@@ -298,20 +361,21 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
 
     public async ValueTask DisposeAsync()
     {
-        foreach (var (consumer, consumerLock) in _activeConsumers.Values)
+        await Task.Run(() =>
         {
-            lock (consumerLock)
+            foreach (var (consumer, consumerLock) in _activeConsumers.Values)
             {
-                try { consumer.Close(); } catch { /* best effort */ }
-                consumer.Dispose();
+                lock (consumerLock)
+                {
+                    try { consumer.Close(); } catch { /* best effort */ }
+                    consumer.Dispose();
+                }
             }
-        }
-        _activeConsumers.Clear();
+            _activeConsumers.Clear();
 
-        _producer?.Flush(TimeSpan.FromSeconds(5));
-        _producer?.Dispose();
-        _admin?.Dispose();
-
-        await Task.CompletedTask;
+            _producer?.Flush(TimeSpan.FromSeconds(5));
+            _producer?.Dispose();
+            _admin?.Dispose();
+        }).ConfigureAwait(false);
     }
 }

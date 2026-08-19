@@ -31,6 +31,10 @@ public sealed class ConnectionsViewModel : ObservableObject
     /// enumerate an enum's values, so the ViewModel exposes them directly.</summary>
     public IReadOnlyList<SecurityProtocolKind> SecurityProtocolOptions { get; } = Enum.GetValues<SecurityProtocolKind>();
 
+    /// <summary>Bound to the "SASL mechanism" ComboBox's ItemsSource - same reasoning as
+    /// <see cref="SecurityProtocolOptions"/>.</summary>
+    public IReadOnlyList<SaslMechanismKind> SaslMechanismOptions { get; } = Enum.GetValues<SaslMechanismKind>();
+
     private string _newConnectionName = "";
     public string NewConnectionName { get => _newConnectionName; set => SetProperty(ref _newConnectionName, value); }
 
@@ -39,6 +43,9 @@ public sealed class ConnectionsViewModel : ObservableObject
 
     private SecurityProtocolKind _newSecurityProtocol = SecurityProtocolKind.Plaintext;
     public SecurityProtocolKind NewSecurityProtocol { get => _newSecurityProtocol; set => SetProperty(ref _newSecurityProtocol, value); }
+
+    private SaslMechanismKind _newSaslMechanism = SaslMechanismKind.None;
+    public SaslMechanismKind NewSaslMechanism { get => _newSaslMechanism; set => SetProperty(ref _newSaslMechanism, value); }
 
     private string? _newSaslUsername;
     public string? NewSaslUsername { get => _newSaslUsername; set => SetProperty(ref _newSaslUsername, value); }
@@ -64,6 +71,18 @@ public sealed class ConnectionsViewModel : ObservableObject
         RemoveConnectionCommand = new AsyncRelayCommand<ConnectionRowViewModel>(RemoveConnectionAsync);
         TestConnectionCommand = new AsyncRelayCommand<ConnectionRowViewModel>(TestConnectionAsync);
 
+        // The Connect / Add demo buttons are only enabled once a name is entered - re-evaluate
+        // their CanExecute whenever it changes, otherwise the buttons stay disabled forever since
+        // ICommand.CanExecute is only re-checked when CanExecuteChanged fires.
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(NewConnectionName))
+            {
+                AddConnectionCommand.RaiseCanExecuteChanged();
+                AddDemoConnectionCommand.RaiseCanExecuteChanged();
+            }
+        };
+
         RefreshFromState();
     }
 
@@ -74,7 +93,7 @@ public sealed class ConnectionsViewModel : ObservableObject
             Name = NewConnectionName.Trim(),
             BootstrapServers = NewBootstrapServers.Trim(),
             SecurityProtocol = NewSecurityProtocol,
-            SaslMechanism = string.IsNullOrEmpty(NewSaslUsername) ? SaslMechanismKind.None : SaslMechanismKind.Plain,
+            SaslMechanism = NewSaslMechanism,
             SaslUsername = NewSaslUsername,
             SaslPassword = NewSaslPassword
         };
@@ -125,6 +144,7 @@ public sealed class ConnectionsViewModel : ObservableObject
     private void ResetForm()
     {
         NewConnectionName = "";
+        NewSaslMechanism = SaslMechanismKind.None;
         NewSaslUsername = null;
         NewSaslPassword = null;
     }

@@ -14,7 +14,7 @@
       <Border Classes="card">
         <StackPanel Spacing="10">
           <TextBlock Text="New rule" FontWeight="SemiBold" Foreground="White" />
-          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="8">
+          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
             <TextBlock Grid.Row="0" Grid.Column="0" Text="Name" VerticalAlignment="Center" Classes="muted" />
             <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding NewName}" Watermark="confirmed-only" />
 

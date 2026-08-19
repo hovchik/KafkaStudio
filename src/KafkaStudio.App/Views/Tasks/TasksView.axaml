@@ -4,7 +4,7 @@
              x:Class="KafkaStudio.App.Views.Tasks.TasksView"
              x:DataType="vm:TasksViewModel">
 
-  <Grid ColumnDefinitions="1*,1.2*" ColumnSpacing="16">
+  <Grid ColumnDefinitions="1*,1.2*">
 
     <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto">
       <TextBlock Grid.Row="0" Text="Register a Task" Classes="h1" Foreground="White" Margin="0,0,0,12" />

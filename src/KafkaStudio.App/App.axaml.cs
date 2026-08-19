@@ -29,6 +29,10 @@ public partial class App : Application
 
             desktop.MainWindow = new MainWindow { DataContext = _mainViewModel };
             desktop.ShutdownRequested += OnShutdownRequested;
+
+            // Reconnect any connections saved by a previous session in the background so
+            // slow/unreachable brokers don't block the UI from showing up.
+            _ = state.LoadPersistedConnectionsAsync();
         }
 
         base.OnFrameworkInitializationCompleted();

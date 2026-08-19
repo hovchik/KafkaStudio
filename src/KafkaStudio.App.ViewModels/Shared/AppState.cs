@@ -47,6 +47,7 @@ public sealed class AppState : IAsyncDisposable
         var profile = new ConnectionProfile { Name = name, BootstrapServers = "demo (in-memory)" };
         ConnectionProfiles[name] = profile;
         Connections[name] = new InMemoryKafkaGateway(profile, DemoBroker);
+        ConnectionProfileStore.Save(ConnectionProfiles.Values);
         ConnectionsChanged?.Invoke();
     }
 
@@ -54,6 +55,7 @@ public sealed class AppState : IAsyncDisposable
     {
         ConnectionProfiles[profile.Name] = profile;
         Connections[profile.Name] = gateway;
+        ConnectionProfileStore.Save(ConnectionProfiles.Values);
         ConnectionsChanged?.Invoke();
     }
 
@@ -64,6 +66,40 @@ public sealed class AppState : IAsyncDisposable
             await gateway.DisposeAsync().ConfigureAwait(false);
         }
         ConnectionProfiles.Remove(name);
+        ConnectionProfileStore.Save(ConnectionProfiles.Values);
+        ConnectionsChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Loads any connections that were persisted by a previous session and reconnects each one
+    /// (or recreates the in-memory demo gateway). Called once at app startup. Connections that fail
+    /// to reconnect (e.g. broker unreachable) are still listed, without a live gateway, so the user
+    /// can inspect / remove / retry them via the Connections screen.
+    /// </summary>
+    public async Task LoadPersistedConnectionsAsync()
+    {
+        foreach (var profile in ConnectionProfileStore.Load())
+        {
+            ConnectionProfiles[profile.Name] = profile;
+            try
+            {
+                if (profile.BootstrapServers.StartsWith("demo", StringComparison.OrdinalIgnoreCase))
+                {
+                    Connections[profile.Name] = new InMemoryKafkaGateway(profile, DemoBroker);
+                }
+                else
+                {
+                    var gateway = RealGatewayFactory(profile);
+                    await gateway.ConnectAsync().ConfigureAwait(false);
+                    Connections[profile.Name] = gateway;
+                }
+            }
+            catch
+            {
+                // Leave the profile listed without a live gateway; the user can remove/re-add it.
+            }
+        }
+
         ConnectionsChanged?.Invoke();
     }
 

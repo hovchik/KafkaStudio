@@ -18,6 +18,9 @@ public sealed record NavigationItem(string Key, string Label, string Icon, Obser
 /// (MainWindow.axaml) binds its sidebar to <see cref="NavigationItems"/> and its content area to
 /// <see cref="SelectedItem"/>.ViewModel via a ViewLocator-style DataTemplate, so adding a new screen
 /// here is enough to make it show up in the app - no XAML changes needed beyond the initial wiring.
+/// Connections is not a sidebar item - it's opened as a flyout panel from the top-right corner
+/// button (see <see cref="IsConnectionsOpen"/>), since it's more of a settings/setup screen than a
+/// day-to-day workspace.
 /// </summary>
 public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 {
@@ -40,6 +43,17 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _selectedItem, value);
     }
 
+    private bool _isConnectionsOpen;
+    /// <summary>Whether the Connections panel (opened from the top-right corner button) is currently shown.</summary>
+    public bool IsConnectionsOpen
+    {
+        get => _isConnectionsOpen;
+        set => SetProperty(ref _isConnectionsOpen, value);
+    }
+
+    public RelayCommand OpenConnectionsCommand { get; }
+    public RelayCommand CloseConnectionsCommand { get; }
+
     public MainWindowViewModel(AppState state)
     {
         State = state;
@@ -54,16 +68,17 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         NavigationItems = new List<NavigationItem>
         {
-            new("connections", "Connections", "", Connections),
-            new("topics", "Topics", "", Topics),
-            new("producer", "Produce", "", Producer),
-            new("consumer", "Consume", "", Consumer),
-            new("scripts", "Scripts (KafScript)", "", Scripts),
-            new("tasks", "Tasks & Checks", "", Tasks),
-            new("rethrow", "Rethrow Rules", "", Rethrow)
+            new("topics", "Topics", "\uE8B7", Topics),
+            new("producer", "Produce", "\uE724", Producer),
+            new("consumer", "Consume", "\uE890", Consumer),
+            new("scripts", "Scripts (KafScript)", "\uE943", Scripts),
+            new("tasks", "Tasks & Checks", "\uE73E", Tasks),
+            new("rethrow", "Rethrow Rules", "\uE8AB", Rethrow)
         };
 
         _selectedItem = NavigationItems[0];
+        OpenConnectionsCommand = new RelayCommand(() => IsConnectionsOpen = true);
+        CloseConnectionsCommand = new RelayCommand(() => IsConnectionsOpen = false);
     }
 
     public async ValueTask DisposeAsync() => await State.DisposeAsync().ConfigureAwait(false);
