@@ -65,6 +65,11 @@ internal static class ConfigMapper
             };
             config.SaslUsername = profile.SaslUsername;
             config.SaslPassword = profile.SaslPassword;
+
+            // SASL handshakes fail/hang silently as a bare "Local: Timed out" with no other detail;
+            // turning on librdkafka's broker+security debug logging lets the gateway's log handler
+            // capture the actual low-level reason (DNS/connect failure, auth rejection, etc.).
+            config.Debug = "broker,security";
         }
 
         if (!string.IsNullOrEmpty(profile.SslCaLocation))

@@ -25,6 +25,7 @@
           </StackPanel>
         </Grid>
         <StackPanel Orientation="Horizontal" Spacing="10">
+          <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsWatching}" Width="16" Height="16" />
           <TextBlock Text="{Binding StatusMessage}" Classes="muted" />
           <TextBlock Classes="muted">
             <Run Text="(" /><Run Text="{Binding Messages.Count}" /><Run Text=" shown" /><Run Text=")" />

@@ -47,15 +47,36 @@ public sealed class ScriptEditorViewModel : ObservableObject
     private string? _runSummary;
     public string? RunSummary { get => _runSummary; set => SetProperty(ref _runSummary, value); }
 
+    private bool _isRunning;
+    /// <summary>True while <see cref="RunAllAsync"/> is executing the document's blocks.</summary>
+    public bool IsRunning { get => _isRunning; private set => SetProperty(ref _isRunning, value); }
+
+    private bool _isHelpVisible;
+    /// <summary>Toggles the in-app KafScript help/examples panel.</summary>
+    public bool IsHelpVisible { get => _isHelpVisible; set => SetProperty(ref _isHelpVisible, value); }
+
+    public ObservableCollection<HelpTopicViewModel> HelpTopics { get; } = KafScriptHelp.BuildTopics();
+
     public RelayCommand ReparseCommand { get; }
     public AsyncRelayCommand RunAllCommand { get; }
+    public RelayCommand ToggleHelpCommand { get; }
+    public RelayCommand<HelpTopicViewModel> InsertExampleCommand { get; }
 
     public ScriptEditorViewModel(AppState state)
     {
         _state = state;
         ReparseCommand = new RelayCommand(Reparse);
         RunAllCommand = new AsyncRelayCommand(RunAllAsync, () => Document is not null && ParseError is null);
+        ToggleHelpCommand = new RelayCommand(() => IsHelpVisible = !IsHelpVisible);
+        InsertExampleCommand = new RelayCommand<HelpTopicViewModel>(InsertExample);
         Reparse();
+    }
+
+    private void InsertExample(HelpTopicViewModel? topic)
+    {
+        if (topic is null) return;
+        var separator = string.IsNullOrEmpty(Source) || Source.EndsWith('\n') ? string.Empty : "\n";
+        Source += separator + topic.Example + "\n";
     }
 
     private void Reparse()
@@ -79,31 +100,38 @@ public sealed class ScriptEditorViewModel : ObservableObject
 
         StepResults.Clear();
         RunSummary = "Running...";
-
-        var runner = new ScriptRunner(_state.Connections);
-        var passed = 0;
-        var failed = 0;
-
-        foreach (var block in Document.Blocks)
+        IsRunning = true;
+        try
         {
-            var result = await runner.RunAsync(block).ConfigureAwait(true);
-            _state.RunHistory.Add(block.Name, DateTimeOffset.Now, result);
+            var runner = new ScriptRunner(_state.Connections);
+            var passed = 0;
+            var failed = 0;
 
-            foreach (var step in result.Steps)
+            foreach (var block in Document.Blocks)
             {
-                StepResults.Add(new StepResultRowViewModel
+                var result = await runner.RunAsync(block).ConfigureAwait(true);
+                _state.RunHistory.Add(block.Name, DateTimeOffset.Now, result);
+
+                foreach (var step in result.Steps)
                 {
-                    Keyword = step.Step.Keyword.ToString(),
-                    Description = DescribeAction(step.Step),
-                    Status = step.Status,
-                    Message = step.Message
-                });
+                    StepResults.Add(new StepResultRowViewModel
+                    {
+                        Keyword = step.Step.Keyword.ToString(),
+                        Description = DescribeAction(step.Step),
+                        Status = step.Status,
+                        Message = step.Message
+                    });
+                }
+
+                if (result.Success) passed++; else failed++;
             }
 
-            if (result.Success) passed++; else failed++;
+            RunSummary = $"{passed} scenario(s)/task(s) passed, {failed} failed.";
         }
-
-        RunSummary = $"{passed} scenario(s)/task(s) passed, {failed} failed.";
+        finally
+        {
+            IsRunning = false;
+        }
     }
 
     private static string DescribeAction(Step step) => step.Action.GetType().Name;

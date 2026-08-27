@@ -45,9 +45,17 @@ public sealed class TasksViewModel : ObservableObject
     private string? _statusMessage;
     public string? StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
 
+    private bool _isHelpVisible;
+    /// <summary>Toggles the in-app KafScript help/examples panel.</summary>
+    public bool IsHelpVisible { get => _isHelpVisible; set => SetProperty(ref _isHelpVisible, value); }
+
+    public ObservableCollection<HelpTopicViewModel> HelpTopics { get; } = KafScriptHelp.BuildTopics();
+
     public RelayCommand RegisterTaskCommand { get; }
     public AsyncRelayCommand<TaskRowViewModel> RunNowCommand { get; }
     public RelayCommand<TaskRowViewModel> RemoveCommand { get; }
+    public RelayCommand ToggleHelpCommand { get; }
+    public RelayCommand<HelpTopicViewModel> InsertExampleCommand { get; }
 
     public TasksViewModel(AppState state)
     {
@@ -59,6 +67,15 @@ public sealed class TasksViewModel : ObservableObject
         RegisterTaskCommand = new RelayCommand(RegisterTask);
         RunNowCommand = new AsyncRelayCommand<TaskRowViewModel>(RunNowAsync);
         RemoveCommand = new RelayCommand<TaskRowViewModel>(Remove);
+        ToggleHelpCommand = new RelayCommand(() => IsHelpVisible = !IsHelpVisible);
+        InsertExampleCommand = new RelayCommand<HelpTopicViewModel>(InsertExample);
+    }
+
+    private void InsertExample(HelpTopicViewModel? topic)
+    {
+        if (topic is null) return;
+        var separator = string.IsNullOrEmpty(NewTaskSource) || NewTaskSource.EndsWith('\n') ? string.Empty : "\n";
+        NewTaskSource += separator + topic.Example + "\n";
     }
 
     private void RegisterTask()

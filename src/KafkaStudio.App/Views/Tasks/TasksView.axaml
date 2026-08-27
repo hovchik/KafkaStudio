@@ -1,13 +1,17 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:KafkaStudio.App.ViewModels.Tasks"
+             xmlns:shared="using:KafkaStudio.App.ViewModels.Shared"
              x:Class="KafkaStudio.App.Views.Tasks.TasksView"
              x:DataType="vm:TasksViewModel">
 
-  <Grid ColumnDefinitions="1*,1.2*">
+  <Grid ColumnDefinitions="1*,1.2*,Auto">
 
     <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto">
-      <TextBlock Grid.Row="0" Text="Register a Task" Classes="h1" Foreground="White" Margin="0,0,0,12" />
+      <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+        <TextBlock Grid.Column="0" Text="Register a Task" Classes="h1" Foreground="White" />
+        <Button Grid.Column="1" Content="Help &amp; examples" Command="{Binding ToggleHelpCommand}" />
+      </Grid>
       <Border Grid.Row="1" Classes="card" Padding="0">
         <TextBox Text="{Binding NewTaskSource}"
                   AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
@@ -44,6 +48,29 @@
         </ItemsControl>
       </ScrollViewer>
     </Grid>
+
+    <Border Grid.Column="2" Classes="card" Width="340" Margin="12,0,0,0" IsVisible="{Binding IsHelpVisible}">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Text="KafScript help &amp; examples" FontWeight="SemiBold" Foreground="White" Margin="0,0,0,10" />
+        <ScrollViewer>
+          <ItemsControl Name="HelpTopicsList" ItemsSource="{Binding HelpTopics}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="shared:HelpTopicViewModel">
+                <Border Padding="8" Margin="0,0,0,8" Background="{DynamicResource SidebarBrush}" CornerRadius="6">
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="White" />
+                    <TextBlock Text="{Binding Syntax}" FontFamily="Consolas,Menlo,monospace" FontSize="12" TextWrapping="Wrap" Classes="muted" />
+                    <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="White" FontSize="12" />
+                    <TextBlock Text="{Binding Example}" FontFamily="Consolas,Menlo,monospace" FontSize="11" TextWrapping="Wrap" Classes="muted" />
+                    <Button Content="Insert into script" Command="{Binding #HelpTopicsList.DataContext.InsertExampleCommand}" CommandParameter="{Binding}" HorizontalAlignment="Left" Padding="6,2" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
 
   </Grid>
 

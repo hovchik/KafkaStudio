@@ -160,6 +160,14 @@ public sealed class TopicBrowserViewModel : ObservableObject
     private string? _statusMessage;
     public string? StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
 
+    private bool _isLoadingTopics;
+    /// <summary>True while <see cref="RefreshTopicsAsync"/> is fetching the topic list.</summary>
+    public bool IsLoadingTopics { get => _isLoadingTopics; private set => SetProperty(ref _isLoadingTopics, value); }
+
+    private bool _isLoadingMessages;
+    /// <summary>True while <see cref="ScanAsync"/> is loading messages for the selected topic.</summary>
+    public bool IsLoadingMessages { get => _isLoadingMessages; private set => SetProperty(ref _isLoadingMessages, value); }
+
     private string? _globalSearchTerm;
     /// <summary>Case-insensitive "contains" search executed by <see cref="GlobalSearchCommand"/> against
     /// every currently loaded topic's message backlog (key + value), across the whole connection.</summary>
@@ -284,6 +292,7 @@ public sealed class TopicBrowserViewModel : ObservableObject
         }
 
         StatusMessage = "Loading topics...";
+        IsLoadingTopics = true;
         try
         {
             var names = await gateway.ListTopicsAsync(cts.Token).ConfigureAwait(true);
@@ -306,6 +315,10 @@ public sealed class TopicBrowserViewModel : ObservableObject
         {
             StatusMessage = $"Failed to load topics: {ex.Message}";
         }
+        finally
+        {
+            if (!cts.IsCancellationRequested) IsLoadingTopics = false;
+        }
     }
 
     private async Task ScanAsync()
@@ -320,6 +333,7 @@ public sealed class TopicBrowserViewModel : ObservableObject
         var topic = SelectedTopic;
         var row = SelectedTopicRow;
         StatusMessage = $"Loading messages for '{topic}'...";
+        IsLoadingMessages = true;
         try
         {
             var options = new ConsumeOptions
@@ -373,6 +387,10 @@ public sealed class TopicBrowserViewModel : ObservableObject
         catch (Exception ex)
         {
             StatusMessage = $"Scan failed: {ex.Message}";
+        }
+        finally
+        {
+            if (!cts.IsCancellationRequested) IsLoadingMessages = false;
         }
     }
 

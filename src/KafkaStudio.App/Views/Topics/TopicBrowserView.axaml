@@ -66,10 +66,11 @@
 		<Border Classes="card" Margin="4,0" Grid.Column="{Binding ArePanelsSwapped, Converter={x:Static conv:SwapColumnConverter.Instance}, ConverterParameter=0}"
 				VerticalAlignment="{Binding IsTopicsPanelExpanded, Converter={x:Static conv:BoolToVerticalAlignmentConverter.Instance}}">
 		  <DockPanel>
-			<Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,8">
+			<Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,0,0,8">
 			  <TextBlock Grid.Column="0" Text="Topics" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center" />
-			  <Button Grid.Column="1" Content="⇄" ToolTip.Tip="Swap Topics/Messages panels" Command="{Binding SwapPanelsCommand}" Padding="6,2" Margin="0,0,4,0" />
-			  <Button Grid.Column="2" Content="{Binding IsTopicsPanelExpanded, Converter={x:Static conv:BoolToChevronConverter.Instance}}" ToolTip.Tip="Collapse/expand" Command="{Binding ToggleTopicsPanelCommand}" Padding="6,2" />
+			  <ProgressBar Grid.Column="1" IsIndeterminate="True" IsVisible="{Binding IsLoadingTopics}" Width="16" Height="16" Margin="0,0,8,0" />
+			  <Button Grid.Column="2" Content="⇄" ToolTip.Tip="Swap Topics/Messages panels" Command="{Binding SwapPanelsCommand}" Padding="6,2" Margin="0,0,4,0" />
+			  <Button Grid.Column="3" Content="{Binding IsTopicsPanelExpanded, Converter={x:Static conv:BoolToChevronConverter.Instance}}" ToolTip.Tip="Collapse/expand" Command="{Binding ToggleTopicsPanelCommand}" Padding="6,2" />
 			</Grid>
 			<ScrollViewer IsVisible="{Binding IsTopicsPanelExpanded}">
 			  <ListBox ItemsSource="{Binding Topics}" SelectedItem="{Binding SelectedTopicRow}" DoubleTapped="OnTopicDoubleTapped">
@@ -91,9 +92,10 @@
 		<Border Classes="card" Margin="4,0" Grid.Column="{Binding ArePanelsSwapped, Converter={x:Static conv:SwapColumnConverter.Instance}, ConverterParameter=1}"
 				VerticalAlignment="{Binding IsMessagesPanelExpanded, Converter={x:Static conv:BoolToVerticalAlignmentConverter.Instance}}">
 		  <DockPanel>
-			<Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+			<Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,8">
 			  <TextBlock Grid.Column="0" Text="Messages (newest first)" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center" />
-			  <Button Grid.Column="1" Content="{Binding IsMessagesPanelExpanded, Converter={x:Static conv:BoolToChevronConverter.Instance}}" ToolTip.Tip="Collapse/expand" Command="{Binding ToggleMessagesPanelCommand}" Padding="6,2" />
+			  <ProgressBar Grid.Column="1" IsIndeterminate="True" IsVisible="{Binding IsLoadingMessages}" Width="16" Height="16" Margin="0,0,8,0" />
+			  <Button Grid.Column="2" Content="{Binding IsMessagesPanelExpanded, Converter={x:Static conv:BoolToChevronConverter.Instance}}" ToolTip.Tip="Collapse/expand" Command="{Binding ToggleMessagesPanelCommand}" Padding="6,2" />
 			</Grid>
 			<ScrollViewer IsVisible="{Binding IsMessagesPanelExpanded}">
 			  <ItemsControl ItemsSource="{Binding ScannedMessages}">

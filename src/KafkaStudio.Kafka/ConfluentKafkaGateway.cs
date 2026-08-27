@@ -29,6 +29,18 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
     private IProducer<string?, string?>? _producer;
     private IAdminClient? _admin;
 
+    // Bounded ring of the most recent librdkafka debug/log lines (broker + security), so a bare
+    // "Local: Timed out" can be enriched with the actual low-level reason (e.g. a failed SASL
+    // handshake or DNS/connect failure) instead of leaving the user to guess.
+    private readonly ConcurrentQueue<string> _recentLogs = new();
+    private const int MaxRecentLogs = 20;
+
+    private void OnLibrdkafkaLog(object? _, LogMessage message)
+    {
+        _recentLogs.Enqueue($"[{message.Level}] {message.Facility}: {message.Message}");
+        while (_recentLogs.Count > MaxRecentLogs && _recentLogs.TryDequeue(out string? _)) { }
+    }
+
     // Tracks live consumers by the (unique, per-subscription) consumer group id so AcknowledgeAsync
     // can route an explicit commit back to the exact consumer instance that read the message -
     // Confluent.Kafka's IConsumer is not safe to use concurrently, hence the per-consumer lock.
@@ -52,8 +64,10 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
             return ex;
         }
 
+        var lastLogs = string.Join(" | ", _recentLogs.ToArray());
         var enrichedReason = $"{ex.Error.Reason} [bootstrap.servers='{Profile.BootstrapServers}', " +
-            $"security.protocol={Profile.SecurityProtocol}, sasl.mechanism={Profile.SaslMechanism}]";
+            $"security.protocol={Profile.SecurityProtocol}, sasl.mechanism={Profile.SaslMechanism}]" +
+            (lastLogs.Length > 0 ? $" - recent librdkafka logs: {lastLogs}" : string.Empty);
         return new KafkaException(new Error(ex.Error.Code, enrichedReason, ex.Error.IsFatal), ex);
     }
 
@@ -62,9 +76,12 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
         _producer = new ProducerBuilder<string?, string?>(ConfigMapper.ToProducerConfig(Profile))
             .SetKeySerializer(Serializers.Utf8!)
             .SetValueSerializer(Serializers.Utf8!)
+            .SetLogHandler(OnLibrdkafkaLog)
             .Build();
 
-        _admin = new AdminClientBuilder(ConfigMapper.ToAdminConfig(Profile)).Build();
+        _admin = new AdminClientBuilder(ConfigMapper.ToAdminConfig(Profile))
+            .SetLogHandler(OnLibrdkafkaLog)
+            .Build();
 
         return Task.CompletedTask;
     }
