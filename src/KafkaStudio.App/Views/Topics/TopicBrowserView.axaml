@@ -156,7 +156,13 @@
 
 	  <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
 
-	  <Grid Grid.Column="2" RowDefinitions="*,Auto">
+	  <Grid Grid.Column="2">
+		<Grid.RowDefinitions>
+		  <RowDefinition Height="*" MinHeight="120" />
+		  <RowDefinition Height="Auto" />
+		  <RowDefinition MinHeight="0"
+						 Height="{Binding ComparisonMessages.Count, Converter={x:Static conv:CountToRowHeightConverter.Instance}, ConverterParameter=220}" />
+		</Grid.RowDefinitions>
 
 		<!-- Messages of the selected topic -->
 		<Border Grid.Row="0" Classes="pane" IsVisible="{Binding !IsGlobalSearchActive}">
@@ -237,8 +243,11 @@
 		  </DockPanel>
 		</Border>
 
-		<!-- Pinned comparison strip: only appears when something is pinned. -->
-		<Border Grid.Row="1" Classes="pane" Margin="0,6,0,0" MaxHeight="260" IsVisible="{Binding ComparisonMessages.Count}">
+		<!-- Pinned comparison strip: only appears when something is pinned, and is drag-resizable. -->
+		<GridSplitter Grid.Row="1" ResizeDirection="Rows" Height="6" HorizontalAlignment="Stretch"
+					  IsVisible="{Binding ComparisonMessages.Count}" />
+
+		<Border Grid.Row="2" Classes="pane" IsVisible="{Binding ComparisonMessages.Count}">
 		  <DockPanel>
 			<Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
 			  <TextBlock Grid.Column="0" Classes="paneTitle" Text="Compare messages" />
