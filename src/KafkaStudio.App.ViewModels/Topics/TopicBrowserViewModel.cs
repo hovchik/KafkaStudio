@@ -3,6 +3,7 @@ using System.Linq;
 using KafkaStudio.App.ViewModels.Mvvm;
 using KafkaStudio.App.ViewModels.Shared;
 using KafkaStudio.Core.Messaging;
+using KafkaStudio.Core.Topics;
 
 namespace KafkaStudio.App.ViewModels.Topics;
 
@@ -21,6 +22,13 @@ public sealed class TopicRowViewModel : ObservableObject
 /// <summary>A message found by <see cref="TopicBrowserViewModel.GlobalSearchCommand"/>, tagged with the
 /// topic it came from so mixed-topic results are still identifiable in a single list.</summary>
 public sealed class GlobalSearchHit
+{
+    public required string Topic { get; init; }
+    public required KafkaMessage Message { get; init; }
+}
+
+/// <summary>A message pinned into the "Compare messages" section, for side-by-side inspection.</summary>
+public sealed class ComparisonEntry
 {
     public required string Topic { get; init; }
     public required KafkaMessage Message { get; init; }
@@ -51,6 +59,12 @@ public sealed class TopicBrowserViewModel : ObservableObject
     public ObservableCollection<TopicRowViewModel> Topics { get; } = new();
     public ObservableCollection<KafkaMessage> ScannedMessages { get; } = new();
     public ObservableCollection<GlobalSearchHit> GlobalSearchResults { get; } = new();
+
+    /// <summary>Named sets of topics captured from previous search results, persisted across restarts.</summary>
+    public ObservableCollection<SavedTopicSet> SavedTopicSets { get; } = new();
+
+    /// <summary>Messages pinned for side-by-side comparison via <see cref="AddToComparisonCommand"/>.</summary>
+    public ObservableCollection<ComparisonEntry> ComparisonMessages { get; } = new();
 
     private bool _isTopicsPanelExpanded = true;
     /// <summary>Whether the "Topics" list panel is expanded or collapsed to its header.</summary>
@@ -124,9 +138,31 @@ public sealed class TopicBrowserViewModel : ObservableObject
             if (SetProperty(ref _topicFilter, value))
             {
                 ApplyTopicFilter();
+                SaveTopicFilterCommand?.RaiseCanExecuteChanged();
             }
         }
     }
+
+    /// <summary>Topic filter terms the user has saved, persisted across restarts.</summary>
+    public ObservableCollection<string> SavedTopicFilters { get; } = new();
+
+    private string? _selectedSavedTopicFilter;
+    /// <summary>Selecting a saved filter applies it to <see cref="TopicFilter"/>.</summary>
+    public string? SelectedSavedTopicFilter
+    {
+        get => _selectedSavedTopicFilter;
+        set
+        {
+            if (SetProperty(ref _selectedSavedTopicFilter, value))
+            {
+                if (value is not null) TopicFilter = value;
+                RemoveSavedTopicFilterCommand?.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public RelayCommand SaveTopicFilterCommand { get; }
+    public RelayCommand RemoveSavedTopicFilterCommand { get; }
 
     private TopicRowViewModel? _selectedTopicRow;
     /// <summary>Bound to the topics list's selection. Selecting a row (e.g. with the keyboard or a single
@@ -222,6 +258,46 @@ public sealed class TopicBrowserViewModel : ObservableObject
     private int _globalSearchTopicsTotal;
     public int GlobalSearchTopicsTotal { get => _globalSearchTopicsTotal; private set => SetProperty(ref _globalSearchTopicsTotal, value); }
 
+    private SavedTopicSet? _selectedSavedTopicSet;
+    /// <summary>When set, <see cref="GlobalSearchAsync"/> only scans this set's topics instead of every
+    /// currently loaded topic.</summary>
+    public SavedTopicSet? SelectedSavedTopicSet
+    {
+        get => _selectedSavedTopicSet;
+        set
+        {
+            if (SetProperty(ref _selectedSavedTopicSet, value))
+            {
+                DeleteSavedTopicSetCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    private string? _newTopicSetName;
+    /// <summary>Name to give the topic set created from the current <see cref="GlobalSearchResults"/> by
+    /// <see cref="SaveSearchResultsAsTopicSetCommand"/>.</summary>
+    public string? NewTopicSetName
+    {
+        get => _newTopicSetName;
+        set
+        {
+            if (SetProperty(ref _newTopicSetName, value))
+            {
+                SaveSearchResultsAsTopicSetCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    /// <summary>Saves the distinct topics found in <see cref="GlobalSearchResults"/> as a new named
+    /// <see cref="SavedTopicSet"/>, so a later search can be scoped to just those topics.</summary>
+    public RelayCommand SaveSearchResultsAsTopicSetCommand { get; }
+    public RelayCommand DeleteSavedTopicSetCommand { get; }
+
+    /// <summary>Pins a search result's message into <see cref="ComparisonMessages"/>.</summary>
+    public RelayCommand<GlobalSearchHit> AddToComparisonCommand { get; }
+    public RelayCommand<ComparisonEntry> RemoveFromComparisonCommand { get; }
+    public RelayCommand ClearComparisonCommand { get; }
+
     public AsyncRelayCommand RefreshTopicsCommand { get; }
     public AsyncRelayCommand ScanCommand { get; }
 
@@ -255,7 +331,74 @@ public sealed class TopicBrowserViewModel : ObservableObject
             () => SelectedConnection is not null && !string.IsNullOrWhiteSpace(GlobalSearchTerm));
         CancelGlobalSearchCommand = new RelayCommand(CancelGlobalSearch, () => IsGlobalSearching);
         OpenGlobalSearchHitCommand = new AsyncRelayCommand<GlobalSearchHit>(OpenGlobalSearchHitAsync);
+        SaveTopicFilterCommand = new RelayCommand(SaveTopicFilter,
+            () => !string.IsNullOrWhiteSpace(TopicFilter) && !SavedTopicFilters.Contains(TopicFilter.Trim()));
+        RemoveSavedTopicFilterCommand = new RelayCommand(RemoveSavedTopicFilter, () => SelectedSavedTopicFilter is not null);
+        foreach (var filter in SavedTopicFilterStore.Load()) SavedTopicFilters.Add(filter);
+        SaveSearchResultsAsTopicSetCommand = new RelayCommand(SaveSearchResultsAsTopicSet,
+            () => !string.IsNullOrWhiteSpace(NewTopicSetName) && GlobalSearchResults.Count > 0);
+        DeleteSavedTopicSetCommand = new RelayCommand(DeleteSavedTopicSet, () => SelectedSavedTopicSet is not null);
+        AddToComparisonCommand = new RelayCommand<GlobalSearchHit>(AddToComparison);
+        RemoveFromComparisonCommand = new RelayCommand<ComparisonEntry>(entry => { if (entry is not null) ComparisonMessages.Remove(entry); });
+        ClearComparisonCommand = new RelayCommand(ComparisonMessages.Clear);
+        foreach (var set in SavedTopicSetStore.Load()) SavedTopicSets.Add(set);
         RefreshConnectionNames();
+    }
+
+    private void SaveSearchResultsAsTopicSet()
+    {
+        var name = NewTopicSetName?.Trim();
+        if (string.IsNullOrEmpty(name)) return;
+        var topics = GlobalSearchResults.Select(h => h.Topic).Distinct().ToList();
+        if (topics.Count == 0) return;
+
+        var existing = SavedTopicSets.FirstOrDefault(s => s.Name == name);
+        if (existing is not null) SavedTopicSets.Remove(existing);
+
+        var set = new SavedTopicSet { Name = name, Topics = topics };
+        SavedTopicSets.Add(set);
+        SavedTopicSetStore.Save(SavedTopicSets);
+        SelectedSavedTopicSet = set;
+        NewTopicSetName = null;
+    }
+
+    private void DeleteSavedTopicSet()
+    {
+        var set = SelectedSavedTopicSet;
+        if (set is null) return;
+        SelectedSavedTopicSet = null;
+        SavedTopicSets.Remove(set);
+        SavedTopicSetStore.Save(SavedTopicSets);
+        DeleteSavedTopicSetCommand.RaiseCanExecuteChanged();
+    }
+
+    private void AddToComparison(GlobalSearchHit? hit)
+    {
+        if (hit is null) return;
+        var alreadyPinned = ComparisonMessages.Any(e =>
+            e.Topic == hit.Topic && e.Message.Partition == hit.Message.Partition && e.Message.Offset == hit.Message.Offset);
+        if (alreadyPinned) return;
+        ComparisonMessages.Add(new ComparisonEntry { Topic = hit.Topic, Message = hit.Message });
+    }
+
+    private void SaveTopicFilter()
+    {
+        var filter = TopicFilter?.Trim();
+        if (string.IsNullOrEmpty(filter) || SavedTopicFilters.Contains(filter)) return;
+        SavedTopicFilters.Add(filter);
+        SavedTopicFilterStore.Save(SavedTopicFilters);
+        SelectedSavedTopicFilter = filter;
+        SaveTopicFilterCommand.RaiseCanExecuteChanged();
+    }
+
+    private void RemoveSavedTopicFilter()
+    {
+        var filter = SelectedSavedTopicFilter;
+        if (filter is null) return;
+        SelectedSavedTopicFilter = null;
+        SavedTopicFilters.Remove(filter);
+        SavedTopicFilterStore.Save(SavedTopicFilters);
+        SaveTopicFilterCommand.RaiseCanExecuteChanged();
     }
 
     private void RefreshConnectionNames()
@@ -441,10 +584,12 @@ public sealed class TopicBrowserViewModel : ObservableObject
         if (SelectedConnection is null || string.IsNullOrWhiteSpace(term)) return;
         if (!_state.Connections.TryGetValue(SelectedConnection, out var gateway)) return;
 
-        var topics = _allTopics.Select(t => t.Name).ToList();
+        var topics = SelectedSavedTopicSet is not null
+            ? SelectedSavedTopicSet.Topics.ToList()
+            : Topics.Select(t => t.Name).ToList();
         if (topics.Count == 0)
         {
-            StatusMessage = "No topics loaded to search.";
+            StatusMessage = SelectedSavedTopicSet is not null ? "Selected topic set is empty." : "No topics loaded to search.";
             return;
         }
 
@@ -535,6 +680,7 @@ public sealed class TopicBrowserViewModel : ObservableObject
         finally
         {
             IsGlobalSearching = false;
+            SaveSearchResultsAsTopicSetCommand.RaiseCanExecuteChanged();
         }
     }
 

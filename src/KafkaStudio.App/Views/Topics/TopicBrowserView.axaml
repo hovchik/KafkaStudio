@@ -1,9 +1,11 @@
 <UserControl xmlns="https://github.com/avaloniaui"
 			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 			 xmlns:vm="using:KafkaStudio.App.ViewModels.Topics"
+			 xmlns:topics="using:KafkaStudio.Core.Topics"
 			 xmlns:conv="using:KafkaStudio.App.Converters"
 			 x:Class="KafkaStudio.App.Views.Topics.TopicBrowserView"
-			 x:DataType="vm:TopicBrowserViewModel">
+			 x:DataType="vm:TopicBrowserViewModel"
+			 x:Name="Root">
 
   <Grid RowDefinitions="Auto,Auto,*" Margin="0">
 
@@ -36,6 +38,14 @@
 		  <TextBox Grid.Column="5" Text="{Binding ScanLimit, TargetNullValue=''}" Width="70" HorizontalAlignment="Left" Watermark="all" Margin="8,0,0,0" />
 		</Grid>
 
+		<!-- Saved topic filters row -->
+		<Grid ColumnDefinitions="Auto,*,Auto,Auto">
+		  <TextBlock Grid.Column="0" Text="Saved filters" VerticalAlignment="Center" Classes="muted" Width="90" />
+		  <ComboBox Grid.Column="1" ItemsSource="{Binding SavedTopicFilters}" SelectedItem="{Binding SelectedSavedTopicFilter}" PlaceholderText="Select a saved topic filter..." HorizontalAlignment="Stretch" />
+		  <Button Grid.Column="2" Content="Save filter" Command="{Binding SaveTopicFilterCommand}" Margin="8,0,0,0" />
+		  <Button Grid.Column="3" Content="Remove" Command="{Binding RemoveSavedTopicFilterCommand}" Margin="8,0,0,0" />
+		</Grid>
+
 		<Grid ColumnDefinitions="Auto,*,Auto">
 		  <Button Grid.Column="0" Content="Reload messages" Classes="primary" Command="{Binding ScanCommand}" />
 		  <TextBox Grid.Column="1" Text="{Binding MessageFilter}" Watermark="Search within loaded messages (contains)..." Margin="12,0,0,0" />
@@ -56,6 +66,23 @@
 		<TextBlock Classes="muted" IsVisible="{Binding IsGlobalSearching}">
 		  <Run Text="Scanning topic " /><Run Text="{Binding GlobalSearchTopicsScanned}" /><Run Text=" / " /><Run Text="{Binding GlobalSearchTopicsTotal}" /><Run Text="..." />
 		</TextBlock>
+
+		<!-- Saved topic sets row: scope "Search all topics" to a named set of topics captured from a
+			 previous search's results instead of every loaded topic. -->
+		<Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+		  <TextBlock Grid.Column="0" Text="Topic set" VerticalAlignment="Center" Classes="muted" Width="90" />
+		  <ComboBox Grid.Column="1" ItemsSource="{Binding SavedTopicSets}" SelectedItem="{Binding SelectedSavedTopicSet}"
+					PlaceholderText="(search every loaded topic)" HorizontalAlignment="Stretch">
+			<ComboBox.ItemTemplate>
+			  <DataTemplate x:DataType="topics:SavedTopicSet">
+				<TextBlock Text="{Binding Name}" />
+			  </DataTemplate>
+			</ComboBox.ItemTemplate>
+		  </ComboBox>
+		  <TextBox Grid.Column="2" Text="{Binding NewTopicSetName}" Watermark="New set name..." Width="140" Margin="8,0,0,0" />
+		  <Button Grid.Column="3" Content="Save results as set" Command="{Binding SaveSearchResultsAsTopicSetCommand}" Margin="8,0,0,0" />
+		  <Button Grid.Column="4" Content="Delete" Command="{Binding DeleteSavedTopicSetCommand}" Margin="8,0,0,0" />
+		</Grid>
 
 	  </StackPanel>
 	</Border>
@@ -130,25 +157,66 @@
 			<Button Grid.Column="1" Content="{Binding IsSearchResultsPanelExpanded, Converter={x:Static conv:BoolToChevronConverter.Instance}}" ToolTip.Tip="Collapse/expand" Command="{Binding ToggleSearchResultsPanelCommand}" Padding="6,2" />
 		  </Grid>
 		  <ScrollViewer IsVisible="{Binding IsSearchResultsPanelExpanded}">
-			<ItemsControl ItemsSource="{Binding GlobalSearchResults}">
-			  <ItemsControl.ItemTemplate>
-				<DataTemplate x:DataType="vm:GlobalSearchHit">
-				  <Border Padding="10" Margin="0,0,0,6" Background="{DynamicResource SidebarBrush}" CornerRadius="8"
-						  DoubleTapped="OnGlobalSearchHitDoubleTapped">
-					<StackPanel Spacing="4">
-					  <SelectableTextBlock Classes="muted">
-						<Run Text="topic " FontWeight="SemiBold" /><Run Text="{Binding Topic}" Foreground="{DynamicResource AccentBrush}" /><Run Text=" · offset " /><Run Text="{Binding Message.Offset}" /><Run Text=" · key " /><Run Text="{Binding Message.Key}" />
-					  </SelectableTextBlock>
-					  <SelectableTextBlock Inlines="{Binding Message.PrettyValue, Converter={x:Static conv:JsonInlinesConverter.Instance}}" Foreground="White" TextWrapping="Wrap" FontFamily="Consolas,monospace" FontSize="12" />
-					</StackPanel>
-				  </Border>
-				</DataTemplate>
-			  </ItemsControl.ItemTemplate>
-			</ItemsControl>
-		  </ScrollViewer>
-		</DockPanel>
-	  </Border>
-	</Grid>
-  </Grid>
+					<ItemsControl ItemsSource="{Binding GlobalSearchResults}">
+					  <ItemsControl.ItemTemplate>
+						<DataTemplate x:DataType="vm:GlobalSearchHit">
+						  <Border Padding="10" Margin="0,0,0,6" Background="{DynamicResource SidebarBrush}" CornerRadius="8"
+								  DoubleTapped="OnGlobalSearchHitDoubleTapped">
+							<StackPanel Spacing="4">
+							  <Grid ColumnDefinitions="*,Auto">
+								<SelectableTextBlock Grid.Column="0" Classes="muted">
+								  <Run Text="topic " FontWeight="SemiBold" /><Run Text="{Binding Topic}" Foreground="{DynamicResource AccentBrush}" /><Run Text=" · offset " /><Run Text="{Binding Message.Offset}" /><Run Text=" · key " /><Run Text="{Binding Message.Key}" />
+								</SelectableTextBlock>
+								<Button Grid.Column="1" Content="Compare" Padding="6,2"
+										Command="{Binding #Root.DataContext.AddToComparisonCommand}"
+										CommandParameter="{Binding}" />
+							  </Grid>
+							  <SelectableTextBlock Inlines="{Binding Message.PrettyValue, Converter={x:Static conv:JsonInlinesConverter.Instance}}" Foreground="White" TextWrapping="Wrap" FontFamily="Consolas,monospace" FontSize="12" />
+							</StackPanel>
+						  </Border>
+						</DataTemplate>
+					  </ItemsControl.ItemTemplate>
+					</ItemsControl>
+				  </ScrollViewer>
+				</DockPanel>
+				</Border>
+			  </Grid>
+
+			  <!-- Compare messages: pinned messages from search results, shown side by side for comparison. -->
+			  <Border Classes="card" Margin="0,16,0,0" IsVisible="{Binding ComparisonMessages.Count}">
+				<DockPanel>
+				  <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+					<TextBlock Grid.Column="0" Text="Compare messages" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center" />
+					<Button Grid.Column="1" Content="Clear all" Command="{Binding ClearComparisonCommand}" Padding="6,2" />
+				  </Grid>
+				  <ScrollViewer>
+					<ItemsControl ItemsSource="{Binding ComparisonMessages}">
+					  <ItemsControl.ItemsPanel>
+						<ItemsPanelTemplate>
+						  <WrapPanel Orientation="Horizontal" />
+						</ItemsPanelTemplate>
+					  </ItemsControl.ItemsPanel>
+					  <ItemsControl.ItemTemplate>
+						<DataTemplate x:DataType="vm:ComparisonEntry">
+						  <Border Padding="10" Margin="0,0,8,8" Width="320" Background="{DynamicResource SidebarBrush}" CornerRadius="8">
+							<StackPanel Spacing="4">
+							  <Grid ColumnDefinitions="*,Auto">
+								<SelectableTextBlock Grid.Column="0" Classes="muted">
+								  <Run Text="topic " FontWeight="SemiBold" /><Run Text="{Binding Topic}" Foreground="{DynamicResource AccentBrush}" /><Run Text=" · offset " /><Run Text="{Binding Message.Offset}" /><Run Text=" · key " /><Run Text="{Binding Message.Key}" />
+								</SelectableTextBlock>
+								<Button Grid.Column="1" Content="✕" Padding="6,2"
+										Command="{Binding #Root.((vm:TopicBrowserViewModel)DataContext).RemoveFromComparisonCommand}"
+										CommandParameter="{Binding}" />
+							  </Grid>
+							  <SelectableTextBlock Inlines="{Binding Message.PrettyValue, Converter={x:Static conv:JsonInlinesConverter.Instance}}" Foreground="White" TextWrapping="Wrap" FontFamily="Consolas,monospace" FontSize="12" />
+							</StackPanel>
+						  </Border>
+						</DataTemplate>
+					  </ItemsControl.ItemTemplate>
+					</ItemsControl>
+				  </ScrollViewer>
+				</DockPanel>
+			  </Border>
+			</Grid>
 
 </UserControl>
