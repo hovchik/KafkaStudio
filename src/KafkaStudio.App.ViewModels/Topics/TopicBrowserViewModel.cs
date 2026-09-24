@@ -27,6 +27,18 @@ public sealed class GlobalSearchHit
     public required KafkaMessage Message { get; init; }
 }
 
+/// <summary>Number of <see cref="TopicBrowserViewModel.GlobalSearchResults"/> hits found on a single topic,
+/// used to show a per-topic breakdown alongside the overall total. Clicking its chip in the view toggles
+/// <see cref="IsSelected"/> and filters the results list down to just this topic.</summary>
+public sealed class TopicHitCount : ObservableObject
+{
+    public required string Topic { get; init; }
+    public required int Count { get; init; }
+
+    private bool _isSelected;
+    public bool IsSelected { get => _isSelected; set => SetProperty(ref _isSelected, value); }
+}
+
 /// <summary>A message pinned into the "Compare messages" section, for side-by-side inspection.</summary>
 public sealed class ComparisonEntry
 {
@@ -60,6 +72,27 @@ public sealed class TopicBrowserViewModel : ObservableObject
     public ObservableCollection<KafkaMessage> ScannedMessages { get; } = new();
     public ObservableCollection<GlobalSearchHit> GlobalSearchResults { get; } = new();
 
+    /// <summary>Per-topic breakdown of <see cref="GlobalSearchResults"/>, sorted by hit count descending,
+    /// kept in sync as results stream in.</summary>
+    public ObservableCollection<TopicHitCount> GlobalSearchResultsByTopic { get; } = new();
+
+    /// <summary><see cref="GlobalSearchResults"/> narrowed down to <see cref="SelectedGlobalSearchTopicFilter"/>
+    /// (or every hit, when no topic filter is active). This is what the results list actually binds to.</summary>
+    public ObservableCollection<GlobalSearchHit> FilteredGlobalSearchResults { get; } = new();
+
+    private string? _selectedGlobalSearchTopicFilter;
+    /// <summary>When set (by clicking a topic chip in <see cref="GlobalSearchResultsByTopic"/>),
+    /// <see cref="FilteredGlobalSearchResults"/> only shows hits from this topic. Clicking the same chip
+    /// again clears the filter.</summary>
+    public string? SelectedGlobalSearchTopicFilter
+    {
+        get => _selectedGlobalSearchTopicFilter;
+        private set => SetProperty(ref _selectedGlobalSearchTopicFilter, value);
+    }
+
+    /// <summary>Toggles <see cref="SelectedGlobalSearchTopicFilter"/> for the clicked topic chip.</summary>
+    public RelayCommand<TopicHitCount> ToggleGlobalSearchTopicFilterCommand { get; }
+
     /// <summary>Named sets of topics captured from previous search results, persisted across restarts.</summary>
     public ObservableCollection<SavedTopicSet> SavedTopicSets { get; } = new();
 
@@ -88,10 +121,14 @@ public sealed class TopicBrowserViewModel : ObservableObject
         }
     }
 
-    /// <summary>True when both the "Topics" and "Messages" panels are collapsed to their headers, so the
-    /// "Search results (all topics)" panel below them should expand to fill the freed-up space instead of
-    /// staying capped to its small default height.</summary>
-    public bool AreTopicsAndMessagesCollapsed => !IsTopicsPanelExpanded && !IsMessagesPanelExpanded;
+    /// <summary>True when both the "Topics" and "Messages" panels are collapsed to their headers, or a
+    /// cross-topic search is active, so the "Search results (all topics)" panel below them should expand
+    /// to fill the freed-up space instead of staying capped to its small default height.</summary>
+    public bool AreTopicsAndMessagesCollapsed => (!IsTopicsPanelExpanded && !IsMessagesPanelExpanded) || IsGlobalSearchActive;
+
+    /// <summary>True once a cross-topic search has produced (or is producing) results, at which point the
+    /// "Topics"/"Messages" panels are hidden entirely so the search results can use the freed-up space.</summary>
+    public bool IsGlobalSearchActive => IsGlobalSearching || GlobalSearchResults.Count > 0;
 
     private bool _isSearchResultsPanelExpanded = true;
     /// <summary>Whether the "Search results (all topics)" panel is expanded or collapsed to its header.</summary>
@@ -248,6 +285,8 @@ public sealed class TopicBrowserViewModel : ObservableObject
             if (SetProperty(ref _isGlobalSearching, value))
             {
                 CancelGlobalSearchCommand.RaiseCanExecuteChanged();
+                OnPropertyChanged(nameof(IsGlobalSearchActive));
+                OnPropertyChanged(nameof(AreTopicsAndMessagesCollapsed));
             }
         }
     }
@@ -342,7 +381,57 @@ public sealed class TopicBrowserViewModel : ObservableObject
         RemoveFromComparisonCommand = new RelayCommand<ComparisonEntry>(entry => { if (entry is not null) ComparisonMessages.Remove(entry); });
         ClearComparisonCommand = new RelayCommand(ComparisonMessages.Clear);
         foreach (var set in SavedTopicSetStore.Load()) SavedTopicSets.Add(set);
+        GlobalSearchResults.CollectionChanged += (_, _) =>
+        {
+            UpdateGlobalSearchResultsByTopic();
+            OnPropertyChanged(nameof(IsGlobalSearchActive));
+            OnPropertyChanged(nameof(AreTopicsAndMessagesCollapsed));
+        };
+        ToggleGlobalSearchTopicFilterCommand = new RelayCommand<TopicHitCount>(ToggleGlobalSearchTopicFilter);
         RefreshConnectionNames();
+    }
+
+    private void ToggleGlobalSearchTopicFilter(TopicHitCount? hit)
+    {
+        if (hit is null) return;
+
+        SelectedGlobalSearchTopicFilter = SelectedGlobalSearchTopicFilter == hit.Topic ? null : hit.Topic;
+        foreach (var item in GlobalSearchResultsByTopic) item.IsSelected = item.Topic == SelectedGlobalSearchTopicFilter;
+        UpdateFilteredGlobalSearchResults();
+    }
+
+    private void UpdateFilteredGlobalSearchResults()
+    {
+        FilteredGlobalSearchResults.Clear();
+        var filter = SelectedGlobalSearchTopicFilter;
+        foreach (var hit in GlobalSearchResults)
+        {
+            if (filter is null || hit.Topic == filter) FilteredGlobalSearchResults.Add(hit);
+        }
+    }
+
+    private void UpdateGlobalSearchResultsByTopic()
+    {
+        var counts = GlobalSearchResults
+            .GroupBy(h => h.Topic)
+            .Select(g => new TopicHitCount { Topic = g.Key, Count = g.Count() })
+            .OrderByDescending(c => c.Count)
+            .ThenBy(c => c.Topic, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        GlobalSearchResultsByTopic.Clear();
+        foreach (var count in counts)
+        {
+            count.IsSelected = count.Topic == SelectedGlobalSearchTopicFilter;
+            GlobalSearchResultsByTopic.Add(count);
+        }
+
+        // a topic filter can go stale once a new search starts (GlobalSearchResults.Clear()) or if the
+        // filtered topic no longer has any hits - drop it so the list doesn't end up empty silently.
+        if (SelectedGlobalSearchTopicFilter is not null && counts.All(c => c.Topic != SelectedGlobalSearchTopicFilter))
+            SelectedGlobalSearchTopicFilter = null;
+
+        UpdateFilteredGlobalSearchResults();
     }
 
     private void SaveSearchResultsAsTopicSet()

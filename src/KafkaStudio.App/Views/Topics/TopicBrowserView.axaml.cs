@@ -32,4 +32,15 @@ public partial class TopicBrowserView : UserControl
             vm.OpenGlobalSearchHitCommand.Execute(hit);
         }
     }
+
+    private void OnTopicHitCountTapped(object? sender, TappedEventArgs e)
+    {
+        if (DataContext is not TopicBrowserViewModel vm) return;
+        if (sender is not Control { DataContext: TopicHitCount hit }) return;
+
+        if (vm.ToggleGlobalSearchTopicFilterCommand.CanExecute(hit))
+        {
+            vm.ToggleGlobalSearchTopicFilterCommand.Execute(hit);
+        }
+    }
 }
