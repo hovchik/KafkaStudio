@@ -16,18 +16,27 @@
 	</Style>
 	<Style Selector="Border.toolbar TextBox">
 	  <Setter Property="MinHeight" Value="26" />
+	  <Setter Property="Height" Value="26" />
 	  <Setter Property="Padding" Value="6,2" />
 	  <Setter Property="Margin" Value="0,0,6,0" />
+	  <Setter Property="VerticalAlignment" Value="Center" />
+	  <Setter Property="VerticalContentAlignment" Value="Center" />
 	</Style>
 	<Style Selector="Border.toolbar ComboBox">
 	  <Setter Property="MinHeight" Value="26" />
+	  <Setter Property="Height" Value="26" />
 	  <Setter Property="Padding" Value="6,2" />
 	  <Setter Property="Margin" Value="0,0,6,0" />
+	  <Setter Property="VerticalAlignment" Value="Center" />
+	  <Setter Property="VerticalContentAlignment" Value="Center" />
 	</Style>
 	<Style Selector="Border.toolbar Button">
 	  <Setter Property="MinHeight" Value="26" />
+	  <Setter Property="Height" Value="26" />
 	  <Setter Property="Padding" Value="10,3" />
 	  <Setter Property="Margin" Value="0,0,6,0" />
+	  <Setter Property="VerticalAlignment" Value="Center" />
+	  <Setter Property="VerticalContentAlignment" Value="Center" />
 	</Style>
 	<Style Selector="Border.pane">
 	  <Setter Property="Background" Value="{DynamicResource CardBrush}" />
