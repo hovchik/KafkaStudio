@@ -61,7 +61,11 @@
 	</Border>
 
 	<!-- Main content: topics list + messages, plus global search results underneath when present -->
-	<Grid Grid.Row="2" RowDefinitions="*,Auto">
+	<Grid Grid.Row="2">
+	  <Grid.RowDefinitions>
+		<RowDefinition Height="{Binding AreTopicsAndMessagesCollapsed, Converter={x:Static conv:BoolToRowHeightConverter.Instance}, ConverterParameter=TopicsAndMessages}" />
+		<RowDefinition Height="{Binding AreTopicsAndMessagesCollapsed, Converter={x:Static conv:BoolToRowHeightConverter.Instance}, ConverterParameter=SearchResults}" />
+	  </Grid.RowDefinitions>
 	  <Grid Grid.Row="0" ColumnDefinitions="1*,1.5*" Margin="0,0,0,16">
 		<Border Classes="card" Margin="4,0" Grid.Column="{Binding ArePanelsSwapped, Converter={x:Static conv:SwapColumnConverter.Instance}, ConverterParameter=0}"
 				VerticalAlignment="{Binding IsTopicsPanelExpanded, Converter={x:Static conv:BoolToVerticalAlignmentConverter.Instance}}">
@@ -118,7 +122,8 @@
 	  </Grid>
 
 	  <!-- Cross-topic search results -->
-	  <Border Grid.Row="1" Classes="card" IsVisible="{Binding GlobalSearchResults.Count}" MaxHeight="260">
+	  <Border Grid.Row="1" Classes="card" IsVisible="{Binding GlobalSearchResults.Count}"
+			  MaxHeight="{Binding AreTopicsAndMessagesCollapsed, Converter={x:Static conv:BoolToMaxHeightConverter.Instance}}">
 		<DockPanel>
 		  <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
 			<TextBlock Grid.Column="0" Text="Search results (all topics)" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center" />

@@ -216,11 +216,19 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
         {
             _activeConsumers.TryRemove(options.ConsumerGroup, out _);
             try { await pump.ConfigureAwait(false); } catch { /* pump already logs/handles its own errors */ }
-            lock (consumerLock)
+
+            // Close()/Dispose() talk to the broker (leave-group request) and can block for a while,
+            // especially on cancellation - run them on a background thread so a caller that awaits this
+            // enumerator with ConfigureAwait(true) (e.g. to keep UI-collection updates on the UI thread)
+            // never has its thread blocked/frozen by this cleanup.
+            await Task.Run(() =>
             {
-                consumer.Close();
-                consumer.Dispose();
-            }
+                lock (consumerLock)
+                {
+                    try { consumer.Close(); } catch { /* best effort */ }
+                    consumer.Dispose();
+                }
+            }).ConfigureAwait(false);
         }
     }
 

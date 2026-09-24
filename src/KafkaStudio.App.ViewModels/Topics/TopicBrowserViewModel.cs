@@ -54,11 +54,30 @@ public sealed class TopicBrowserViewModel : ObservableObject
 
     private bool _isTopicsPanelExpanded = true;
     /// <summary>Whether the "Topics" list panel is expanded or collapsed to its header.</summary>
-    public bool IsTopicsPanelExpanded { get => _isTopicsPanelExpanded; set => SetProperty(ref _isTopicsPanelExpanded, value); }
+    public bool IsTopicsPanelExpanded
+    {
+        get => _isTopicsPanelExpanded;
+        set
+        {
+            if (SetProperty(ref _isTopicsPanelExpanded, value)) OnPropertyChanged(nameof(AreTopicsAndMessagesCollapsed));
+        }
+    }
 
     private bool _isMessagesPanelExpanded = true;
     /// <summary>Whether the "Messages" panel is expanded or collapsed to its header.</summary>
-    public bool IsMessagesPanelExpanded { get => _isMessagesPanelExpanded; set => SetProperty(ref _isMessagesPanelExpanded, value); }
+    public bool IsMessagesPanelExpanded
+    {
+        get => _isMessagesPanelExpanded;
+        set
+        {
+            if (SetProperty(ref _isMessagesPanelExpanded, value)) OnPropertyChanged(nameof(AreTopicsAndMessagesCollapsed));
+        }
+    }
+
+    /// <summary>True when both the "Topics" and "Messages" panels are collapsed to their headers, so the
+    /// "Search results (all topics)" panel below them should expand to fill the freed-up space instead of
+    /// staying capped to its small default height.</summary>
+    public bool AreTopicsAndMessagesCollapsed => !IsTopicsPanelExpanded && !IsMessagesPanelExpanded;
 
     private bool _isSearchResultsPanelExpanded = true;
     /// <summary>Whether the "Search results (all topics)" panel is expanded or collapsed to its header.</summary>
@@ -234,7 +253,7 @@ public sealed class TopicBrowserViewModel : ObservableObject
         OpenTopicCommand = new AsyncRelayCommand<TopicRowViewModel>(OpenTopicAsync);
         GlobalSearchCommand = new AsyncRelayCommand(GlobalSearchAsync,
             () => SelectedConnection is not null && !string.IsNullOrWhiteSpace(GlobalSearchTerm));
-        CancelGlobalSearchCommand = new RelayCommand(() => _globalSearchCts?.Cancel(), () => IsGlobalSearching);
+        CancelGlobalSearchCommand = new RelayCommand(CancelGlobalSearch, () => IsGlobalSearching);
         OpenGlobalSearchHitCommand = new AsyncRelayCommand<GlobalSearchHit>(OpenGlobalSearchHitAsync);
         RefreshConnectionNames();
     }
@@ -399,6 +418,19 @@ public sealed class TopicBrowserViewModel : ObservableObject
     /// This is deliberately heavier than <see cref="MessageFilter"/> - it talks to the broker for every
     /// topic - so it's only triggered explicitly via <see cref="GlobalSearchCommand"/>, not on every
     /// keystroke.</summary>
+    /// <summary>Requests cancellation of an in-flight <see cref="GlobalSearchCommand"/>.
+    /// <see cref="CancellationTokenSource.Cancel()"/> synchronously invokes every callback registered on
+    /// the token (e.g. from the many per-topic <c>SemaphoreSlim.WaitAsync</c>/channel reads fanned out by
+    /// <see cref="GlobalSearchAsync"/>, easily 1000+ for a large cluster) on the calling thread - doing
+    /// that on the UI thread is what made the "Cancel" button appear to freeze the app. Hopping to a
+    /// background thread first keeps that callback storm off the UI thread.</summary>
+    private void CancelGlobalSearch()
+    {
+        var cts = _globalSearchCts;
+        if (cts is null) return;
+        _ = Task.Run(() => cts.Cancel());
+    }
+
     private async Task GlobalSearchAsync()
     {
         _globalSearchCts?.Cancel();
@@ -426,12 +458,24 @@ public sealed class TopicBrowserViewModel : ObservableObject
         {
             // Bound the number of topics scanned concurrently so a large cluster doesn't open hundreds
             // of consumer connections at once.
-            using var throttle = new SemaphoreSlim(8);
-            var scanned = 0;
-
-            var perTopicTasks = topics.Select(async topic =>
+            //
+            // The whole fan-out runs on the thread pool (ConfigureAwait(false)); only result/progress updates
+            // are posted back to the UI thread. Previously every per-topic continuation (and the consumer
+            // creation/teardown inside ConsumeAsync) ran on the UI thread, so cancelling - which unwinds all
+            // of them at once - froze the UI. Parallel.ForEachAsync also avoids queuing a pending cancellable
+            // wait for every one of the (possibly thousands of) topics up front.
+            var ui = SynchronizationContext.Current;
+            void OnUi(Action action)
             {
-                await throttle.WaitAsync(cts.Token).ConfigureAwait(true);
+                if (ui is null) action();
+                else ui.Post(_ => action(), null);
+            }
+
+            var scanned = 0;
+            var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = cts.Token };
+
+            await Task.Run(() => Parallel.ForEachAsync(topics, parallelOptions, async (topic, token) =>
+            {
                 try
                 {
                     var options = new ConsumeOptions
@@ -442,13 +486,22 @@ public sealed class TopicBrowserViewModel : ObservableObject
                         StopAtPartitionEnd = true
                     };
 
-                    await foreach (var message in gateway.ConsumeAsync(options, cts.Token).ConfigureAwait(true))
+                    await foreach (var message in gateway.ConsumeAsync(options, token).ConfigureAwait(false))
                     {
+                        // ReadAllAsync only observes cancellation between buffered batches, so check
+                        // explicitly to stop immediately instead of draining an already-fetched backlog.
+                        if (token.IsCancellationRequested) break;
+
                         var isMatch = (message.Value is not null && message.Value.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
                                       (message.Key is not null && message.Key.Contains(term, StringComparison.OrdinalIgnoreCase));
+
                         if (isMatch)
                         {
-                            GlobalSearchResults.Add(new GlobalSearchHit { Topic = topic, Message = message });
+                            var hit = new GlobalSearchHit { Topic = topic, Message = message };
+                            OnUi(() =>
+                            {
+                                if (!cts.IsCancellationRequested) GlobalSearchResults.Add(hit);
+                            });
                         }
                     }
                 }
@@ -462,15 +515,16 @@ public sealed class TopicBrowserViewModel : ObservableObject
                 }
                 finally
                 {
-                    Interlocked.Increment(ref scanned);
-                    GlobalSearchTopicsScanned = scanned;
-                    throttle.Release();
+                    var count = Interlocked.Increment(ref scanned);
+                    OnUi(() => GlobalSearchTopicsScanned = count);
                 }
-            });
+            })).ConfigureAwait(true);
 
-            await Task.WhenAll(perTopicTasks).ConfigureAwait(true);
-
-            if (cts.IsCancellationRequested) return;
+            if (cts.IsCancellationRequested)
+            {
+                StatusMessage = "Search cancelled.";
+                return;
+            }
 
             StatusMessage = $"Found {GlobalSearchResults.Count} message(s) matching \"{term}\" across {topics.Count} topic(s).";
         }
