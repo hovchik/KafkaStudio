@@ -1,74 +1,74 @@
 <UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:KafkaStudio.App.ViewModels.Connections"
-             x:Class="KafkaStudio.App.Views.Connections.ConnectionsView"
-             x:DataType="vm:ConnectionsViewModel">
+			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+			 xmlns:vm="using:KafkaStudio.App.ViewModels.Connections"
+			 x:Class="KafkaStudio.App.Views.Connections.ConnectionsView"
+			 x:DataType="vm:ConnectionsViewModel">
 
-  <ScrollViewer>
-    <StackPanel Spacing="20" MaxWidth="820" HorizontalAlignment="Left">
+  <Grid RowDefinitions="Auto,Auto,*">
 
-      <TextBlock Text="Connections" Classes="h1" Foreground="White" />
-      <TextBlock Text="Add the Kafka clusters you work with. Use a demo (in-memory) connection to try KafkaStudio without a broker."
-                 Classes="muted" TextWrapping="Wrap" />
+	<!-- Single-line toolbar: the common case is name + servers + connect. -->
+	<Border Grid.Row="0" Classes="toolbar">
+	  <Grid ColumnDefinitions="*,2*,Auto,Auto,Auto,*">
+		<TextBox Grid.Column="0" MinWidth="120" Text="{Binding NewConnectionName}" Watermark="Name, e.g. Staging" />
+		<TextBox Grid.Column="1" MinWidth="180" Text="{Binding NewBootstrapServers}" Watermark="host:9092,host2:9092" />
 
-      <Border Classes="card">
-        <StackPanel Spacing="10">
-          <TextBlock Text="Add connection" FontWeight="SemiBold" Foreground="White" />
+		<Border Grid.Column="2" Classes="sep" />
 
-          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="Name" VerticalAlignment="Center" Classes="muted" />
-            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding NewConnectionName}" Watermark="e.g. Staging" />
+		<Button Grid.Column="3" Content="Connect" Classes="primary" Command="{Binding AddConnectionCommand}" />
+		<Button Grid.Column="4" Content="Add demo" Command="{Binding AddDemoConnectionCommand}"
+				ToolTip.Tip="Add a demo (in-memory) connection to try KafkaStudio without a broker" />
+		<TextBlock Grid.Column="5" Classes="muted" Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
+	  </Grid>
+	</Border>
 
-            <TextBlock Grid.Row="1" Grid.Column="0" Text="Bootstrap servers" VerticalAlignment="Center" Classes="muted" />
-            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding NewBootstrapServers}" Watermark="host:9092,host2:9092" />
+	<!-- Security settings are needed rarely, so they stay collapsed. -->
+	<Expander Grid.Row="1" Header="Security — SASL / SSL" Margin="0,4,0,0">
+	  <Border Classes="toolbar" Margin="0,4,0,0">
+		<Grid ColumnDefinitions="Auto,*,Auto,*,Auto,*,Auto,*">
+		  <TextBlock Grid.Column="0" Text="Protocol" Classes="muted" />
+		  <ComboBox Grid.Column="1" ItemsSource="{Binding SecurityProtocolOptions}"
+					SelectedItem="{Binding NewSecurityProtocol}" HorizontalAlignment="Stretch" />
+		  <TextBlock Grid.Column="2" Text="Mechanism" Classes="muted" />
+		  <ComboBox Grid.Column="3" ItemsSource="{Binding SaslMechanismOptions}"
+					SelectedItem="{Binding NewSaslMechanism}" HorizontalAlignment="Stretch" />
+		  <TextBlock Grid.Column="4" Text="Username" Classes="muted" />
+		  <TextBox Grid.Column="5" Text="{Binding NewSaslUsername}" Watermark="optional" />
+		  <TextBlock Grid.Column="6" Text="Password" Classes="muted" />
+		  <TextBox Grid.Column="7" Text="{Binding NewSaslPassword}" Watermark="optional" PasswordChar="*" />
+		</Grid>
+	  </Border>
+	</Expander>
 
-            <TextBlock Grid.Row="2" Grid.Column="0" Text="Security" VerticalAlignment="Center" Classes="muted" />
-            <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding SecurityProtocolOptions}"
-                      SelectedItem="{Binding NewSecurityProtocol}" HorizontalAlignment="Stretch" />
-
-            <TextBlock Grid.Row="3" Grid.Column="0" Text="SASL mechanism" VerticalAlignment="Center" Classes="muted" />
-            <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding SaslMechanismOptions}"
-                      SelectedItem="{Binding NewSaslMechanism}" HorizontalAlignment="Stretch" />
-
-            <TextBlock Grid.Row="4" Grid.Column="0" Text="SASL username" VerticalAlignment="Center" Classes="muted" />
-            <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding NewSaslUsername}" Watermark="optional" />
-
-            <TextBlock Grid.Row="5" Grid.Column="0" Text="SASL password" VerticalAlignment="Center" Classes="muted" />
-            <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding NewSaslPassword}" Watermark="optional" PasswordChar="*" />
-          </Grid>
-
-          <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,8,0,0">
-            <Button Content="Connect" Classes="primary" Command="{Binding AddConnectionCommand}" />
-            <Button Content="Add demo (in-memory) connection" Command="{Binding AddDemoConnectionCommand}" />
-          </StackPanel>
-
-          <TextBlock Text="{Binding StatusMessage}" Classes="muted" TextWrapping="Wrap" />
-        </StackPanel>
-      </Border>
-
-      <ItemsControl Name="ConnectionsList" ItemsSource="{Binding Connections}">
-        <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="vm:ConnectionRowViewModel">
-            <Border Classes="card" Margin="0,0,0,10">
-              <Grid ColumnDefinitions="*,Auto,Auto,Auto">
-                <StackPanel Grid.Column="0" Spacing="2">
-                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="White" />
-                  <TextBlock Text="{Binding BootstrapServers}" Classes="muted" />
-                </StackPanel>
-                <TextBlock Grid.Column="1" Text="{Binding Status}" Classes="muted" VerticalAlignment="Center" Margin="0,0,12,0" />
-                <Button Grid.Column="2" Content="Test"
-                        Command="{Binding #ConnectionsList.DataContext.TestConnectionCommand}"
-                        CommandParameter="{Binding}" Margin="0,0,8,0" />
-                <Button Grid.Column="3" Content="Remove"
-                        Command="{Binding #ConnectionsList.DataContext.RemoveConnectionCommand}"
-                        CommandParameter="{Binding}" />
-              </Grid>
-            </Border>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
-
-    </StackPanel>
-  </ScrollViewer>
-
+	<!-- Data area fills everything else. -->
+	<Border Grid.Row="2" Classes="pane" Margin="0,6,0,0">
+	  <DockPanel>
+		<TextBlock DockPanel.Dock="Top" Classes="paneTitle" Margin="0,0,0,6">
+		  <Run Text="Connections" /><Run Text=" " /><Run Text="{Binding Connections.Count}" Foreground="{DynamicResource MutedTextBrush}" />
+		</TextBlock>
+		<ScrollViewer>
+		  <ItemsControl Name="ConnectionsList" ItemsSource="{Binding Connections}">
+			<ItemsControl.ItemTemplate>
+			  <DataTemplate x:DataType="vm:ConnectionRowViewModel">
+				<Border Classes="row">
+				  <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+					<StackPanel Grid.Column="0" Spacing="1">
+					  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="White" FontSize="12" />
+					  <TextBlock Text="{Binding BootstrapServers}" Classes="muted" />
+					</StackPanel>
+					<TextBlock Grid.Column="1" Text="{Binding Status}" Classes="muted" VerticalAlignment="Center" Margin="0,0,12,0" />
+					<Button Grid.Column="2" Content="Test" Padding="8,2" Margin="0,0,6,0"
+							Command="{Binding #ConnectionsList.DataContext.TestConnectionCommand}"
+							CommandParameter="{Binding}" />
+					<Button Grid.Column="3" Content="Remove" Padding="8,2"
+							Command="{Binding #ConnectionsList.DataContext.RemoveConnectionCommand}"
+							CommandParameter="{Binding}" />
+				  </Grid>
+				</Border>
+			  </DataTemplate>
+			</ItemsControl.ItemTemplate>
+		  </ItemsControl>
+		</ScrollViewer>
+	  </DockPanel>
+	</Border>
+  </Grid>
 </UserControl>

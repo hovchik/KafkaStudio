@@ -6,7 +6,7 @@
         Title="KafkaStudio"
         Icon="/Assets/app.ico"
         Width="1280" Height="800"
-        MinWidth="960" MinHeight="600"
+        MinWidth="1360" MinHeight="640"
         Background="{DynamicResource AppBackgroundBrush}">
 
   <Grid>

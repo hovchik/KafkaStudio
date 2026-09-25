@@ -1,67 +1,69 @@
 <UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:KafkaStudio.App.ViewModels.Rethrow"
-             x:Class="KafkaStudio.App.Views.Rethrow.RethrowRulesView"
-             x:DataType="vm:RethrowRulesViewModel">
+			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+			 xmlns:vm="using:KafkaStudio.App.ViewModels.Rethrow"
+			 x:Class="KafkaStudio.App.Views.Rethrow.RethrowRulesView"
+			 x:DataType="vm:RethrowRulesViewModel">
 
-  <ScrollViewer>
-    <StackPanel Spacing="20" MaxWidth="900" HorizontalAlignment="Left">
+  <Grid RowDefinitions="Auto,*">
 
-      <TextBlock Text="Rethrow rules" Classes="h1" Foreground="White" />
-      <TextBlock Classes="muted" TextWrapping="Wrap"
-                 Text="Continuously relay messages from one topic to another. This is the always-on version of a KafScript 'watch / message arrives / rethrow' scenario." />
+	<!-- Single-line toolbar: define source -> destination and add the rule. -->
+	<Border Grid.Row="0" Classes="toolbar">
+	  <Grid ColumnDefinitions="*,Auto,Auto,*,Auto,Auto,*,Auto,Auto,*">
+		<TextBox Grid.Column="0" MinWidth="110" Text="{Binding NewName}" Watermark="rule name" />
 
-      <Border Classes="card">
-        <StackPanel Spacing="10">
-          <TextBlock Text="New rule" FontWeight="SemiBold" Foreground="White" />
-          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="Name" VerticalAlignment="Center" Classes="muted" />
-            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding NewName}" Watermark="confirmed-only" />
+		<Border Grid.Column="1" Classes="sep" />
 
-            <TextBlock Grid.Row="1" Grid.Column="0" Text="Source" VerticalAlignment="Center" Classes="muted" />
-            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8">
-              <ComboBox ItemsSource="{Binding ConnectionNames}" SelectedItem="{Binding NewSourceConnection}" Width="180" />
-              <TextBox Text="{Binding NewSourceTopic}" Watermark="source topic" Width="220" />
-            </StackPanel>
+		<ComboBox Grid.Column="2" Width="150" ItemsSource="{Binding ConnectionNames}"
+				  SelectedItem="{Binding NewSourceConnection}" ToolTip.Tip="Source connection" />
+		<TextBox Grid.Column="3" MinWidth="120" Text="{Binding NewSourceTopic}" Watermark="source topic" />
 
-            <TextBlock Grid.Row="2" Grid.Column="0" Text="Destination" VerticalAlignment="Center" Classes="muted" />
-            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="8">
-              <ComboBox ItemsSource="{Binding ConnectionNames}" SelectedItem="{Binding NewDestinationConnection}" Width="180" />
-              <TextBox Text="{Binding NewDestinationTopic}" Watermark="destination topic" Width="220" />
-            </StackPanel>
-          </Grid>
-          <Button Content="Add rule" Classes="primary" Command="{Binding AddRuleCommand}" HorizontalAlignment="Left" />
-          <TextBlock Text="{Binding StatusMessage}" Classes="muted" />
-        </StackPanel>
-      </Border>
+		<TextBlock Grid.Column="4" Text="→" Foreground="White" />
 
-      <ItemsControl Name="RulesList" ItemsSource="{Binding Rules}">
-        <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="vm:RethrowRuleRowViewModel">
-            <Border Classes="card" Margin="0,0,0,10">
-              <Grid ColumnDefinitions="*,Auto,Auto,Auto" RowDefinitions="Auto,Auto">
-                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="2">
-                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="White" />
-                  <TextBlock Text="{Binding Description}" Classes="muted" />
-                </StackPanel>
-                <TextBlock Grid.Row="0" Grid.Column="1" Classes="muted" VerticalAlignment="Center" Margin="0,0,12,0">
-                  <Run Text="relayed: " /><Run Text="{Binding RelayedCount}" />
-                </TextBlock>
-                <Button Grid.Row="0" Grid.Column="2" Content="Start"
-                        Command="{Binding #RulesList.DataContext.StartCommand}" CommandParameter="{Binding}"
-                        IsEnabled="{Binding !IsRunning}" Margin="0,0,8,0" />
-                <Button Grid.Row="0" Grid.Column="3" Content="Stop"
-                        Command="{Binding #RulesList.DataContext.StopCommand}" CommandParameter="{Binding}"
-                        IsEnabled="{Binding IsRunning}" />
-                <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4" Text="{Binding LastError}"
-                           Classes="status-failed" TextWrapping="Wrap" Margin="0,8,0,0" />
-              </Grid>
-            </Border>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
+		<ComboBox Grid.Column="5" Width="150" ItemsSource="{Binding ConnectionNames}"
+				  SelectedItem="{Binding NewDestinationConnection}" ToolTip.Tip="Destination connection" />
+		<TextBox Grid.Column="6" MinWidth="120" Text="{Binding NewDestinationTopic}" Watermark="destination topic" />
 
-    </StackPanel>
-  </ScrollViewer>
+		<Border Grid.Column="7" Classes="sep" />
 
+		<Button Grid.Column="8" Content="Add rule" Classes="primary" Command="{Binding AddRuleCommand}" />
+		<TextBlock Grid.Column="9" Classes="muted" Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
+	  </Grid>
+	</Border>
+
+	<!-- Data area fills everything else. -->
+	<Border Grid.Row="1" Classes="pane" Margin="0,6,0,0">
+	  <DockPanel>
+		<TextBlock DockPanel.Dock="Top" Classes="paneTitle" Margin="0,0,0,6">
+		  <Run Text="Rules" /><Run Text=" " /><Run Text="{Binding Rules.Count}" Foreground="{DynamicResource MutedTextBrush}" />
+		</TextBlock>
+		<ScrollViewer>
+		  <ItemsControl Name="RulesList" ItemsSource="{Binding Rules}">
+			<ItemsControl.ItemTemplate>
+			  <DataTemplate x:DataType="vm:RethrowRuleRowViewModel">
+				<Border Classes="row">
+				  <Grid ColumnDefinitions="*,Auto,Auto,Auto" RowDefinitions="Auto,Auto">
+					<StackPanel Grid.Row="0" Grid.Column="0" Spacing="1">
+					  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="White" FontSize="12" />
+					  <TextBlock Text="{Binding Description}" Classes="muted" />
+					</StackPanel>
+					<TextBlock Grid.Row="0" Grid.Column="1" Classes="muted" VerticalAlignment="Center" Margin="0,0,12,0">
+					  <Run Text="relayed: " /><Run Text="{Binding RelayedCount}" />
+					</TextBlock>
+					<Button Grid.Row="0" Grid.Column="2" Content="Start" Padding="8,2" Margin="0,0,6,0"
+							Command="{Binding #RulesList.DataContext.StartCommand}" CommandParameter="{Binding}"
+							IsEnabled="{Binding !IsRunning}" />
+					<Button Grid.Row="0" Grid.Column="3" Content="Stop" Padding="8,2"
+							Command="{Binding #RulesList.DataContext.StopCommand}" CommandParameter="{Binding}"
+							IsEnabled="{Binding IsRunning}" />
+					<TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4" Text="{Binding LastError}"
+							   Classes="status-failed" TextWrapping="Wrap" Margin="0,6,0,0" />
+				  </Grid>
+				</Border>
+			  </DataTemplate>
+			</ItemsControl.ItemTemplate>
+		  </ItemsControl>
+		</ScrollViewer>
+	  </DockPanel>
+	</Border>
+  </Grid>
 </UserControl>
