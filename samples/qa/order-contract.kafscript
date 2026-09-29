@@ -1,0 +1,42 @@
+# Contract tests: every message a producer puts on "orders" must match the agreed schema
+# (contracts/order-event.schema.json), plus the negative checks a QA pack needs.
+#
+# Run the whole pack headlessly (e.g. in CI) against the in-memory demo broker:
+#   kafkastudio test samples/qa --demo local --junit reports/junit.xml --html reports/report.html
+# ...or against a real cluster:
+#   kafkastudio test samples/qa -c local=localhost:9092 --tags "@contract"
+
+@orders
+Feature: Order event contract
+
+Background:
+Given use connection "local"
+Given set variable orderId to "ORD-{{$randomInt(1000,9999)}}"
+
+@smoke @contract
+Scenario: A new order event matches the contract
+When produce message to topic "orders" key "{{orderId}}" value """
+{ "orderId": "{{orderId}}", "status": "NEW", "amount": 42.50, "currency": "EUR",
+  "createdAt": "{{$now}}", "lines": [ { "sku": "SKU-1", "qty": 2 } ] }
+"""
+Then validate last message against schema file "contracts/order-event.schema.json"
+And assert last message where key equals "{{orderId}}" and json "$.amount" greater than "0"
+
+@contract
+Scenario: Every order currently on the topic matches the contract
+When produce 5 messages to topic "orders-contract" key "ORD-{{$index}}" value """
+{ "orderId": "ORD-{{$index}}", "status": "{{$pick(NEW,CONFIRMED,SHIPPED)}}", "amount": {{$randomDecimal(1,500)}},
+  "currency": "{{$pick(EUR,USD,GBP)}}", "createdAt": "{{$now(-1h)}}" }
+"""
+Then scan topic "orders-contract" from beginning limit 1000
+And validate each scanned message against schema file "contracts/order-event.schema.json"
+
+@negative
+Scenario: A cancelled order carries a reason header and no shipment
+Given watch topic "shipments" from now
+When produce message to topic "orders" key "{{orderId}}" value """
+{ "orderId": "{{orderId}}", "status": "CANCELLED", "amount": 10, "currency": "USD", "createdAt": "{{$now}}" }
+""" header "cancel-reason" to "customer-request"
+Then assert last message where header "cancel-reason" exists and json "$.lines" not exists
+# Nothing may be shipped for a cancelled order.
+And expect no message on topic "shipments" within 2 seconds where key equals "{{orderId}}"

@@ -12,6 +12,9 @@ namespace KafkaStudio.Tests.Suites;
 /// <summary>JSON Schema validation/inference, tag filters, the test suite runner and its reports.</summary>
 public static class QaEngineTests
 {
+    private static IKafkaGateway NoRealKafka(KafkaStudio.Core.Connections.ConnectionProfile profile) =>
+        throw new InvalidOperationException("tests never use a real cluster");
+
     public static void Register(TestRunner runner)
     {
         // ------------------------------------------------------------------ JSON Schema ----
@@ -240,6 +243,119 @@ public static class QaEngineTests
             var report = await new TestSuiteRunner(connections).RunAsync(cases,
                 new TestRunOptions { Variables = new Dictionary<string, string> { ["env"] = "staging" } });
             Assert.True(report.Success, report.Results[0].Message ?? "");
+        });
+
+        // ------------------------------------------------------------------ CLI ----
+
+        runner.Add("QA engine: CLI", "arguments parse, and bad ones are usage errors", async () =>
+        {
+            var parsed = TestCommand.Parse(new[]
+            {
+                "tests", "more.kafscript", "-c", "local=localhost:9092", "--demo", "sim", "-t", "@smoke and not @wip",
+                "-v", "env=staging", "--var", "url=http://x?a=b", "--retries", "2", "--fail-fast", "--timeout", "90s",
+                "--junit", "out/j.xml", "-q"
+            });
+            Assert.Equal("tests,more.kafscript", string.Join(",", parsed.Paths));
+            Assert.Equal("localhost:9092", parsed.Connections["local"]);
+            Assert.Equal("sim", parsed.DemoConnections.Single());
+            Assert.Equal("http://x?a=b", parsed.Variables["url"]);
+            Assert.Equal(TimeSpan.FromSeconds(90), parsed.Timeout);
+            Assert.Equal(2, parsed.Retries);
+            Assert.True(parsed.FailFast && parsed.Quiet);
+
+            Assert.Throws<FormatException>(() => TestCommand.Parse(Array.Empty<string>()));
+            Assert.Throws<FormatException>(() => TestCommand.Parse(new[] { "x", "--retries", "many" }));
+            Assert.Throws<FormatException>(() => TestCommand.Parse(new[] { "x", "-c", "noequals" }));
+            Assert.Throws<FormatException>(() => TestCommand.Parse(new[] { "x", "--timeout", "soon" }));
+            Assert.Throws<FormatException>(() => TestCommand.Parse(new[] { "x", "--junit" }));
+
+            var err = new StringWriter();
+            var code = await new TestCommand(new StringWriter(), err, NoRealKafka).RunAsync(new[] { "x", "--frob" });
+            Assert.Equal(TestCommand.ExitUsage, code);
+            Assert.Contains("unknown option '--frob'", err.ToString());
+            code = await new TestCommand(new StringWriter(), err, NoRealKafka).RunAsync(new[] { "x", "-t", "@a and" });
+            Assert.Equal(TestCommand.ExitUsage, code);
+        });
+
+        runner.Add("QA engine: CLI", "runs a folder against a demo cluster, writes reports and returns the exit code", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), $"ks-cli-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(Path.Combine(dir, "suite"));
+            try
+            {
+                await File.WriteAllTextAsync(Path.Combine(dir, "suite", "a.kafscript"), """
+                    @smoke
+                    Scenario: Passes
+                    Given use connection "sim"
+                    When produce message to topic "t" value "{{env}}"
+                    Then assert last message where value equals "staging"
+
+                    Scenario: Fails
+                    Given use connection "sim"
+                    When produce message to topic "t" value "x"
+                    Then assert last message where value equals "y"
+                    """);
+
+                var output = new StringWriter();
+                var junit = Path.Combine(dir, "reports", "junit.xml");
+                var code = await new TestCommand(output, new StringWriter(), NoRealKafka).RunAsync(new[]
+                {
+                    Path.Combine(dir, "suite"), "--demo", "sim", "-v", "env=staging", "--junit", junit,
+                    "--html", Path.Combine(dir, "reports", "r.html"), "--markdown", Path.Combine(dir, "reports", "r.md")
+                });
+                Assert.Equal(TestCommand.ExitFailed, code, output.ToString());
+                Assert.Contains("PASS  Passes", output.ToString());
+                Assert.Contains("FAIL  Fails", output.ToString());
+                Assert.Contains("expected value equals \"y\", but it was \"x\"", output.ToString());
+                Assert.True(File.Exists(junit) && File.Exists(Path.Combine(dir, "reports", "r.html")) && File.Exists(Path.Combine(dir, "reports", "r.md")));
+                Assert.Equal("2", XDocument.Load(junit).Root!.Attribute("tests")!.Value);
+
+                code = await new TestCommand(new StringWriter(), new StringWriter(), NoRealKafka)
+                    .RunAsync(new[] { Path.Combine(dir, "suite"), "--demo", "sim", "-v", "env=staging", "-t", "@smoke" });
+                Assert.Equal(TestCommand.ExitPassed, code);
+
+                code = await new TestCommand(new StringWriter(), new StringWriter(), NoRealKafka)
+                    .RunAsync(new[] { Path.Combine(dir, "suite"), "--demo", "sim", "-t", "@none" });
+                Assert.Equal(TestCommand.ExitNoTests, code);
+
+                var list = new StringWriter();
+                code = await new TestCommand(list, new StringWriter(), NoRealKafka).RunAsync(new[] { Path.Combine(dir, "suite"), "--list" });
+                Assert.Equal(TestCommand.ExitPassed, code);
+                Assert.Contains("a.kafscript:2  Passes  @smoke", list.ToString());
+            }
+            finally
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+        });
+
+        runner.Add("QA engine: CLI", "a connections file expands ${ENV} secrets and rejects unset ones", () =>
+        {
+            var file = Path.Combine(Path.GetTempPath(), $"ks-conn-{Guid.NewGuid():N}.json");
+            try
+            {
+                Environment.SetEnvironmentVariable("KS_TEST_SECRET", "p\"ss");
+                File.WriteAllText(file, """
+                    [ // comments are fine
+                      { "name": "staging", "bootstrapServers": "kafka:9093", "securityProtocol": "SaslSsl",
+                        "saslMechanism": "ScramSha512", "saslUsername": "qa", "saslPassword": "${KS_TEST_SECRET}" },
+                    ]
+                    """);
+                var profile = TestCommand.LoadConnectionsFile(file).Single();
+                Assert.Equal("p\"ss", profile.SaslPassword);
+                Assert.Equal(KafkaStudio.Core.Connections.SecurityProtocolKind.SaslSsl, profile.SecurityProtocol);
+
+                File.WriteAllText(file, """{ "name": "x", "bootstrapServers": "k:1", "saslPassword": "${KS_TEST_UNSET_VAR}" }""");
+                Assert.Throws<InvalidOperationException>(() => TestCommand.LoadConnectionsFile(file));
+                File.WriteAllText(file, """[ { "name": "x" } ]""");
+                Assert.Throws<InvalidOperationException>(() => TestCommand.LoadConnectionsFile(file));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("KS_TEST_SECRET", null);
+                File.Delete(file);
+            }
+            return Task.CompletedTask;
         });
 
         // ------------------------------------------------------------------ reports ----

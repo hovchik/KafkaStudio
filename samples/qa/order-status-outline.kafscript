@@ -1,0 +1,24 @@
+# Data-driven tests: one Scenario Outline, one run per Examples row. <column> placeholders are
+# replaced inside quoted values, and can stand alone where a number/word goes ("within <wait> seconds").
+# Each row shows up as its own test in the Test Runner and in JUnit/HTML reports.
+
+@orders @regression
+Scenario Outline: Order status <status> is relayed to the audit topic
+Given use connection "local"
+Given watch topic "orders-audit" from now
+When produce message to topic "orders" key "<orderId>" value "{ \"orderId\": \"<orderId>\", \"status\": \"<status>\" }"
+# In a real system another service does this relay; here the script plays that part, so the sample
+# runs standalone against the demo broker.
+And rethrow last message to topic "orders-audit" with key same header "audited" to "true"
+Then expect message on topic "orders-audit" within <wait> seconds where key equals "<orderId>" and json "$.status" equals "<status>"
+And assert last message where header "audited" equals "true"
+
+Examples: order lifecycle
+| orderId  | status    | wait |
+| ORD-1001 | NEW       | 5    |
+| ORD-1002 | CONFIRMED | 5    |
+| ORD-1003 | SHIPPED   | 5    |
+
+Examples: edge cases
+| orderId  | status    | wait |
+| ORD-1004 | CANCELLED | 2    |
