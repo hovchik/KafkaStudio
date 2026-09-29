@@ -212,7 +212,7 @@ public sealed class ConsumerViewModel : ObservableObject
             StartPosition = FromBeginning ? ConsumeStartPosition.Earliest : ConsumeStartPosition.Latest,
             OnReady = () => _state.PostToUi(() =>
             {
-                if (generation == _watchGeneration && IsWatching) StatusMessage = $"Watching '{topic}' - waiting for messages...";
+                if (generation == _watchGeneration && IsWatching) StatusMessage = $"Watching '{topic}'.";
             })
         };
 

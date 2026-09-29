@@ -42,8 +42,12 @@ A `Task` block may have one `schedule` line right after its name:
 | Form                     | Meaning                                              |
 |--------------------------|-------------------------------------------------------|
 | `schedule run once`      | Runs once when registered, never again automatically. |
-| `schedule every 5 minutes` | Re-runs on that interval (units: `ms`, `seconds`, `minutes`, `hours`). |
-| `schedule at 9:30`       | Runs once a day at that time (24h clock).             |
+| `schedule every 5 minutes` | Re-runs on that interval (units: `ms`, `seconds`, `minutes`, `hours`; at least 1 second). |
+| `schedule at 9:30`       | Runs once a day at that time - 24h clock, **local time** of the machine running KafkaStudio. |
+
+A task never overlaps with itself: if a run is still going when the next one is due, that tick is
+skipped. Tasks registered on the Tasks screen are saved and re-registered when the app starts (a
+`run once` task is restored paused, so it doesn't fire again on every start).
 
 A `Scenario` block never has a schedule - it's meant to be run on demand (from the Script Editor's "Run
 all", or as part of a Task via the automation scheduler if you want a scheduled check instead of a
@@ -61,6 +65,18 @@ scheduled action).
 - `{{name}}` inside any string is replaced at run time with a variable's value (see `set variable` and
   `capture` below). An unset variable is left as literal text (`{{name}}`) rather than failing, so you
   can spot a typo immediately in the output.
+- Built-in dynamic values, evaluated fresh at every occurrence (so two `{{$uuid}}` in one step give two
+  different ids - `set variable id to "{{$uuid}}"` first if you need the same one twice):
+
+  | Placeholder      | Value                                    |
+  |------------------|------------------------------------------|
+  | `{{$uuid}}`      | a new random GUID                        |
+  | `{{$now}}`       | current UTC time, ISO 8601               |
+  | `{{$timestamp}}` | current Unix time in milliseconds        |
+  | `{{$date}}`      | current UTC date, `yyyy-MM-dd`           |
+  | `{{$random}}`    | a random non-negative integer            |
+
+  The same built-ins work in the Produce screen's key, value and header fields.
 - Every step must fit on one line (aside from a doc-string's own internal newlines) - there's no line
   continuation syntax. If a step reads long, that's fine; KafScript favours simple, unambiguous parsing
   over line wrapping.
@@ -90,8 +106,8 @@ When produce message to topic "orders" header "trace-id" to "{{traceId}}" header
 ### `watch topic "T" from beginning|end|now`
 
 Opens a live subscription on a topic *immediately* - this step doesn't return until the subscription is
-actually registered, which is what makes it safe to follow with a `produce` step and not miss the
-message it's watching for. `beginning` replays the topic's full history first; `end`/`now` (equivalent)
+live (the connection reports that its read positions are pinned), which is what makes it safe to follow
+with a `produce` step and not miss the message it's watching for, against a real cluster too. `beginning` replays the topic's full history first; `end`/`now` (equivalent)
 only see messages produced from this point on.
 
 ```
@@ -132,8 +148,9 @@ When a message arrives on topic "orders" within 10 seconds where json "$.status"
 
 Republishes the most recently seen message (from `produce`, `expect`, or `message arrives`) to a
 different topic - the **rethrow** capability. `with key same` keeps the source message's key; give a
-literal key instead if you want to change it. Existing headers on the source message are not carried
-over automatically - list any you want with `header ... to ...`.
+literal key instead if you want to change it (without `with key`, the relayed message has no key). The
+value is relayed byte-for-byte (binary payloads such as Avro/Protobuf survive intact), and the source
+message's headers are carried over; `header ... to ...` adds or overrides individual headers.
 
 ```
 Then rethrow last message to topic "orders-fulfillment" with key same header "relayed-by" to "kafka-studio"
@@ -143,15 +160,23 @@ For a rethrow that runs continuously in the background rather than once per scri
 **Rethrow Rules** screen in the app (backed by `KafkaStudio.Automation.Rethrow.RethrowEngine`) instead -
 same idea, always-on.
 
-### `scan topic "T" from beginning|end [limit N]`
+### `scan topic "T" from beginning|end|committed [group "G"] [limit N]`
 
 Bulk-reads a topic's backlog into the scenario's "scanned messages" list - the **scan and acknowledge**
-capability. Unlike `watch`, this is meant to be a bounded read: it stops once it hits `limit` (if given)
-or once no new message has arrived for a few seconds (treated as "caught up to the end of the backlog").
+capability. Unlike `watch`, this is a bounded read: it stops at `limit` (if given) or once it has read
+everything that was on the topic when the scan started.
+
+By default every scan uses a throwaway consumer group, so acknowledging only matters within that run.
+Pin a group with `group "G"` to make acknowledgements stick, and use `from committed` to resume after
+the last acknowledged message - that's how a recurring "sweep the DLQ" task processes each message once:
 
 ```
 Then scan topic "orders-dlq" from beginning limit 500
+Then scan topic "orders-dlq" from committed group "dlq-sweeper" limit 500
+And acknowledge each scanned message
 ```
+
+`from committed` requires `group`; for a group that has never committed, it starts from the beginning.
 
 ### `acknowledge last message` / `acknowledge each scanned message`
 
@@ -208,6 +233,8 @@ rule filters. Each condition is `<field> <comparator> "<expected>"`, chained wit
 - **Field**: `key`, `value`, or `json "$.path"` (reads a field out of the message value, which is
   assumed to be JSON when `json` is used).
 - **Comparator**: `equals`, `contains` (substring), `matches` (regular expression), or `not equals`.
+  Regular expressions are checked when the script is parsed (unless they contain `{{variables}}`) and
+  are evaluated with a 1-second timeout, so a pathological pattern fails clearly instead of hanging.
 
 ```
 where key equals "{{orderId}}" and json "$.status" equals "NOTIFIED"
@@ -216,7 +243,9 @@ where key equals "{{orderId}}" and json "$.status" equals "NOTIFIED"
 ### A note on the JSON path subset
 
 `json "$.path"` supports plain dotted field access and array indexing - `$.status`, `$.order.id`,
-`$.items[0].sku` - which covers the large majority of real message-shape checks. It does **not**
+`$.items[0].sku` - plus negative indexes counting from the end (`$.items[-1]`) and bracket-quoted names
+for keys containing dots or spaces (`$['order.id']`, `$["line items"][0]`). That covers the large
+majority of real message-shape checks. A malformed path is reported when the script is parsed. It does **not**
 support JSONPath wildcards, filters, or recursive descent (`$..foo`, `$.items[*]`, `$.items[?(...)]`).
 If a path doesn't resolve (missing field, out-of-range index, or the value isn't valid JSON at all), it
 evaluates to "not found" rather than throwing, which shows up as a normal condition/assertion failure

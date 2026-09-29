@@ -59,8 +59,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// <summary>"3 connections" / "no connections" - shown on the Connections button.</summary>
     public string ConnectionsSummary => State.ConnectionProfiles.Count switch
     {
-        0 => "Connections - none yet",
-        1 => "Connections (1)",
+        0 => "Connections",
         var n => $"Connections ({n})"
     };
 

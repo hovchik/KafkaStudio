@@ -29,6 +29,11 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.1.3" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.1.3" />
     <PackageReference Include="Avalonia.Diagnostics" Version="11.1.3" Condition="'$(Configuration)' == 'Debug'" />
+    <!-- Windows DPAPI, used to encrypt saved SASL passwords (see DpapiSecretProtector in App.axaml.cs). -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
+    <!-- Avalonia 11.1.3 pulls in Tmds.DBus.Protocol 0.16.0 (Linux desktop integration), which has a known
+         high-severity advisory (GHSA-xrw6-gwf8-vvr9). Pin the patched version. -->
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3" />
   </ItemGroup>
 
   <ItemGroup>

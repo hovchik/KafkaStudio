@@ -283,14 +283,13 @@ public sealed class ScriptEditorViewModel : ObservableObject
         try
         {
             // Snapshot: connections added/removed mid-run don't affect this run.
-            var runner = new ScriptRunner(new Dictionary<string, Core.Abstractions.IKafkaGateway>(_state.Connections));
-            runner.StepCompleted += step => _state.PostToUi(() => StepResults.Add(ToRow(step, sourceLines)));
+            var connections = new Dictionary<string, Core.Abstractions.IKafkaGateway>(_state.Connections);
 
             foreach (var block in document.Blocks)
             {
                 if (cts.IsCancellationRequested) break;
 
-                StepResults.Add(new StepResultRowViewModel
+                var header = new StepResultRowViewModel
                 {
                     Keyword = block.Kind.ToString(),
                     Description = block.Name,
@@ -299,11 +298,32 @@ public sealed class ScriptEditorViewModel : ObservableObject
                     BlockName = block.Name,
                     Line = block.Line,
                     IsBlockHeader = true
+                };
+                StepResults.Add(header);
+
+                // Rows stream in live from the runner's thread. Each block owns its rows (inserted right
+                // after its own header), and once the block finishes they're replaced with the
+                // authoritative result - so a late-arriving UI post can never land under the wrong
+                // block or go missing.
+                var blockRows = new List<StepResultRowViewModel>();
+                var blockDone = false;
+                var runner = new ScriptRunner(connections);
+                runner.StepCompleted += step => _state.PostToUi(() =>
+                {
+                    if (blockDone) return;
+                    var row = ToRow(step, sourceLines);
+                    var at = StepResults.IndexOf(header) + 1 + blockRows.Count;
+                    if (at <= 0) return;
+                    StepResults.Insert(Math.Min(at, StepResults.Count), row);
+                    blockRows.Add(row);
                 });
 
-                // The runner executes on a background thread (ConfigureAwait(false) inside), so step
-                // rows arrive through PostToUi.
                 var result = await Task.Run(() => runner.RunAsync(block, cts.Token)).ConfigureAwait(true);
+                blockDone = true;
+                foreach (var row in blockRows) StepResults.Remove(row);
+                var insertAt = StepResults.IndexOf(header) + 1;
+                foreach (var step in result.Steps) StepResults.Insert(insertAt++, ToRow(step, sourceLines));
+
                 _state.RunHistory.Add(block.Name, DateTimeOffset.Now, result);
 
                 if (result.Cancelled) cancelled = true;
