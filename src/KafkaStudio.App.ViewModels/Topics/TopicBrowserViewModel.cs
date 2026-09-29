@@ -3,6 +3,7 @@ using KafkaStudio.App.ViewModels.Mvvm;
 using KafkaStudio.App.ViewModels.Shared;
 using KafkaStudio.Core.Messaging;
 using KafkaStudio.Core.Topics;
+using KafkaStudio.Search;
 
 namespace KafkaStudio.App.ViewModels.Topics;
 
@@ -45,6 +46,9 @@ public sealed class ComparisonEntry
 {
     public required string Topic { get; init; }
     public required KafkaMessage Message { get; init; }
+
+    /// <summary>"topic #p@o key" - how the entry is named in the diff side pickers.</summary>
+    public string Label => $"{Topic} #{Message.Partition}@{Message.Offset}{(Message.Key is null ? "" : "  " + Message.Key)}";
 }
 
 /// <summary>Lists topics for the selected connection and lets you browse a topic's messages (newest
@@ -184,7 +188,9 @@ public sealed class TopicBrowserViewModel : ObservableObject
     // ------------------------------------------------------------------ messages ----
 
     private string? _messageFilter;
-    /// <summary>Case-insensitive "contains" search over key, value and headers of the loaded messages.</summary>
+    /// <summary>Filter over the loaded messages: plain text is a case-insensitive "contains" over key,
+    /// value and headers; a structured query (<c>$.status = FAILED and key starts with ORD-</c>, see
+    /// <see cref="MessageQuery"/>) filters on fields.</summary>
     public string? MessageFilter
     {
         get => _messageFilter;
@@ -193,6 +199,10 @@ public sealed class TopicBrowserViewModel : ObservableObject
             if (SetProperty(ref _messageFilter, value)) ApplyMessageFilter();
         }
     }
+
+    private string? _messageFilterError;
+    /// <summary>Why <see cref="MessageFilter"/> couldn't be parsed (null when it's fine).</summary>
+    public string? MessageFilterError { get => _messageFilterError; private set => SetProperty(ref _messageFilterError, value); }
 
     private KafkaMessage? _selectedMessage;
     /// <summary>The message shown in the detail pane.</summary>
@@ -336,6 +346,11 @@ public sealed class TopicBrowserViewModel : ObservableObject
     public RelayCommand AddSelectedToComparisonCommand { get; }
     public RelayCommand<ComparisonEntry> RemoveFromComparisonCommand { get; }
     public RelayCommand ClearComparisonCommand { get; }
+    public RelayCommand ToggleDiffCommand { get; }
+    public RelayCommand SwapDiffSidesCommand { get; }
+    public AsyncRelayCommand ExportMessagesCsvCommand { get; }
+    public AsyncRelayCommand ExportSearchResultsCommand { get; }
+    public AsyncRelayCommand ExportSearchResultsCsvCommand { get; }
     public AsyncRelayCommand RefreshTopicsCommand { get; }
     public AsyncRelayCommand ScanCommand { get; }
     public RelayCommand CancelLoadCommand { get; }
@@ -366,6 +381,12 @@ public sealed class TopicBrowserViewModel : ObservableObject
         OpenGlobalSearchHitCommand = new AsyncRelayCommand<GlobalSearchHit>(OpenGlobalSearchHitAsync, allowConcurrentExecutions: true);
         ExportMessagesCommand = new AsyncRelayCommand(
             () => Actions.ExportAsync(ScannedMessages.ToList(), $"{MessageActions.SafeFileName(LoadedTopic ?? "messages")}.json"));
+        ExportMessagesCsvCommand = new AsyncRelayCommand(
+            () => Actions.ExportCsvAsync(ScannedMessages.ToList(), $"{MessageActions.SafeFileName(LoadedTopic ?? "messages")}.csv"));
+        ExportSearchResultsCommand = new AsyncRelayCommand(
+            () => Actions.ExportAsync(FilteredGlobalSearchResults.Select(h => h.Message).ToList(), "search-results.json"));
+        ExportSearchResultsCsvCommand = new AsyncRelayCommand(
+            () => Actions.ExportCsvAsync(FilteredGlobalSearchResults.Select(h => h.Message).ToList(), "search-results.csv"));
 
         GlobalSearchCommand = new AsyncRelayCommand(GlobalSearchAsync,
             () => SelectedConnection is not null && !IsGlobalSearching && !string.IsNullOrWhiteSpace(GlobalSearchTerm));
@@ -388,6 +409,10 @@ public sealed class TopicBrowserViewModel : ObservableObject
             () => SelectedMessage is not null);
         RemoveFromComparisonCommand = new RelayCommand<ComparisonEntry>(entry => { if (entry is not null) ComparisonMessages.Remove(entry); });
         ClearComparisonCommand = new RelayCommand(ComparisonMessages.Clear);
+        ToggleDiffCommand = new RelayCommand(() => IsDiffOpen = !IsDiffOpen, () => ComparisonMessages.Count >= 2);
+        SwapDiffSidesCommand = new RelayCommand(() => (DiffLeft, DiffRight) = (DiffRight, DiffLeft));
+        ComparisonMessages.CollectionChanged += (_, _) => OnComparisonChanged();
+        _state.SavedTopicSetsChanged += ReloadSavedTopicSets;
 
         ToggleCreateTopicCommand = new RelayCommand(() => IsCreateTopicOpen = !IsCreateTopicOpen);
         CreateTopicCommand = new AsyncRelayCommand(CreateTopicAsync,
@@ -473,6 +498,7 @@ public sealed class TopicBrowserViewModel : ObservableObject
         SavedTopicSets.Add(set);
         ReportSaveError(SavedTopicSetStore.Save(SavedTopicSets));
         SelectedSavedTopicSet = set;
+        _state.RaiseSavedTopicSetsChanged();
         NewTopicSetName = null;
         StatusMessage = $"Saved topic set '{name}' ({topics.Count} topic(s)).";
     }
@@ -484,9 +510,80 @@ public sealed class TopicBrowserViewModel : ObservableObject
         SelectedSavedTopicSet = null;
         SavedTopicSets.Remove(set);
         ReportSaveError(SavedTopicSetStore.Save(SavedTopicSets));
+        _state.RaiseSavedTopicSetsChanged();
     }
 
-    // ------------------------------------------------------------------ comparison ----
+    // ------------------------------------------------------------------ comparison & diff ----
+
+    /// <summary>Field-by-field differences between <see cref="DiffLeft"/> and <see cref="DiffRight"/>.</summary>
+    public ObservableCollection<DiffEntry> DiffRows { get; } = new();
+
+    private bool _isDiffOpen;
+    /// <summary>Shows the structural diff instead of the side-by-side cards.</summary>
+    public bool IsDiffOpen
+    {
+        get => _isDiffOpen;
+        set { if (SetProperty(ref _isDiffOpen, value)) RecomputeDiff(); }
+    }
+
+    private ComparisonEntry? _diffLeft;
+    public ComparisonEntry? DiffLeft { get => _diffLeft; set { if (SetProperty(ref _diffLeft, value)) RecomputeDiff(); } }
+
+    private ComparisonEntry? _diffRight;
+    public ComparisonEntry? DiffRight { get => _diffRight; set { if (SetProperty(ref _diffRight, value)) RecomputeDiff(); } }
+
+    private bool _diffIgnoreVolatile = true;
+    /// <summary>Hide fields expected to differ (timestamps, generated ids, trace ids).</summary>
+    public bool DiffIgnoreVolatile { get => _diffIgnoreVolatile; set { if (SetProperty(ref _diffIgnoreVolatile, value)) RecomputeDiff(); } }
+
+    private bool _diffShowUnchanged;
+    public bool DiffShowUnchanged { get => _diffShowUnchanged; set { if (SetProperty(ref _diffShowUnchanged, value)) RecomputeDiff(); } }
+
+    private string? _diffIgnorePaths;
+    /// <summary>Comma separated paths (or prefixes) to leave out of the diff, e.g. <c>$.meta, headers.trace-id</c>.</summary>
+    public string? DiffIgnorePaths { get => _diffIgnorePaths; set { if (SetProperty(ref _diffIgnorePaths, value)) RecomputeDiff(); } }
+
+    private string? _diffSummary;
+    public string? DiffSummary { get => _diffSummary; private set => SetProperty(ref _diffSummary, value); }
+
+    private void OnComparisonChanged()
+    {
+        if (DiffLeft is not null && !ComparisonMessages.Contains(DiffLeft)) _diffLeft = null;
+        if (DiffRight is not null && !ComparisonMessages.Contains(DiffRight)) _diffRight = null;
+        _diffLeft ??= ComparisonMessages.FirstOrDefault(e => !ReferenceEquals(e, _diffRight));
+        _diffRight ??= ComparisonMessages.FirstOrDefault(e => !ReferenceEquals(e, _diffLeft));
+        OnPropertyChanged(nameof(DiffLeft));
+        OnPropertyChanged(nameof(DiffRight));
+        if (ComparisonMessages.Count < 2) IsDiffOpen = false;
+        ToggleDiffCommand.RaiseCanExecuteChanged();
+        RecomputeDiff();
+    }
+
+    private void RecomputeDiff()
+    {
+        DiffRows.Clear();
+        if (!IsDiffOpen || DiffLeft is null || DiffRight is null)
+        {
+            DiffSummary = null;
+            return;
+        }
+        var result = JsonDiff.Compare(DiffLeft.Message, DiffRight.Message, new DiffOptions
+        {
+            IgnoreVolatile = DiffIgnoreVolatile,
+            IncludeUnchanged = DiffShowUnchanged,
+            IgnorePaths = (DiffIgnorePaths ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        });
+        foreach (var entry in result.Entries) DiffRows.Add(entry);
+        DiffSummary = result.Summary;
+    }
+
+    private void ReloadSavedTopicSets()
+    {
+        var selected = SelectedSavedTopicSet?.Name;
+        SavedTopicSets.Clear();
+        foreach (var set in SavedTopicSetStore.Load()) SavedTopicSets.Add(set);
+        SelectedSavedTopicSet = SavedTopicSets.FirstOrDefault(s => s.Name == selected);
+    }
 
     private void AddToComparison(string topic, KafkaMessage message)
     {
@@ -585,18 +682,18 @@ public sealed class TopicBrowserViewModel : ObservableObject
 
     // ------------------------------------------------------------------ messages ----
 
-    private bool MatchesMessageFilter(KafkaMessage m, string filter) =>
-        (m.Value?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false) ||
-        (m.Key?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false) ||
-        m.Headers.Any(h => h.Key.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                           h.Value.Contains(filter, StringComparison.OrdinalIgnoreCase));
-
     private void ApplyMessageFilter()
     {
         var filter = MessageFilter?.Trim();
-        IEnumerable<KafkaMessage> matching = string.IsNullOrEmpty(filter)
+        MessageQuery? query = null;
+        MessageFilterError = null;
+        if (!string.IsNullOrEmpty(filter) && !MessageQuery.TryParse(filter, null, out query, out var error))
+        {
+            MessageFilterError = error;
+        }
+        IEnumerable<KafkaMessage> matching = query is null
             ? _allScannedMessages
-            : _allScannedMessages.Where(m => MatchesMessageFilter(m, filter));
+            : _allScannedMessages.Where(query.Matches);
 
         var selected = SelectedMessage;
         ScannedMessages.Clear();
@@ -815,6 +912,11 @@ public sealed class TopicBrowserViewModel : ObservableObject
         var term = GlobalSearchTerm?.Trim();
         if (SelectedConnection is null || string.IsNullOrEmpty(term)) return;
         if (!_state.Connections.TryGetValue(SelectedConnection, out var gateway)) return;
+        if (!MessageQuery.TryParse(term, null, out var query, out var queryError))
+        {
+            StatusMessage = $"Search: {queryError}";
+            return;
+        }
 
         var topics = SelectedSavedTopicSet is not null
             ? SelectedSavedTopicSet.Topics.ToList()
@@ -870,7 +972,7 @@ public sealed class TopicBrowserViewModel : ObservableObject
                     await foreach (var message in gateway.ConsumeAsync(options, token).ConfigureAwait(false))
                     {
                         if (token.IsCancellationRequested) break;
-                        if (!MatchesMessageFilter(message, term)) continue;
+                        if (!query!.Matches(message)) continue;
 
                         if (Interlocked.Increment(ref totalHits) > MaxGlobalSearchHits)
                         {

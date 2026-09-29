@@ -184,6 +184,21 @@ public sealed class ScriptEditorViewModel : ObservableObject
         Source += separator + topic.Example + "\n";
     }
 
+    /// <summary>
+    /// Adds generated KafScript (e.g. from Find Data's "turn into a check") to the editor: it replaces the
+    /// untouched starter sample, and is appended after a blank line otherwise, so nothing typed is lost.
+    /// </summary>
+    public void AppendScript(string script)
+    {
+        if (!IsDirty && FilePath is null && Source == DefaultSample)
+        {
+            Source = script;
+            return;
+        }
+        var separator = string.IsNullOrEmpty(Source) ? "" : Source.EndsWith('\n') ? "\n" : "\n\n";
+        Source += separator + script;
+    }
+
     private void NewScript()
     {
         Source = "Scenario: My check\nGiven use connection \"local\"\n";

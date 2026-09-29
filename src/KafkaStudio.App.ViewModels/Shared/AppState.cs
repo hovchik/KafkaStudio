@@ -77,6 +77,27 @@ public sealed class AppState : IAsyncDisposable
     public void RequestEditInProducer(string? connection, Core.Messaging.KafkaMessage message) =>
         EditInProducerRequested?.Invoke(connection, message);
 
+    /// <summary>Raised when a screen asks the Find Data screen to look for messages similar to one.</summary>
+    public event Action<string?, Core.Messaging.KafkaMessage>? FindSimilarRequested;
+
+    public void RequestFindSimilar(string? connection, Core.Messaging.KafkaMessage message) =>
+        FindSimilarRequested?.Invoke(connection, message);
+
+    /// <summary>Raised when a screen asks the Find Data screen to trace an id across topics.</summary>
+    public event Action<string?, string>? TraceRequested;
+
+    public void RequestTrace(string? connection, string id) => TraceRequested?.Invoke(connection, id);
+
+    /// <summary>Raised when generated KafScript should be opened in the Script Editor.</summary>
+    public event Action<string>? OpenScriptRequested;
+
+    public void RequestOpenScript(string source) => OpenScriptRequested?.Invoke(source);
+
+    /// <summary>Raised when the saved topic sets were changed by one screen, so others reload them.</summary>
+    public event Action? SavedTopicSetsChanged;
+
+    public void RaiseSavedTopicSetsChanged() => PostToUi(() => SavedTopicSetsChanged?.Invoke());
+
     private void RaiseConnectionsChanged() => PostToUi(() => ConnectionsChanged?.Invoke());
 
     private void PersistProfiles()

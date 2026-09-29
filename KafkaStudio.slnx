@@ -6,6 +6,7 @@
     <Project Path="src/KafkaStudio.Core/KafkaStudio.Core.csproj" />
     <Project Path="src/KafkaStudio.Kafka/KafkaStudio.Kafka.csproj" />
     <Project Path="src/KafkaStudio.Scripting/KafkaStudio.Scripting.csproj" />
+    <Project Path="src/KafkaStudio.Search/KafkaStudio.Search.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/KafkaStudio.Tests/KafkaStudio.Tests.csproj" />
