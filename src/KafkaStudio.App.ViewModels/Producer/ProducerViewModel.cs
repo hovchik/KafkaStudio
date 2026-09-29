@@ -279,14 +279,14 @@ public sealed class ProducerViewModel : ObservableObject
                 if (headerTemplates.Count > 0)
                 {
                     headers = new Dictionary<string, string>(StringComparer.Ordinal);
-                    foreach (var (name, value) in headerTemplates) headers[name] = TemplateEngine.RenderBuiltIns(value);
+                    foreach (var (name, value) in headerTemplates) headers[name] = TemplateEngine.RenderBuiltIns(value, i + 1);
                 }
 
                 last = await gateway.ProduceAsync(new ProduceRequest
                 {
                     Topic = topic,
-                    Key = string.IsNullOrEmpty(Key) ? null : TemplateEngine.RenderBuiltIns(Key),
-                    Value = IsTombstone ? null : TemplateEngine.RenderBuiltIns(Value),
+                    Key = string.IsNullOrEmpty(Key) ? null : TemplateEngine.RenderBuiltIns(Key, i + 1),
+                    Value = IsTombstone ? null : TemplateEngine.RenderBuiltIns(Value, i + 1),
                     Headers = headers,
                     Partition = partition
                 }, cts.Token).ConfigureAwait(true);

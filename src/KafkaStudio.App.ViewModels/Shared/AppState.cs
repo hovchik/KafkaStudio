@@ -225,4 +225,7 @@ public interface IFileDialogService
 
     /// <summary>Returns the chosen file's path, or null if cancelled.</summary>
     Task<string?> PickSaveFileAsync(string title, string extension, string filterName, string suggestedName);
+
+    /// <summary>Returns the chosen folder's path, or null if cancelled (or folders can't be picked).</summary>
+    Task<string?> PickFolderAsync(string title) => Task.FromResult<string?>(null);
 }
