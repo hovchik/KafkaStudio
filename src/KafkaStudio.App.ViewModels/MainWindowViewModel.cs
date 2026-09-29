@@ -7,6 +7,7 @@ using KafkaStudio.App.ViewModels.Rethrow;
 using KafkaStudio.App.ViewModels.Scripts;
 using KafkaStudio.App.ViewModels.Shared;
 using KafkaStudio.App.ViewModels.Tasks;
+using KafkaStudio.App.ViewModels.Testing;
 using KafkaStudio.App.ViewModels.Topics;
 
 namespace KafkaStudio.App.ViewModels;
@@ -35,6 +36,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public TasksViewModel Tasks { get; }
     public RethrowRulesViewModel Rethrow { get; }
     public DataSearchViewModel DataSearch { get; }
+    public QaLabViewModel QaLab { get; }
 
     public IReadOnlyList<NavigationItem> NavigationItems { get; }
 
@@ -43,7 +45,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         get => _selectedItem;
         // A ListBox can momentarily push null while its items are re-templated - keep the last screen.
-        set => SetProperty(ref _selectedItem, value ?? _selectedItem);
+        set
+        {
+            if (!SetProperty(ref _selectedItem, value ?? _selectedItem)) return;
+            // The Test Runner lists the Script Editor's scenarios too - pick up edits made since.
+            if (_selectedItem.Key == "qa") QaLab.Tests.Refresh();
+        }
     }
 
     private bool _isConnectionsOpen;
@@ -84,6 +91,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Tasks = new TasksViewModel(state);
         Rethrow = new RethrowRulesViewModel(state);
         DataSearch = new DataSearchViewModel(state);
+        QaLab = new QaLabViewModel(state, () => Scripts.Source, () => Scripts.FilePath);
 
         NavigationItems = new List<NavigationItem>
         {
@@ -93,7 +101,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             new("scripts", "Scripts", "{ }", "Ctrl+4", Scripts),
             new("tasks", "Tasks & Checks", "⏱", "Ctrl+5", Tasks),
             new("rethrow", "Rethrow Rules", "⇄", "Ctrl+6", Rethrow),
-            new("search", "Find Data", "⌕", "Ctrl+7", DataSearch)
+            new("search", "Find Data", "⌕", "Ctrl+7", DataSearch),
+            new("qa", "QA Lab", "✓", "Ctrl+8", QaLab)
         };
 
         _selectedItem = NavigationItems[0];

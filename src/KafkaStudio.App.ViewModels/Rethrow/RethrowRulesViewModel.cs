@@ -19,7 +19,7 @@ public sealed class RethrowRuleRowViewModel : ObservableObject
     public string FilterDescription => Rule.Filters.Count == 0
         ? "all messages"
         : "where " + string.Join(" and ", Rule.Filters.Select(f =>
-            $"{(f.Field == ConditionField.Json ? $"json \"{f.JsonPath}\"" : f.Field.ToString().ToLowerInvariant())} {ConditionEvaluator.Describe(f.Comparator)} \"{f.Expected}\""));
+            ConditionEvaluator.Describe(f)));
 
     public string KeyDescription => Rule.KeepSourceKey ? "keeps key" : Rule.FixedKey is null ? "no key" : $"key \"{Rule.FixedKey}\"";
 

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using KafkaStudio.Core.Abstractions;
 using KafkaStudio.Core.Messaging;
+using KafkaStudio.Core.Validation;
 using KafkaStudio.Scripting.Ast;
 
 namespace KafkaStudio.Scripting.Runtime;
@@ -38,6 +39,17 @@ public sealed class ScriptRunner
         _onLog = onLog;
     }
 
+    /// <summary>Variables every run starts with (e.g. environment data passed to a test run with
+    /// <c>--var</c>); a script's own <c>set variable</c> steps override them.</summary>
+    public IReadOnlyDictionary<string, string>? InitialVariables { get; init; }
+
+    /// <summary>Directory that relative <c>schema file "..."</c> paths resolve against - usually the
+    /// folder of the .kafscript file being run. Defaults to the current directory.</summary>
+    public string? BaseDirectory { get; init; }
+
+    /// <summary>At most this many schema violations are spelled out in a failed step's message.</summary>
+    public const int MaxReportedViolations = 5;
+
     /// <summary>Invoked (on the runner's thread) after every step completes - lets a UI stream results
     /// in live instead of waiting for the whole block.</summary>
     public event Action<StepResult>? StepCompleted;
@@ -51,6 +63,10 @@ public sealed class ScriptRunner
     public async Task<ScriptRunResult> RunAsync(ScriptBlock block, CancellationToken cancellationToken = default)
     {
         var context = new ScenarioContext { Gateway = _defaultGateway };
+        if (InitialVariables is not null)
+        {
+            foreach (var (name, value) in InitialVariables) context.Variables[name] = value;
+        }
         var results = new List<StepResult>();
         var overall = Stopwatch.StartNew();
         var success = true;
@@ -91,14 +107,14 @@ public sealed class ScriptRunner
                 }
                 catch (KafScriptException ex)
                 {
-                    Record(new StepResult(step, StepStatus.Failed, ex.Message, stepTimer.Elapsed));
+                    Record(new StepResult(step, StepStatus.Failed, ex.Message, stepTimer.Elapsed) { IsError = ex is not StepAssertionException });
                     _onLog?.Invoke($"[{step.Keyword}] FAILED: {ex.Message}");
                     success = false;
                     break;
                 }
                 catch (Exception ex)
                 {
-                    Record(new StepResult(step, StepStatus.Failed, $"unexpected error: {ex.Message}", stepTimer.Elapsed));
+                    Record(new StepResult(step, StepStatus.Failed, $"unexpected error: {ex.Message}", stepTimer.Elapsed) { IsError = true });
                     _onLog?.Invoke($"[{step.Keyword}] ERROR: {ex.Message}");
                     success = false;
                     break;
@@ -133,6 +149,10 @@ public sealed class ScriptRunner
         CaptureAction a => Task.FromResult(ExecuteCapture(a, ctx)),
         WaitAction a => ExecuteWait(a, ct),
         AssertVariableAction a => Task.FromResult(ExecuteAssertVariable(a, ctx)),
+        ExpectNoMessageAction a => ExecuteExpectNoMessage(a, ctx, ct),
+        ExpectMessageCountAction a => ExecuteExpectCount(a, ctx, ct),
+        AssertMessageAction a => Task.FromResult(ExecuteAssertMessage(a, ctx)),
+        ValidateSchemaAction a => ExecuteValidateSchema(a, ctx, ct),
         _ => throw new KafScriptException($"unsupported action '{step.Action.GetType().Name}'", step.Line)
     };
 
@@ -173,27 +193,44 @@ public sealed class ScriptRunner
     {
         var gateway = RequireGateway(ctx);
         var topic = RenderTopic(a.Topic, ctx);
-        var key = a.Key is null ? null : Render(a.Key, ctx);
-        var value = a.Value is null ? string.Empty : Render(a.Value, ctx);
-        var headers = RenderHeaders(a.Headers, ctx);
+        ProduceReceipt? receipt = null;
 
-        var receipt = await gateway.ProduceAsync(
-            new ProduceRequest { Topic = topic, Key = key, Value = value, Headers = headers }, ct)
-            .ConfigureAwait(false);
-
-        ctx.LastMessage = new KafkaMessage
+        for (var index = 1; index <= a.Count; index++)
         {
-            Topic = topic,
-            Partition = receipt.Partition,
-            Offset = receipt.Offset,
-            Key = key,
-            Value = value,
-            RawValue = System.Text.Encoding.UTF8.GetBytes(value),
-            Headers = headers ?? new Dictionary<string, string>(),
-            Timestamp = receipt.Timestamp
-        };
+            ct.ThrowIfCancellationRequested();
+            // {{$index}} is only meaningful for "produce N messages"; a single produce sees 1.
+            ctx.Variables["$index"] = index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            try
+            {
+                var key = a.Key is null ? null : Render(a.Key, ctx);
+                var value = a.Value is null ? string.Empty : Render(a.Value, ctx);
+                var headers = RenderHeaders(a.Headers, ctx);
 
-        return $"produced message to {topic}#{receipt.Partition}@{receipt.Offset}";
+                receipt = await gateway.ProduceAsync(
+                    new ProduceRequest { Topic = topic, Key = key, Value = value, Headers = headers }, ct)
+                    .ConfigureAwait(false);
+
+                ctx.LastMessage = new KafkaMessage
+                {
+                    Topic = topic,
+                    Partition = receipt.Partition,
+                    Offset = receipt.Offset,
+                    Key = key,
+                    Value = value,
+                    RawValue = System.Text.Encoding.UTF8.GetBytes(value),
+                    Headers = headers ?? new Dictionary<string, string>(),
+                    Timestamp = receipt.Timestamp
+                };
+            }
+            finally
+            {
+                ctx.Variables.Remove("$index");
+            }
+        }
+
+        return a.Count == 1
+            ? $"produced message to {topic}#{receipt!.Partition}@{receipt.Offset}"
+            : $"produced {a.Count} messages to {topic} (last at #{receipt!.Partition}@{receipt.Offset})";
     }
 
     private async Task<string> ExecuteWatch(WatchTopicAction a, ScenarioContext ctx, CancellationToken ct)
@@ -230,22 +267,7 @@ public sealed class ScriptRunner
             : ctx.LastWatchedTopic
               ?? throw new KafScriptException("no topic given and no prior 'watch topic' step to fall back to");
 
-        if (!ctx.Watches.TryGetValue(topic, out var handle))
-        {
-            // Convenience: an explicit "watch" wasn't set up, so start one now from the current tail.
-            // This is race-safe for scripts where the trigger happens after this step runs, but for the
-            // classic "produce on A, expect on B" cross-topic check you should add an explicit
-            // "Given watch topic B from now" step *before* producing to A.
-            var gateway = RequireGateway(ctx);
-            var options = new ConsumeOptions
-            {
-                Topic = topic,
-                ConsumerGroup = $"kafscript-expect-{Guid.NewGuid():N}",
-                StartPosition = ConsumeStartPosition.Latest
-            };
-            handle = await WatchHandle.StartAsync(gateway, options, ct).ConfigureAwait(false);
-            ctx.Watches[topic] = handle;
-        }
+        var handle = await GetOrStartWatchAsync(topic, ctx, ct).ConfigureAwait(false);
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(a.Duration.ToTimeSpan());
@@ -275,6 +297,200 @@ public sealed class ScriptRunner
         throw new StepAssertionException(
             $"no message arrived on topic '{topic}'{conditionText} within {a.Duration} ({seen})");
     }
+
+    /// <summary>
+    /// The watch opened on <paramref name="topic"/> by an earlier step, or - as a convenience - a new one
+    /// from the current tail. That's race-safe for scripts where the trigger happens after this step
+    /// runs, but for the classic "produce on A, expect on B" cross-topic check you should add an
+    /// explicit "Given watch topic B from now" step *before* producing to A.
+    /// </summary>
+    private static async Task<WatchHandle> GetOrStartWatchAsync(string topic, ScenarioContext ctx, CancellationToken ct)
+    {
+        if (ctx.Watches.TryGetValue(topic, out var handle)) return handle;
+        var gateway = RequireGateway(ctx);
+        var options = new ConsumeOptions
+        {
+            Topic = topic,
+            ConsumerGroup = $"kafscript-expect-{Guid.NewGuid():N}",
+            StartPosition = ConsumeStartPosition.Latest
+        };
+        handle = await WatchHandle.StartAsync(gateway, options, ct).ConfigureAwait(false);
+        ctx.Watches[topic] = handle;
+        return handle;
+    }
+
+    /// <summary>Reads messages from a watch until <paramref name="window"/> elapses or
+    /// <paramref name="onMessage"/> returns false. Returns false when stopped early.</summary>
+    private static async Task<bool> ReadWindowAsync(WatchHandle handle, TimeSpan window, Func<KafkaMessage, bool> onMessage, CancellationToken ct)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(window);
+        try
+        {
+            await foreach (var message in handle.Reader.ReadAllAsync(timeoutCts.Token).ConfigureAwait(false))
+            {
+                if (!onMessage(message)) return false;
+            }
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            // window over
+        }
+        return true;
+    }
+
+    private async Task<string> ExecuteExpectNoMessage(ExpectNoMessageAction a, ScenarioContext ctx, CancellationToken ct)
+    {
+        var topic = RenderTopic(a.Topic, ctx);
+        var handle = await GetOrStartWatchAsync(topic, ctx, ct).ConfigureAwait(false);
+
+        var inspected = 0;
+        KafkaMessage? offending = null;
+        await ReadWindowAsync(handle, a.Duration.ToTimeSpan(), message =>
+        {
+            inspected++;
+            if (!ConditionEvaluator.Matches(message, a.Conditions, s => Render(s, ctx))) return true;
+            offending = message;
+            return false;
+        }, ct).ConfigureAwait(false);
+
+        var conditionText = a.Conditions.Count == 0 ? "" : " matching the given conditions";
+        if (offending is not null)
+        {
+            ctx.LastMessage = offending;
+            throw new StepAssertionException(
+                $"expected no message on topic '{topic}'{conditionText} within {a.Duration}, but one arrived at " +
+                $"partition {offending.Partition}, offset {offending.Offset}: {Preview(offending)}");
+        }
+        return inspected == 0
+            ? $"no message arrived on '{topic}' within {a.Duration} - as expected"
+            : $"no message{conditionText} arrived on '{topic}' within {a.Duration} ({inspected} other message(s) ignored) - as expected";
+    }
+
+    private async Task<string> ExecuteExpectCount(ExpectMessageCountAction a, ScenarioContext ctx, CancellationToken ct)
+    {
+        var topic = RenderTopic(a.Topic, ctx);
+        var handle = await GetOrStartWatchAsync(topic, ctx, ct).ConfigureAwait(false);
+
+        var matched = 0;
+        var inspected = 0;
+        await ReadWindowAsync(handle, a.Duration.ToTimeSpan(), message =>
+        {
+            inspected++;
+            if (!ConditionEvaluator.Matches(message, a.Conditions, s => Render(s, ctx))) return true;
+            matched++;
+            ctx.LastMessage = message;
+            return a.Mode switch
+            {
+                CountMode.AtLeast => matched < a.Count,
+                _ => matched <= a.Count // exactly / at most: keep watching the whole window, stop once over
+            };
+        }, ct).ConfigureAwait(false);
+
+        var ok = a.Mode switch
+        {
+            CountMode.AtLeast => matched >= a.Count,
+            CountMode.AtMost => matched <= a.Count,
+            _ => matched == a.Count
+        };
+        var modeText = a.Mode switch { CountMode.AtLeast => "at least ", CountMode.AtMost => "at most ", _ => "exactly " };
+        var conditionText = a.Conditions.Count == 0 ? "" : " matching the given conditions";
+        if (!ok)
+        {
+            var seen = matched > a.Count && a.Mode != CountMode.AtLeast ? $"more than {a.Count}" : matched.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            throw new StepAssertionException(
+                $"expected {modeText}{a.Count} message(s){conditionText} on topic '{topic}' within {a.Duration}, " +
+                $"but {seen} arrived ({inspected} inspected)");
+        }
+        return $"{matched} message(s){conditionText} arrived on '{topic}' (expected {modeText}{a.Count})";
+    }
+
+    private static string ExecuteAssertMessage(AssertMessageAction a, ScenarioContext ctx)
+    {
+        var message = ctx.LastMessage ?? throw new KafScriptException(
+            "no message to check - 'assert last message' needs an earlier produce/expect/message arrives/scan step");
+
+        if (ConditionEvaluator.FirstFailure(message, a.Conditions, s => Render(s, ctx)) is { } failure)
+        {
+            var actual = failure.Actual is null ? "missing" : $"\"{Truncate(failure.Actual)}\"";
+            throw new StepAssertionException(
+                $"assertion failed on message {message.Topic}#{message.Partition}@{message.Offset}: " +
+                $"expected {ConditionEvaluator.Describe(failure.Condition)}, but it was {actual}");
+        }
+        return $"last message satisfies {string.Join(" and ", a.Conditions.Select(ConditionEvaluator.Describe))}";
+    }
+
+    private async Task<string> ExecuteValidateSchema(ValidateSchemaAction a, ScenarioContext ctx, CancellationToken ct)
+    {
+        string schemaText;
+        string source;
+        if (a.SchemaFile is not null)
+        {
+            var file = Render(a.SchemaFile, ctx);
+            var path = Path.IsPathRooted(file) ? file : Path.GetFullPath(Path.Combine(BaseDirectory ?? Directory.GetCurrentDirectory(), file));
+            try
+            {
+                schemaText = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                throw new KafScriptException($"can't read schema file '{path}': {ex.Message}");
+            }
+            source = $"schema file '{Path.GetFileName(path)}'";
+        }
+        else
+        {
+            schemaText = Render(a.SchemaText!, ctx);
+            source = "the schema";
+        }
+
+        if (!JsonSchema.TryParse(schemaText, out var schema, out var problem))
+        {
+            throw new KafScriptException($"invalid JSON schema ({source}): {problem}");
+        }
+
+        if (!a.EachScanned)
+        {
+            var message = ctx.LastMessage ?? throw new KafScriptException(
+                "no message to validate - 'validate last message' needs an earlier produce/expect/message arrives/scan step");
+            var violations = schema!.Validate(message.Value);
+            if (violations.Count > 0)
+            {
+                throw new StepAssertionException(
+                    $"message {message.Topic}#{message.Partition}@{message.Offset} breaks {source}: {DescribeViolations(violations)}");
+            }
+            return $"message {message.Topic}#{message.Partition}@{message.Offset} matches {source}";
+        }
+
+        var invalid = new List<(KafkaMessage Message, IReadOnlyList<SchemaViolation> Violations)>();
+        foreach (var message in ctx.ScannedMessages)
+        {
+            var violations = schema!.Validate(message.Value);
+            if (violations.Count > 0) invalid.Add((message, violations));
+        }
+        if (invalid.Count > 0)
+        {
+            var first = invalid[0];
+            throw new StepAssertionException(
+                $"{invalid.Count} of {ctx.ScannedMessages.Count} scanned message(s) break {source}; first at " +
+                $"{first.Message.Topic}#{first.Message.Partition}@{first.Message.Offset}: {DescribeViolations(first.Violations)}");
+        }
+        return $"all {ctx.ScannedMessages.Count} scanned message(s) match {source}";
+    }
+
+    private static string DescribeViolations(IReadOnlyList<SchemaViolation> violations)
+    {
+        var shown = string.Join("; ", violations.Take(MaxReportedViolations));
+        return violations.Count > MaxReportedViolations ? $"{shown}; …and {violations.Count - MaxReportedViolations} more" : shown;
+    }
+
+    private static string Preview(KafkaMessage message)
+    {
+        var text = message.Value ?? message.ValuePreview;
+        return $"key={message.Key ?? "<null>"} value={Truncate(text)}";
+    }
+
+    private static string Truncate(string text) => text.Length > 120 ? text[..120] + "…" : text;
 
     private async Task<string> ExecuteRethrow(RethrowAction a, ScenarioContext ctx, CancellationToken ct)
     {
@@ -435,7 +651,18 @@ public sealed class ScriptRunner
 
     private static string ExecuteAssertVariable(AssertVariableAction a, ScenarioContext ctx)
     {
-        if (!ctx.Variables.TryGetValue(a.VariableName, out var actual))
+        var known = ctx.Variables.TryGetValue(a.VariableName, out var actual);
+        if (a.Comparator is Comparator.Exists or Comparator.NotExists)
+        {
+            if (known != (a.Comparator == Comparator.Exists))
+            {
+                throw new StepAssertionException(known
+                    ? $"assertion failed: variable '{a.VariableName}' is set (to \"{actual}\") but was expected not to exist"
+                    : $"assertion failed: variable '{a.VariableName}' was never set/captured");
+            }
+            return $"assert {a.VariableName} {ConditionEvaluator.Describe(a.Comparator)} - passed";
+        }
+        if (!known)
         {
             throw new KafScriptException($"unknown variable '{a.VariableName}' (was it captured/set earlier?)");
         }

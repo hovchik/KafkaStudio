@@ -6,12 +6,17 @@ public abstract record ScriptAction;
 /// <summary>use connection "NAME" - selects which registered Kafka connection subsequent steps use.</summary>
 public sealed record UseConnectionAction(string ConnectionName) : ScriptAction;
 
-/// <summary>produce message to topic "T" [key "K"] [value V] [header "H" to "V"]*</summary>
+/// <summary>
+/// produce message to topic "T" [key "K"] [value V] [header "H" to "V"]*
+/// produce N messages to topic "T" ...  - <see cref="Count"/> copies, each rendered separately, with
+/// <c>{{$index}}</c> set to 1..N (test data seeding).
+/// </summary>
 public sealed record ProduceMessageAction(
     string Topic,
     string? Key,
     string? Value,
-    IReadOnlyList<HeaderAssignment> Headers) : ScriptAction;
+    IReadOnlyList<HeaderAssignment> Headers,
+    int Count = 1) : ScriptAction;
 
 /// <summary>watch topic "T" [from beginning|end|now] - opens a live subscription for later steps.</summary>
 public sealed record WatchTopicAction(string Topic, TopicPosition Position) : ScriptAction;
@@ -61,3 +66,25 @@ public sealed record WaitAction(Duration Duration) : ScriptAction;
 
 /// <summary>assert VAR equals|contains "X" - checks a previously captured/set variable.</summary>
 public sealed record AssertVariableAction(string VariableName, Comparator Comparator, string Expected) : ScriptAction;
+
+/// <summary>expect no message on topic "T" within DURATION [where ...] - a negative check: fails if a
+/// matching message does arrive in the window.</summary>
+public sealed record ExpectNoMessageAction(string Topic, Duration Duration, IReadOnlyList<Condition> Conditions) : ScriptAction;
+
+/// <summary>expect [exactly|at least|at most] N message(s) on topic "T" within DURATION [where ...]</summary>
+public sealed record ExpectMessageCountAction(
+    string Topic,
+    CountMode Mode,
+    int Count,
+    Duration Duration,
+    IReadOnlyList<Condition> Conditions) : ScriptAction;
+
+/// <summary>assert last message where COND [and COND]* - checks the last produced/received message.</summary>
+public sealed record AssertMessageAction(IReadOnlyList<Condition> Conditions) : ScriptAction;
+
+/// <summary>
+/// validate last message | each scanned message against schema V | schema file "path" - checks JSON
+/// payloads against a JSON Schema (see <c>KafkaStudio.Core.Validation.JsonSchemaValidator</c>).
+/// Exactly one of <see cref="SchemaText"/> and <see cref="SchemaFile"/> is set.
+/// </summary>
+public sealed record ValidateSchemaAction(bool EachScanned, string? SchemaText, string? SchemaFile) : ScriptAction;

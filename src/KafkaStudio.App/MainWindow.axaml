@@ -18,6 +18,7 @@
     <KeyBinding Gesture="Ctrl+D5" Command="{Binding NavigateCommand}" CommandParameter="tasks" />
     <KeyBinding Gesture="Ctrl+D6" Command="{Binding NavigateCommand}" CommandParameter="rethrow" />
     <KeyBinding Gesture="Ctrl+D7" Command="{Binding NavigateCommand}" CommandParameter="search" />
+    <KeyBinding Gesture="Ctrl+D8" Command="{Binding NavigateCommand}" CommandParameter="qa" />
     <KeyBinding Gesture="Ctrl+K" Command="{Binding OpenConnectionsCommand}" />
   </Window.KeyBindings>
 

@@ -1,0 +1,23 @@
+# Test data: seed a topic with generated messages, then check how many arrived.
+# Generators: {{$index}} (1..N inside "produce N messages"), {{$randomInt(min,max)}},
+# {{$randomDecimal(min,max)}}, {{$randomString(n)}}, {{$pick(a,b,c)}}, {{$uuid}},
+# {{$now}}, {{$now(-15m)}}, {{$date(+1d)}}, {{$timestamp}}.
+
+@data @smoke
+Scenario: Seed 50 customers and count them
+Given use connection "local"
+Given watch topic "customers" from now
+When produce 50 messages to topic "customers" key "CUST-{{$index}}" value """
+{ "id": "CUST-{{$index}}", "externalId": "{{$uuid}}", "name": "Test {{$randomString(6)}}",
+  "tier": "{{$pick(bronze,silver,gold)}}", "credit": {{$randomInt(0,5000)}}, "since": "{{$date(-30d)}}" }
+"""
+Then expect exactly 50 messages on topic "customers" within 3 seconds
+And assert last message where key equals "CUST-50" and json "$.credit" less than "5001"
+
+@data
+Scenario: Only gold customers get the welcome bonus
+Given use connection "local"
+Given watch topic "bonus" from now
+When produce 10 messages to topic "bonus" key "B-{{$index}}" value "{ \"tier\": \"silver\" }"
+And produce 2 messages to topic "bonus" key "G-{{$index}}" value "{ \"tier\": \"gold\" }"
+Then expect exactly 2 messages on topic "bonus" within 2 seconds where json "$.tier" equals "gold"

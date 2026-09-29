@@ -1,0 +1,25 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.Testing"
+             x:Class="KafkaStudio.App.Views.Testing.QaLabView"
+             x:DataType="vm:QaLabViewModel"
+             x:CompileBindings="True">
+
+  <UserControl.Styles>
+    <Style Selector="TabItem">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="MinHeight" Value="30" />
+      <Setter Property="Padding" Value="10,4" />
+      <Setter Property="Margin" Value="0,0,2,0" />
+    </Style>
+  </UserControl.Styles>
+
+  <TabControl SelectedIndex="{Binding SelectedTabIndex}" Padding="0,6,0,0">
+    <TabItem Header="Test Runner" ToolTip.Tip="Run .kafscript regression packs by tag, with retries and shareable reports">
+      <ContentControl Content="{Binding Tests}" />
+    </TabItem>
+    <TabItem Header="Contract check" ToolTip.Tip="Validate a topic's messages against a JSON Schema, or infer one">
+      <ContentControl Content="{Binding Contracts}" />
+    </TabItem>
+  </TabControl>
+</UserControl>

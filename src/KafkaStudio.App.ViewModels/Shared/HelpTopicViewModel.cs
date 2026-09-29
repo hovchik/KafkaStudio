@@ -121,5 +121,54 @@ public static class KafScriptHelp
             Description = "A Task block automates a script on a schedule instead of running it on demand like a Scenario.",
             Example = "Task: Nightly DLQ sweep\nschedule every 5 minutes\nGiven use connection \"local\"\nThen scan topic \"orders-dlq\" from beginning limit 500\nThen acknowledge each scanned message"
         },
+        new HelpTopicViewModel
+        {
+            Title = "QA: tags, Feature, Background",
+            Syntax = "@tag ... (line above a block) / Feature: <name> / Background: + steps",
+            Description = "Tags let the QA Lab and the kafkastudio CLI pick tests (\"@smoke and not @wip\"). Tags above Feature: apply to every block; Background steps run before every Scenario in the file.",
+            Example = "@orders\nFeature: Order events\n\nBackground:\nGiven use connection \"local\"\n\n@smoke\nScenario: New order is accepted\nWhen produce message to topic \"orders\" value \"{ \\\"status\\\": \\\"NEW\\\" }\"\nThen assert last message where json \"$.status\" equals \"NEW\""
+        },
+        new HelpTopicViewModel
+        {
+            Title = "QA: Scenario Outline + Examples",
+            Syntax = "Scenario Outline: <name with <column>> ... Examples: | col | ... |",
+            Description = "Data-driven tests: every Examples row runs as its own scenario. <column> is replaced inside quotes, and can stand alone for numbers (within <wait> seconds).",
+            Example = "Scenario Outline: Status <status> is accepted\nGiven use connection \"local\"\nWhen produce message to topic \"orders\" key \"<id>\" value \"{ \\\"status\\\": \\\"<status>\\\" }\"\nThen assert last message where json \"$.status\" equals \"<status>\"\n\nExamples:\n| id    | status    |\n| ORD-1 | NEW       |\n| ORD-2 | CONFIRMED |"
+        },
+        new HelpTopicViewModel
+        {
+            Title = "QA: expect no message (negative test)",
+            Syntax = "expect no message on topic \"T\" within DURATION [where COND [and COND]...]",
+            Description = "Passes if no matching message arrives during the whole window; fails as soon as one does. Put a 'watch' step before the trigger.",
+            Example = "Given watch topic \"shipments\" from now\nWhen produce message to topic \"orders\" key \"ORD-9\" value \"{ \\\"status\\\": \\\"CANCELLED\\\" }\"\nThen expect no message on topic \"shipments\" within 5 seconds where key equals \"ORD-9\""
+        },
+        new HelpTopicViewModel
+        {
+            Title = "QA: expect N messages",
+            Syntax = "expect [exactly|at least|at most] N messages on topic \"T\" within DURATION [where ...]",
+            Description = "Counts matching messages. 'at least' passes as soon as N arrive; 'exactly' and 'at most' watch the whole window so extra messages are caught.",
+            Example = "Given watch topic \"invoices\" from now\nWhen produce 3 messages to topic \"invoices\" value \"x\"\nThen expect exactly 3 messages on topic \"invoices\" within 5 seconds"
+        },
+        new HelpTopicViewModel
+        {
+            Title = "QA: assert last message",
+            Syntax = "assert last message where COND [and COND]...  (key | value | json \"$.p\" | header \"H\")",
+            Description = "Checks the last produced/received message. Comparators: equals, not equals, contains, not contains, matches, exists, not exists, greater than, less than (numbers and ISO dates).",
+            Example = "Then assert last message where header \"trace-id\" exists and json \"$.amount\" greater than \"0\""
+        },
+        new HelpTopicViewModel
+        {
+            Title = "QA: validate against a JSON Schema",
+            Syntax = "validate last message | each scanned message against schema \"\"\"{...}\"\"\" | schema file \"path\"",
+            Description = "Contract testing: checks JSON payloads against a JSON Schema (inline, or a file relative to the script). Lists each violation, e.g. '$.currency: required field is missing'.",
+            Example = "Then scan topic \"orders\" from beginning limit 1000\nAnd validate each scanned message against schema file \"contracts/order.schema.json\""
+        },
+        new HelpTopicViewModel
+        {
+            Title = "QA: test data",
+            Syntax = "produce N messages to topic \"T\" ... with {{$index}}, {{$randomInt(a,b)}}, {{$pick(a,b)}}, {{$randomString(n)}}, {{$now(-1h)}}",
+            Description = "Seeds a topic with N generated messages. Also: {{$randomDecimal(a,b)}}, {{$date(+1d)}}, {{$timestamp(-5m)}}, {{$uuid}}. The Producer's 'send N times' fills {{$index}} too.",
+            Example = "When produce 100 messages to topic \"customers\" key \"CUST-{{$index}}\" value \"{ \\\"tier\\\": \\\"{{$pick(bronze,silver,gold)}}\\\", \\\"credit\\\": {{$randomInt(0,5000)}} }\""
+        },
     };
 }

@@ -30,6 +30,18 @@ public static class SampleScriptsTests
             }
         });
 
+        runner.Add("Samples", "every QA sample under /samples/qa passes against the demo broker", async () =>
+        {
+            var cases = KafkaStudio.Automation.Testing.TestDiscovery.Discover(new[] { Path.Combine(SamplesDirectory, "qa") });
+            Assert.True(cases.Count >= 9, $"expected at least 9 QA sample tests, found {cases.Count}");
+            var connections = new Dictionary<string, IKafkaGateway> { ["local"] = TestKafka.NewGateway(new InMemoryKafkaBroker()) };
+            var report = await new KafkaStudio.Automation.Testing.TestSuiteRunner(connections)
+                .RunAsync(cases, new KafkaStudio.Automation.Testing.TestRunOptions());
+            var problems = report.Results.Where(r => r.Outcome != KafkaStudio.Automation.Testing.TestOutcome.Passed)
+                .Select(r => $"{r.Case.FileName} '{r.Case.Name}': {r.Message}");
+            Assert.True(report.Success, string.Join("; ", problems));
+        });
+
         runner.Add("Samples", "rethrow.kafscript runs and passes standalone", async () =>
         {
             var result = await RunFirstScenarioAsync("rethrow.kafscript");

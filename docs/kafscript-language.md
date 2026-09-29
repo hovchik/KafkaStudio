@@ -34,6 +34,53 @@ When <step>
 - Lines starting with `#` are comments and can appear between or after steps.
 - Blank lines are ignored.
 - A block ends at the next `Scenario:`/`Task:` header or end of file.
+- A block's name is the rest of its header line, taken verbatim - any punctuation is fine
+  (`Scenario: Refund & cancel (EU) - 50%`).
+
+### Tags, Feature and Background
+
+```
+@orders
+Feature: Order events
+
+Background:
+Given use connection "local"
+
+@smoke @jira:QA-12
+Scenario: A new order is accepted
+When produce message to topic "orders" value "{ \"status\": \"NEW\" }"
+Then assert last message where json "$.status" equals "NEW"
+```
+
+- `@tag` tokens on the line(s) directly above a `Scenario`/`Task` tag that block. Tags above the optional
+  `Feature:` line are inherited by every block in the file. The QA Lab's Test Runner and the
+  `kafkastudio test` CLI select tests with tag expressions such as `@smoke and not @wip` (see
+  [`qa-testing.md`](qa-testing.md)).
+- `Feature: name` (optional, first line) names the file's suite in test reports.
+- `Background:` (optional, before the first block, at most one) holds steps that are run before every
+  Scenario and Task in the file.
+
+### Scenario Outline and Examples
+
+```
+Scenario Outline: Status <status> is accepted
+Given use connection "local"
+When produce message to topic "orders" key "<id>" value "{ \"status\": \"<status>\" }"
+Then expect message on topic "orders" within <wait> seconds where key equals "<id>"
+
+Examples: happy path
+| id    | status    | wait |
+| ORD-1 | NEW       | 5    |
+| ORD-2 | CONFIRMED | 2.5  |
+```
+
+Every data row of every `Examples:` table becomes its own Scenario (tags on the outline apply to each).
+`<column>` is substituted inside quoted values and doc-strings. Outside quotes, a `<column>` is replaced
+by the cell's tokens, so it can supply a number or a word (`within <wait> seconds`). The outline's name
+is substituted the same way; a name without placeholders gets ` (example N)` appended. `\|` is a literal
+`|` in a cell. The header row must name every column once, each row must have as many cells as the
+header, and a placeholder that isn't a column is an error. A value that makes a step invalid is reported
+as `example N (line L): …`. `Scenario Template:` is accepted as a synonym.
 
 ### Task schedules
 
@@ -75,6 +122,12 @@ scheduled action).
   | `{{$timestamp}}` | current Unix time in milliseconds        |
   | `{{$date}}`      | current UTC date, `yyyy-MM-dd`           |
   | `{{$random}}`    | a random non-negative integer            |
+  | `{{$randomInt(1,100)}}` | a random integer in the range (inclusive) |
+  | `{{$randomDecimal(1,100)}}` | a random number in the range, 2 decimals |
+  | `{{$randomString(8)}}` | 8 random letters/digits |
+  | `{{$pick(EUR,USD,GBP)}}` | one of the listed values |
+  | `{{$now(-15m)}}`, `{{$date(+1d)}}`, `{{$timestamp(+2h)}}` | shifted times (`ms`, `s`, `m`, `h`, `d`) |
+  | `{{$index}}`     | 1..N inside `produce N messages`         |
 
   The same built-ins work in the Produce screen's key, value and header fields.
 - Every step must fit on one line (aside from a doc-string's own internal newlines) - there's no line
@@ -97,6 +150,13 @@ Given use connection "local"
 
 Sends a message. `key`, `value`, and any number of `header` clauses are optional and can appear in any
 order after the topic.
+
+`produce N messages to topic "T" ...` sends N messages (test data seeding). Each copy is rendered
+separately, so generators give fresh values per message, and `{{$index}}` is 1..N:
+
+```
+When produce 100 messages to topic "customers" key "CUST-{{$index}}" value "{ \"credit\": {{$randomInt(0,5000)}} }"
+```
 
 ```
 When produce message to topic "orders" key "{{orderId}}" value "{ \"status\": \"CONFIRMED\" }"
@@ -131,6 +191,28 @@ Then expect message on topic "shipment-notices" within 30 seconds
 
 (Note: as shown throughout this doc, a real script keeps this on one line - it's wrapped here only for
 readability. See `samples/cross-topic-timing-check.kafscript` for the runnable, single-line form.)
+
+### `expect no message on topic "T" within DURATION [where COND [and COND]...]`
+
+A negative check: passes if no matching message arrives during the whole window, and fails as soon as one
+does (the offending message becomes the "last message", and the failure shows its key and value). It
+reads from a prior `watch` on `T` when there is one, like `expect`. Put the `watch` before the trigger.
+
+```
+Given watch topic "shipments" from now
+When produce message to topic "orders" key "ORD-9" value "{ \"status\": \"CANCELLED\" }"
+Then expect no message on topic "shipments" within 5 seconds where key equals "ORD-9"
+```
+
+### `expect [exactly|at least|at most] N message(s) on topic "T" within DURATION [where ...]`
+
+Counts matching messages. A bare `N` means `exactly`. `at least` passes as soon as N have arrived;
+`exactly` and `at most` watch the whole window (so extra messages are caught), failing early once the
+count is exceeded. The last matching message becomes the "last message".
+
+```
+Then expect exactly 3 messages on topic "invoices" within 10 seconds where json "$.orderId" equals "{{orderId}}"
+```
 
 ### `[a] message arrives [on topic "T"] [within DURATION] [where COND [and COND]...]`
 
@@ -220,19 +302,47 @@ And assert orderId equals "ORD-1042"
 Pauses the scenario. Mostly useful for giving an external system a moment before the next step, or for
 deliberately spacing out produced messages.
 
-### `assert NAME equals|contains|matches|not equals "value"`
+### `assert NAME <comparator> "value"`
 
 Checks a previously `set`/`capture`d variable and fails the scenario (with a clear message showing the
-actual vs. expected value) if it doesn't hold.
+actual vs. expected value) if it doesn't hold. Any comparator from the Conditions section works;
+`assert NAME exists` / `assert NAME not exists` take no value.
+
+### `assert last message where COND [and COND]...`
+
+Checks the last produced/received/scanned message against conditions (same syntax as `where` below),
+and reports the first unmet one with the actual value:
+
+```
+Then assert last message where header "source" equals "checkout" and json "$.amount" greater than "0"
+# fails with: expected json "$.amount" greater than "0", but it was "-5"
+```
+
+### `validate last message | each scanned message against schema V | schema file "path"`
+
+Contract testing: checks JSON values against a JSON Schema, given inline (usually a `"""` doc-string)
+or as a file. Relative file paths resolve from the `.kafscript` file's folder when run from the Test
+Runner or the CLI. Failures list the violations (`$.currency: required field is missing`, up to 5).
+`each scanned message` validates everything the last `scan` read and reports how many broke the schema.
+A malformed inline schema is a parse error; an unreadable schema file is a run-time error (not a failed
+check). See [`qa-testing.md`](qa-testing.md#contracts-json-schema) for the supported keywords.
+
+```
+Then scan topic "orders" from beginning limit 1000
+And validate each scanned message against schema file "contracts/order-event.schema.json"
+```
 
 ## Conditions (`where ...`)
 
 Used by `expect message`, `message arrives`, and (for the equivalent no-script Rethrow Rules feature)
 rule filters. Each condition is `<field> <comparator> "<expected>"`, chained with `and`:
 
-- **Field**: `key`, `value`, or `json "$.path"` (reads a field out of the message value, which is
-  assumed to be JSON when `json` is used).
-- **Comparator**: `equals`, `contains` (substring), `matches` (regular expression), or `not equals`.
+- **Field**: `key`, `value`, `json "$.path"` (reads a field out of the message value, which is
+  assumed to be JSON when `json` is used), or `header "name"`.
+- **Comparator**: `equals`, `not equals`, `contains` (substring), `not contains`, `matches` (regular
+  expression), `exists` / `not exists` (no value: is the field/header there at all?), and
+  `greater than` / `less than` (numbers compare numerically, ISO dates chronologically, anything else
+  ordinally).
   Regular expressions are checked when the script is parsed (unless they contain `{{variables}}`) and
   are evaluated with a 1-second timeout, so a pathological pattern fails clearly instead of hanging.
 
@@ -265,6 +375,8 @@ See `/samples` for these as complete, runnable files:
 - `samples/rethrow.kafscript` - relay a message from one topic to another.
 - `samples/scan-and-acknowledge.kafscript` - bulk-read a backlog and acknowledge everything.
 - `samples/scheduled-task.kafscript` - two `Task` blocks on different schedules.
+- `samples/qa/` - a QA pack: contracts, negative checks, a Scenario Outline and test-data seeding
+  (see [`qa-testing.md`](qa-testing.md)).
 
 ## How it's implemented, if you want to extend it
 
