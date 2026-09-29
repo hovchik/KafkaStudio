@@ -7,6 +7,10 @@
              x:DataType="vm:DataSearchViewModel"
              x:CompileBindings="True">
 
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="F1" Command="{Binding Help.ToggleCommand}" />
+  </UserControl.KeyBindings>
+
   <UserControl.Styles>
     <!-- Compact tab headers (Fluent's defaults are sized for page-level navigation). -->
     <Style Selector="TabItem">
@@ -21,54 +25,58 @@
 
     <!-- Scope shared by every tab: connection, topics, time range. -->
     <Border Grid.Row="0" Classes="toolbar">
-      <WrapPanel>
-        <ComboBox Width="160" PlaceholderText="Connection…" ToolTip.Tip="Connection"
-                  ItemsSource="{Binding Scope.ConnectionNames}" SelectedItem="{Binding Scope.SelectedConnection}" Margin="0,0,6,4" />
-        <Button Content="⟳" ToolTip.Tip="Reload topics" Command="{Binding Scope.RefreshTopicsCommand}" Margin="0,0,6,4" />
+      <Grid ColumnDefinitions="*,Auto">
+        <WrapPanel Grid.Column="0">
+          <ComboBox Width="160" PlaceholderText="Connection…" ToolTip.Tip="Connection"
+                    ItemsSource="{Binding Scope.ConnectionNames}" SelectedItem="{Binding Scope.SelectedConnection}" Margin="0,0,6,4" />
+          <Button Content="⟳" ToolTip.Tip="Reload topics" Command="{Binding Scope.RefreshTopicsCommand}" Margin="0,0,6,4" />
 
-        <Border Classes="sep" Height="20" Margin="2,0,8,4" />
+          <Border Classes="sep" Height="20" Margin="2,0,8,4" />
 
-        <TextBlock Text="Topics" Classes="muted" Margin="0,0,6,4" />
-        <ComboBox Width="190" PlaceholderText="(all topics)" ToolTip.Tip="Limit to a saved topic set (saved from Topics → search results)"
-                  ItemsSource="{Binding Scope.SavedTopicSets}" SelectedItem="{Binding Scope.SelectedTopicSet}" Margin="0,0,2,4">
-          <ComboBox.ItemTemplate>
-            <DataTemplate x:DataType="topics:SavedTopicSet">
-              <TextBlock>
-                <Run Text="{Binding Name}" /><Run Text="  ·  " Foreground="Gray" /><Run Text="{Binding Topics.Count}" Foreground="Gray" />
-              </TextBlock>
-            </DataTemplate>
-          </ComboBox.ItemTemplate>
-        </ComboBox>
-        <Button Content="✕" ToolTip.Tip="All topics" Command="{Binding Scope.ClearTopicSetCommand}" Margin="0,0,6,4" />
-        <TextBox Width="150" Text="{Binding Scope.TopicNameFilter}" Watermark="name contains…" Margin="0,0,6,4"
-                 ToolTip.Tip="Only topics whose name contains this" />
+          <TextBlock Text="Topics" Classes="muted" Margin="0,0,6,4" />
+          <ComboBox Width="190" PlaceholderText="(all topics)" ToolTip.Tip="Limit to a saved topic set (saved from Topics → search results)"
+                    ItemsSource="{Binding Scope.SavedTopicSets}" SelectedItem="{Binding Scope.SelectedTopicSet}" Margin="0,0,2,4">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="topics:SavedTopicSet">
+                <TextBlock>
+                  <Run Text="{Binding Name}" /><Run Text="  ·  " Foreground="Gray" /><Run Text="{Binding Topics.Count}" Foreground="Gray" />
+                </TextBlock>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <Button Content="✕" ToolTip.Tip="All topics" Command="{Binding Scope.ClearTopicSetCommand}" Margin="0,0,6,4" />
+          <TextBox Width="150" Text="{Binding Scope.TopicNameFilter}" Watermark="name contains…" Margin="0,0,6,4"
+                   ToolTip.Tip="Only topics whose name contains this" />
 
-        <Border Classes="sep" Height="20" Margin="2,0,8,4" />
+          <Border Classes="sep" Height="20" Margin="2,0,8,4" />
 
-        <TextBlock Text="Range" Classes="muted" Margin="0,0,6,4" />
-        <ComboBox Width="190" ItemsSource="{Binding Scope.RangeKinds}" SelectedItem="{Binding Scope.SelectedRangeKind}" Margin="0,0,6,4"
-                  ToolTip.Tip="Which part of each topic to read - narrowing it is the biggest speed-up on large topics" />
-        <StackPanel Orientation="Horizontal" IsVisible="{Binding Scope.IsLastDuration}" Margin="0,0,0,4">
-          <NumericUpDown Width="110" Value="{Binding Scope.LastMinutes}" Minimum="0.1" Maximum="1000000" Increment="5" FormatString="0.#" />
-          <TextBlock Text="minutes" Classes="muted" />
-        </StackPanel>
-        <StackPanel Orientation="Horizontal" IsVisible="{Binding Scope.IsBetween}" Margin="0,0,0,4">
-          <TextBox Width="150" Text="{Binding Scope.FromText}" Watermark="from (2026-01-10 14:30)" ToolTip.Tip="Start, local time - empty = beginning" />
-          <TextBox Width="150" Text="{Binding Scope.ToText}" Watermark="to (empty = now)" ToolTip.Tip="End, local time - empty = now" />
-        </StackPanel>
-        <StackPanel Orientation="Horizontal" IsVisible="{Binding Scope.IsNewest}" Margin="0,0,0,4">
-          <NumericUpDown Width="110" Value="{Binding Scope.NewestCount}" Minimum="1" Maximum="100000000" Increment="100" FormatString="0" />
-          <TextBlock Text="per partition" Classes="muted" />
-        </StackPanel>
+          <TextBlock Text="Range" Classes="muted" Margin="0,0,6,4" />
+          <ComboBox Width="190" ItemsSource="{Binding Scope.RangeKinds}" SelectedItem="{Binding Scope.SelectedRangeKind}" Margin="0,0,6,4"
+                    ToolTip.Tip="Which part of each topic to read - narrowing it is the biggest speed-up on large topics" />
+          <StackPanel Orientation="Horizontal" IsVisible="{Binding Scope.IsLastDuration}" Margin="0,0,0,4">
+            <NumericUpDown Width="110" Value="{Binding Scope.LastMinutes}" Minimum="0.1" Maximum="1000000" Increment="5" FormatString="0.#" />
+            <TextBlock Text="minutes" Classes="muted" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" IsVisible="{Binding Scope.IsBetween}" Margin="0,0,0,4">
+            <TextBox Width="150" Text="{Binding Scope.FromText}" Watermark="from (2026-01-10 14:30)" ToolTip.Tip="Start, local time - empty = beginning" />
+            <TextBox Width="150" Text="{Binding Scope.ToText}" Watermark="to (empty = now)" ToolTip.Tip="End, local time - empty = now" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" IsVisible="{Binding Scope.IsNewest}" Margin="0,0,0,4">
+            <NumericUpDown Width="110" Value="{Binding Scope.NewestCount}" Minimum="1" Maximum="100000000" Increment="100" FormatString="0" />
+            <TextBlock Text="per partition" Classes="muted" />
+          </StackPanel>
 
-        <ProgressBar IsIndeterminate="True" IsVisible="{Binding Scope.IsLoadingTopics}" Width="16" Height="16" MinWidth="16" Margin="0,0,6,4" />
-        <TextBlock Classes="muted" Text="{Binding Scope.ScopeSummary}" Margin="0,0,6,4" />
-        <TextBlock Classes="error" Text="{Binding Scope.TopicsError}" Margin="0,0,6,4"
-                   IsVisible="{Binding Scope.TopicsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-      </WrapPanel>
+          <ProgressBar IsIndeterminate="True" IsVisible="{Binding Scope.IsLoadingTopics}" Width="16" Height="16" MinWidth="16" Margin="0,0,6,4" />
+          <TextBlock Classes="muted" Text="{Binding Scope.ScopeSummary}" Margin="0,0,6,4" />
+          <TextBlock Classes="error" Text="{Binding Scope.TopicsError}" Margin="0,0,6,4"
+                     IsVisible="{Binding Scope.TopicsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </WrapPanel>
+        <Button Grid.Column="1" Content="Help &amp; examples" Command="{Binding Help.ToggleCommand}" Margin="0,0,0,4"
+                VerticalAlignment="Top" ToolTip.Tip="How-tos and example queries for each tab (F1)" />
+      </Grid>
     </Border>
 
-    <Grid Grid.Row="1" Margin="0,6,0,0" ColumnDefinitions="*,6,0.75*">
+    <Grid Grid.Row="1" Margin="0,6,0,0" ColumnDefinitions="*,6,0.75*,Auto,Auto">
       <Border Grid.Column="0" Classes="pane">
         <TabControl SelectedIndex="{Binding SelectedTabIndex}" Padding="0,6,0,0">
           <TabItem Header="Search" ToolTip.Tip="Find messages by text or by field, or check whether something exists">
@@ -108,6 +116,12 @@
           </Grid>
           <shared:MessageDetailView Message="{Binding SelectedMessage}" Actions="{Binding Actions}" />
         </DockPanel>
+      </Border>
+
+      <GridSplitter Grid.Column="3" ResizeDirection="Columns" Width="6" IsVisible="{Binding Help.IsVisible}" />
+
+      <Border Grid.Column="4" Classes="pane" Width="360" IsVisible="{Binding Help.IsVisible}">
+        <ContentControl Content="{Binding Help}" />
       </Border>
     </Grid>
   </Grid>

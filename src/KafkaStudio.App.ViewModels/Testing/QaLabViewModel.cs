@@ -20,11 +20,25 @@ public sealed class QaLabViewModel : ObservableObject
     {
         Tests = new TestRunnerViewModel(state, editorSource, editorPath);
         Contracts = new ContractCheckViewModel(state);
+        Help = new HowToPanelViewModel(QaLabHelp.BuildTopics(), () => SelectedTabIndex, tab => SelectedTabIndex = tab, TryExample);
+    }
+
+    /// <summary>The "Help &amp; examples" panel (F1): how-tos for the Test Runner and Contract check.</summary>
+    public HowToPanelViewModel Help { get; }
+
+    /// <summary>"Try it" on a how-to: a tag filter goes into the Test Runner's filter, a schema into the Contract check.</summary>
+    private void TryExample(HowToTopicViewModel topic)
+    {
+        switch (topic.TabIndex)
+        {
+            case TestsTab: Tests.TagFilter = topic.TryText; break;
+            case ContractsTab: Contracts.SchemaText = topic.TryText ?? ""; break;
+        }
     }
 
     public TestRunnerViewModel Tests { get; }
     public ContractCheckViewModel Contracts { get; }
 
     private int _selectedTabIndex;
-    public int SelectedTabIndex { get => _selectedTabIndex; set => SetProperty(ref _selectedTabIndex, value); }
+    public int SelectedTabIndex { get => _selectedTabIndex; set { if (SetProperty(ref _selectedTabIndex, value)) Help.Refresh(); } }
 }

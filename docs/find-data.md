@@ -17,6 +17,10 @@ Scans run at most 8 topics at a time. Each topic uses a throwaway consumer group
 groups' offsets are never touched. A topic that can't be read is reported but doesn't stop the scan,
 and every run can be cancelled.
 
+**Help & examples** (`F1`, top right of the scope bar) opens how-tos for the tab you're on: what to do,
+step by step, with example queries, ids and field lists. **Try it** fills an example into its tab without
+running anything; untick "Only this tab" to browse every how-to.
+
 The message selected in any tab is shown in the detail pane on the right. Every message detail pane in
 the app (Topics, Consume, Find Data) has **Find similar** and **Trace key** buttons that jump here.
 

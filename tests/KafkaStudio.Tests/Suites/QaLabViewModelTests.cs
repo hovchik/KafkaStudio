@@ -205,6 +205,46 @@ public static class QaLabViewModelTests
             return Task.CompletedTask;
         });
 
+        runner.Add("ViewModels: QA Lab", "help & examples: how-tos per tab, valid tag filters and schema via 'Try it'", () =>
+        {
+            var state = new AppState();
+            state.AddDemoConnection("local");
+            var vm = new QaLabViewModel(state, () => null, () => null);
+            var topics = QaLabHelp.BuildTopics();
+            Assert.True(topics.Any(t => t.TabIndex == QaLabViewModel.TestsTab));
+            Assert.True(topics.Any(t => t.TabIndex == QaLabViewModel.ContractsTab));
+
+            vm.Help.ToggleCommand.Execute(null);
+            Assert.True(vm.Help.IsVisible);
+            Assert.False(vm.Help.Topics.Any(t => t.TabIndex == QaLabViewModel.ContractsTab), "Test Runner tab lists only its how-tos");
+
+            foreach (var topic in topics.Where(t => t.HasTry))
+            {
+                vm.Help.TryCommand.Execute(topic);
+                Assert.Equal(topic.TabIndex, vm.SelectedTabIndex);
+                if (topic.TabIndex == QaLabViewModel.TestsTab)
+                    Assert.Null(vm.Tests.TagFilterError, $"tag filter of '{topic.Title}' is invalid: {vm.Tests.TagFilterError}");
+                else
+                    Assert.Null(vm.Contracts.SchemaError, $"schema of '{topic.Title}' is invalid: {vm.Contracts.SchemaError}");
+            }
+            Assert.Equal(QaLabHelp.SampleSchema, vm.Contracts.SchemaText);
+            Assert.True(vm.Help.Topics.Any(t => t.TabIndex == QaLabViewModel.ContractsTab), "list follows the tab 'Try it' opened");
+
+            // Every tag expression shown as an example parses too, one per line.
+            foreach (var topic in topics.Where(t => t.TabIndex == QaLabViewModel.TestsTab && t.HasTry && t.HasExample && !t.Example!.Contains("Scenario")))
+                foreach (var line in topic.Example!.Split('\n'))
+                    Assert.True(KafkaStudio.Automation.Testing.TagExpression.TryParse(line, out _, out var error), $"'{line}' doesn't parse: {error}");
+
+            // Snippets that are KafScript parse.
+            foreach (var topic in topics.Where(t => t.HasExample && t.Example!.Contains("Scenario", StringComparison.Ordinal)))
+            {
+                var source = topic.Example!.Replace("\n…", "\nGiven wait for 1 ms");
+                try { KafkaStudio.Scripting.Parsing.Parser.Parse(source); }
+                catch (KafkaStudio.Scripting.KafScriptException ex) { throw new AssertionFailedException($"example '{topic.Title}' doesn't parse: {ex.Message}"); }
+            }
+            return Task.CompletedTask;
+        });
+
         runner.Add("ViewModels: QA Lab", "Producer 'send N times' numbers each copy with {{$index}}", async () =>
         {
             var state = new AppState();
