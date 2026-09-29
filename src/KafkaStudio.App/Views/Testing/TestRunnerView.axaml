@@ -123,19 +123,19 @@
             <ListBox Classes="rows" ItemsSource="{Binding Tests}" SelectedItem="{Binding SelectedTest}">
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:TestItemViewModel">
-                  <Grid ColumnDefinitions="20,*,Auto" RowDefinitions="Auto,Auto" Margin="0,2">
+                  <Grid ColumnDefinitions="20,*,Auto" RowDefinitions="Auto,Auto,Auto" Margin="0,2">
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding StatusGlyph}" FontWeight="Bold" ToolTip.Tip="{Binding StatusText}"
                                Foreground="{Binding State, Converter={x:Static conv:TestStateToBrushConverter.Instance}}" />
-                    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="6">
-                      <TextBlock Text="{Binding Name}" Foreground="White" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Name}" Foreground="White" FontSize="12" TextTrimming="CharacterEllipsis"
+                               ToolTip.Tip="{Binding Name}" />
+                    <TextBlock Grid.Row="0" Grid.Column="2" Classes="muted" FontSize="11" Margin="6,0,0,0" Text="{Binding DurationText}" />
+                    <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
+                      <TextBlock Classes="muted" FontSize="11" Text="{Binding Location}" VerticalAlignment="Center" />
                       <Border Classes="badge" IsVisible="{Binding HasTags}"><TextBlock Text="{Binding TagsText}" /></Border>
                       <Border Classes="badge warn" IsVisible="{Binding IsFlaky}"><TextBlock Text="flaky" /></Border>
                     </StackPanel>
-                    <TextBlock Grid.Row="0" Grid.Column="2" Classes="muted" FontSize="11" Margin="6,0,0,0">
-                      <Run Text="{Binding Location}" /><Run Text="  " /><Run Text="{Binding DurationText}" />
-                    </TextBlock>
-                    <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Message}" FontSize="11" TextTrimming="CharacterEllipsis"
-                               Margin="0,2,0,0" IsVisible="{Binding IsProblem}"
+                    <TextBlock Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Message}" FontSize="11" TextTrimming="CharacterEllipsis"
+                               Margin="0,2,0,0" IsVisible="{Binding IsProblem}" ToolTip.Tip="{Binding Message}"
                                Foreground="{Binding State, Converter={x:Static conv:TestStateToBrushConverter.Instance}}" />
                   </Grid>
                 </DataTemplate>

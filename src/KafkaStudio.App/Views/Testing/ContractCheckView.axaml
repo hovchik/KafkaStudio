@@ -18,7 +18,7 @@
         <Border Classes="sep" Height="20" Margin="2,0,8,4" />
         <CheckBox Content="Newest" IsChecked="{Binding NewestOnly}" Margin="0,0,4,4"
                   ToolTip.Tip="Check only the newest N messages per partition (unchecked: the whole topic, up to 200,000)" />
-        <NumericUpDown Width="110" Value="{Binding NewestCount}" Minimum="1" Maximum="200000" Increment="100" FormatString="0"
+        <NumericUpDown Width="140" Value="{Binding NewestCount}" Minimum="1" Maximum="200000" Increment="100" FormatString="0"
                        IsEnabled="{Binding NewestOnly}" Margin="0,0,4,4" />
         <TextBlock Classes="muted" Text="per partition" Margin="0,0,8,4" />
         <Border Classes="sep" Height="20" Margin="2,0,8,4" />

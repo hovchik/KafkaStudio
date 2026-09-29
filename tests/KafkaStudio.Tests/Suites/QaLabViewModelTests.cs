@@ -171,6 +171,26 @@ public static class QaLabViewModelTests
             Assert.Contains("all 4 scanned message(s) match the schema", report.Results[0].Steps.Last().Message);
         });
 
+        runner.Add("ViewModels: QA Lab", "every KafScript help example parses", () =>
+        {
+            foreach (var topic in KafScriptHelp.BuildTopics())
+            {
+                var example = topic.Example.TrimStart();
+                var isBlock = example.StartsWith('@') || example.StartsWith("Scenario", StringComparison.Ordinal) ||
+                              example.StartsWith("Task", StringComparison.Ordinal) || example.StartsWith("Feature", StringComparison.Ordinal);
+                var source = isBlock ? example : "Scenario: help example\n" + example;
+                try
+                {
+                    KafkaStudio.Scripting.Parsing.Parser.Parse(source);
+                }
+                catch (KafkaStudio.Scripting.KafScriptException ex)
+                {
+                    throw new AssertionFailedException($"help example '{topic.Title}' doesn't parse: {ex.Message}");
+                }
+            }
+            return Task.CompletedTask;
+        });
+
         runner.Add("ViewModels: QA Lab", "Producer 'send N times' numbers each copy with {{$index}}", async () =>
         {
             var state = new AppState();

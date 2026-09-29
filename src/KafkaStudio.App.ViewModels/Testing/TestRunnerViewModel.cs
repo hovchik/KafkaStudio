@@ -132,6 +132,7 @@ public sealed class TestRunnerViewModel : ObservableObject
     private IReadOnlyList<TestCase> _allCases = Array.Empty<TestCase>();
     private CancellationTokenSource? _runCts;
     private bool _loading;
+    private int _runGeneration;
 
     /// <summary>Settings remembered between sessions.</summary>
     public sealed record Settings
@@ -266,7 +267,9 @@ public sealed class TestRunnerViewModel : ObservableObject
         get => _isRunning;
         private set
         {
-            if (SetProperty(ref _isRunning, value)) RaiseCommandStates();
+            if (!SetProperty(ref _isRunning, value)) return;
+            OnPropertyChanged(nameof(ProgressText));
+            RaiseCommandStates();
         }
     }
 
@@ -479,36 +482,29 @@ public sealed class TestRunnerViewModel : ObservableObject
         StatusMessage = null;
 
         var suite = new TestSuiteRunner(connections, defaultGateway);
-        suite.CaseStarted += (testCase, attempt) => _state.PostToUi(() =>
+        // Live updates arrive as UI posts that may be handled after the run itself has finished, so they
+        // are idempotent and ignored once a newer run started; the final report is applied at the end.
+        var generation = ++_runGeneration;
+        var finished = new HashSet<string>(StringComparer.Ordinal);
+        void OnUi(Action action) => _state.PostToUi(() => { if (generation == _runGeneration) action(); });
+
+        suite.CaseStarted += (testCase, attempt) => OnUi(() =>
         {
-            if (!byId.TryGetValue(testCase.Id, out var item)) return;
+            if (!byId.TryGetValue(testCase.Id, out var item) || finished.Contains(testCase.Id)) return;
             if (attempt > 1) item.Steps.Clear();
             item.State = TestItemState.Running;
         });
-        suite.StepCompleted += (testCase, step) => _state.PostToUi(() =>
+        suite.StepCompleted += (testCase, step) => OnUi(() =>
         {
             if (byId.TryGetValue(testCase.Id, out var item) && item.State == TestItemState.Running) item.Steps.Add(ToRow(testCase, step));
         });
-        suite.CaseCompleted += result => _state.PostToUi(() =>
-        {
-            if (!byId.TryGetValue(result.Case.Id, out var item)) return;
-            item.Steps.Clear();
-            foreach (var step in result.Steps) item.Steps.Add(ToRow(result.Case, step));
-            item.Apply(result);
-            CompletedCount++;
-            switch (result.Outcome)
-            {
-                case TestOutcome.Passed: PassedCount++; break;
-                case TestOutcome.Failed: FailedCount++; break;
-                case TestOutcome.Error: ErrorCount++; break;
-                default: SkippedCount++; break;
-            }
-        });
+        suite.CaseCompleted += result => OnUi(() => ApplyResult(result, byId, finished));
 
         try
         {
             var cases = items.Select(i => i.Case).ToList();
             var report = await Task.Run(() => suite.RunAsync(cases, options, cts.Token, "KafkaStudio test run", Environment())).ConfigureAwait(true);
+            foreach (var result in report.Results) ApplyResult(result, byId, finished);
             LastReport = report;
             RunSummary = (report.WasCancelled ? "Stopped. " : "") + report.Summary;
             LastRunPassed = report.WasCancelled ? null : report.Success;
@@ -524,6 +520,20 @@ public sealed class TestRunnerViewModel : ObservableObject
             _runCts = null;
             RaiseCommandStates();
         }
+    }
+
+    private void ApplyResult(TestCaseResult result, Dictionary<string, TestItemViewModel> byId, HashSet<string> finished)
+    {
+        if (!byId.TryGetValue(result.Case.Id, out var item) || !finished.Add(result.Case.Id)) return;
+        item.Steps.Clear();
+        foreach (var step in result.Steps) item.Steps.Add(ToRow(result.Case, step));
+        item.Apply(result);
+        CompletedCount = finished.Count;
+        var done = byId.Values.Where(i => finished.Contains(i.Id)).ToList();
+        PassedCount = done.Count(i => i.State == TestItemState.Passed);
+        FailedCount = done.Count(i => i.State == TestItemState.Failed);
+        ErrorCount = done.Count(i => i.State == TestItemState.Error);
+        SkippedCount = done.Count(i => i.State is TestItemState.Skipped or TestItemState.Cancelled);
     }
 
     private StepResultRowViewModel ToRow(TestCase testCase, StepResult step)
