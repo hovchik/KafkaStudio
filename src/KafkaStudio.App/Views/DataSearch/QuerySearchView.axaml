@@ -1,0 +1,162 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.DataSearch"
+             xmlns:search="using:KafkaStudio.Search"
+             xmlns:msg="using:KafkaStudio.Core.Messaging"
+             xmlns:conv="using:KafkaStudio.App.Converters"
+             x:Class="KafkaStudio.App.Views.DataSearch.QuerySearchView"
+             x:DataType="vm:QuerySearchViewModel"
+             x:CompileBindings="True">
+
+  <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
+
+    <!-- Query -->
+    <Border Grid.Row="0" Classes="toolbar">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+        <TextBox Grid.Column="0" Text="{Binding QueryText}" FontFamily="Consolas,Menlo,monospace"
+                 Watermark='Text to find - or a query: $.order.id = "ORD-42" and header source = billing'>
+          <TextBox.KeyBindings>
+            <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}" />
+            <KeyBinding Gesture="Ctrl+Enter" Command="{Binding ExistsCommand}" />
+          </TextBox.KeyBindings>
+        </TextBox>
+        <Button Grid.Column="1" Content="Search" Classes="primary" Command="{Binding SearchCommand}"
+                ToolTip.Tip="Find every matching message in scope (Enter)" />
+        <Button Grid.Column="2" Content="Exists?" Command="{Binding ExistsCommand}"
+                ToolTip.Tip="Quick yes/no: stop at the first match on each topic (Ctrl+Enter)" />
+        <Button Grid.Column="3" Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" Margin="0" />
+      </Grid>
+    </Border>
+
+    <!-- Match options (plain text searches) -->
+    <WrapPanel Grid.Row="1" Margin="2,6,0,0">
+      <TextBlock Text="Match" Classes="muted" VerticalAlignment="Center" Margin="0,0,6,0" />
+      <ComboBox Width="190" ItemsSource="{Binding Modes}" SelectedItem="{Binding Mode}" IsEnabled="{Binding !IsStructured}" Margin="0,0,10,0"
+                ToolTip.Tip="How plain text is matched (structured queries choose per condition)" />
+      <CheckBox Content="Key" IsChecked="{Binding SearchKey}" IsEnabled="{Binding !IsStructured}" Margin="0,0,6,0" />
+      <CheckBox Content="Value" IsChecked="{Binding SearchValue}" IsEnabled="{Binding !IsStructured}" Margin="0,0,6,0" />
+      <CheckBox Content="Headers" IsChecked="{Binding SearchHeaders}" IsEnabled="{Binding !IsStructured}" Margin="0,0,14,0" />
+      <CheckBox Content="Match case" IsChecked="{Binding CaseSensitive}" Margin="0,0,14,0" />
+      <Border Classes="chip selected" IsVisible="{Binding HasSingleTopic}" VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <TextBlock FontSize="11" VerticalAlignment="Center">
+            <Run Text="only topic " Foreground="{DynamicResource MutedTextBrush}" /><Run Text="{Binding SingleTopic}" Foreground="White" />
+          </TextBlock>
+          <Button Classes="small" Content="✕" Command="{Binding ClearSingleTopicCommand}" ToolTip.Tip="Search the whole scope again" />
+        </StackPanel>
+      </Border>
+    </WrapPanel>
+
+    <!-- What the query means / why it's invalid -->
+    <StackPanel Grid.Row="2" Margin="2,6,0,0" Spacing="2">
+      <TextBlock Classes="error" TextWrapping="Wrap" Text="{Binding QueryError}"
+                 IsVisible="{Binding QueryError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      <TextBlock Classes="hint" TextWrapping="Wrap" Text="{Binding QueryDescription}"
+                 IsVisible="{Binding QueryDescription, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      <TextBlock Classes="hint" TextWrapping="Wrap"
+                 IsVisible="{Binding QueryText, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                 Text='Fields: key, value, $.path, header "name", topic, partition, offset, any · compare with = != contains "not contains" "starts with" "ends with" matches (~) "similar to" exists missing &gt; &gt;= &lt; &lt;= · combine with and / or / not and ( ) · quote values with spaces.' />
+    </StackPanel>
+
+    <!-- Saved searches, history, export, KafScript -->
+    <Expander Grid.Row="3" Header="Saved searches · history · export · make it a check" Margin="0,6,0,0" HorizontalAlignment="Stretch">
+      <Border Classes="toolbar" Margin="0,4,0,0">
+        <StackPanel Spacing="6">
+          <Grid ColumnDefinitions="90,*,Auto,Auto,Auto,Auto">
+            <TextBlock Grid.Column="0" Text="Saved" Classes="muted" />
+            <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding SavedSearches}" SelectedItem="{Binding SelectedSavedSearch}"
+                      PlaceholderText="Pick a saved search to restore it (query, options and scope)…">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="search:SavedSearch">
+                  <TextBlock>
+                    <Run Text="{Binding Name}" /><Run Text="   " /><Run Text="{Binding Query}" Foreground="Gray" />
+                  </TextBlock>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBox Grid.Column="2" Width="140" Text="{Binding NewSearchName}" Watermark="Name…" />
+            <CheckBox Grid.Column="3" Content="as Exists?" IsChecked="{Binding ExistenceCheckDefault}"
+                      ToolTip.Tip="Remember that this search is meant as a yes/no existence check" />
+            <Button Grid.Column="4" Content="Save search" Command="{Binding SaveSearchCommand}" />
+            <Button Grid.Column="5" Content="Delete" Command="{Binding DeleteSavedSearchCommand}" Margin="0" />
+          </Grid>
+          <Grid ColumnDefinitions="90,*,Auto">
+            <TextBlock Grid.Column="0" Text="History" Classes="muted" />
+            <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding History}" SelectedItem="{Binding SelectedHistory}"
+                      PlaceholderText="Recent searches…" />
+            <Button Grid.Column="2" Content="Clear history" Command="{Binding ClearHistoryCommand}" Margin="0" />
+          </Grid>
+          <WrapPanel>
+            <TextBlock Text="Results" Classes="muted" Width="90" />
+            <Button Content="Export JSON" Command="{Binding ExportJsonCommand}" Margin="0,0,6,0" />
+            <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" Margin="0,0,6,0" />
+            <Button Content="Copy summary" Command="{Binding CopySummaryCommand}" Margin="0,0,14,0" />
+            <TextBlock Text="KafScript" Classes="muted" />
+            <Button Content="Make a check (Scenario)" Command="{Binding ToScriptCommand}" Margin="0,0,6,0"
+                    ToolTip.Tip="Open a KafScript scenario that passes when matching data exists (uses the topics that had matches)" />
+            <Button Content="Make a Task" Command="{Binding ToTaskCommand}" Margin="0,0,6,0"
+                    ToolTip.Tip="Same, as a scheduled Task - register it on the Tasks screen" />
+            <TextBox Width="150" Text="{Binding TaskSchedule}" Watermark="every 15 minutes" ToolTip.Tip="Task schedule: every N minutes / at 9:30 / run once" />
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+    </Expander>
+
+    <!-- Summary -->
+    <Grid Grid.Row="4" ColumnDefinitions="Auto,*" Margin="0,8,0,6">
+      <Panel Grid.Column="0" Margin="0,0,8,0" VerticalAlignment="Top">
+        <Border Classes="badge ok" IsVisible="{Binding IsFound}"><TextBlock Text="FOUND" /></Border>
+        <Border Classes="badge bad" IsVisible="{Binding IsNotFound}"><TextBlock Text="NOT FOUND" /></Border>
+      </Panel>
+      <StackPanel Grid.Column="1" Spacing="2">
+        <SelectableTextBlock Foreground="White" TextWrapping="Wrap" Text="{Binding Status}" />
+        <TextBlock Classes="muted" Text="{Binding Progress}" IsVisible="{Binding IsRunning}" />
+      </StackPanel>
+    </Grid>
+
+    <!-- Results: per-topic outcomes | matching messages -->
+    <Grid Grid.Row="5" ColumnDefinitions="220,6,*">
+      <DockPanel Grid.Column="0">
+        <TextBlock DockPanel.Dock="Top" Classes="label" Text="BY TOPIC" Margin="0,0,0,4" />
+        <ListBox Classes="rows" ItemsSource="{Binding TopicOutcomes}" SelectedItem="{Binding SelectedOutcome}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="search:TopicSearchOutcome">
+              <Grid ColumnDefinitions="*,Auto" Margin="6,3" ToolTip.Tip="{Binding Error}">
+                <TextBlock Grid.Column="0" Text="{Binding Topic}" FontSize="12" Foreground="White" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="1" FontSize="11" Margin="6,0,0,0" Foreground="{DynamicResource AccentBrush}" Text="{Binding Hits}" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
+
+      <DockPanel Grid.Column="2">
+        <TextBlock DockPanel.Dock="Top" Classes="label" Margin="0,0,0,4">
+          <Run Text="MATCHES " /><Run Text="{Binding Hits.Count}" />
+        </TextBlock>
+        <ListBox Classes="rows" ItemsSource="{Binding Hits}" SelectedItem="{Binding SelectedHit}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="msg:KafkaMessage">
+              <Grid ColumnDefinitions="3,Auto,Auto,Auto,Auto,*" Margin="0,3,6,3">
+                <Border Grid.Column="0" Background="{Binding Partition, Converter={x:Static conv:PartitionToBrushConverter.Instance}}" CornerRadius="2" />
+                <TextBlock Grid.Column="1" FontSize="11" Margin="6,0,8,0" MaxWidth="160" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" Foreground="{DynamicResource AccentBrush}" Text="{Binding Topic}" />
+                <TextBlock Grid.Column="2" Classes="muted" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center"
+                           Text="{Binding Timestamp, StringFormat='{}{0:MM-dd HH:mm:ss}'}" />
+                <TextBlock Grid.Column="3" Classes="muted" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center">
+                  <Run Text="#" /><Run Text="{Binding Partition}" /><Run Text="@" /><Run Text="{Binding Offset}" />
+                </TextBlock>
+                <TextBlock Grid.Column="4" FontSize="11" Margin="0,0,8,0" MaxWidth="140" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" Foreground="White" Text="{Binding Key}" />
+                <TextBlock Grid.Column="5" Classes="mono" Foreground="White" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                           Text="{Binding ValuePreview}" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Grid>
+  </Grid>
+</UserControl>

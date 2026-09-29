@@ -396,20 +396,20 @@ public sealed class MessageQuery
 
     private static bool LooksStructured(string text)
     {
-        var first = text.TrimStart();
-        if (first.StartsWith('$') || first.StartsWith('(')) return true;
+        var first = text.TrimStart().TrimStart('(', ' ');
+        if (first.StartsWith('$')) return true;
         var word = new string(first.TakeWhile(c => char.IsLetter(c)).ToArray());
         return FieldWords.Contains(word) && first.Length > word.Length && char.IsWhiteSpace(first[word.Length]);
     }
 
-    /// <summary>A query is structured when it starts with "(", "not (", a $.path, or a field word followed
-    /// by something that can only be a comparator (or a name, for json/header).</summary>
+    /// <summary>A query is structured when (after any leading "(" / "not") it starts with a $.path, or a
+    /// field word followed by something that can only be a comparator (or a name, for json/header).
+    /// Anything else - "(hello)", "not found" - is plain text.</summary>
     private static bool LooksStructured(List<Token> tokens)
     {
         var i = 0;
         while (i < tokens.Count && (tokens[i].Kind == TokenKind.LParen || tokens[i].IsWord("not"))) i++;
         if (i >= tokens.Count) return false;
-        if (i > 0 && tokens[0].Kind == TokenKind.LParen) return true;
 
         var first = tokens[i];
         if (first.Kind == TokenKind.Word && first.Text.StartsWith('$')) return true;

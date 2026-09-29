@@ -518,6 +518,9 @@ public sealed class TopicBrowserViewModel : ObservableObject
     /// <summary>Field-by-field differences between <see cref="DiffLeft"/> and <see cref="DiffRight"/>.</summary>
     public ObservableCollection<DiffEntry> DiffRows { get; } = new();
 
+    /// <summary>A diff needs two pinned messages.</summary>
+    public bool CanDiff => ComparisonMessages.Count >= 2;
+
     private bool _isDiffOpen;
     /// <summary>Shows the structural diff instead of the side-by-side cards.</summary>
     public bool IsDiffOpen
@@ -556,6 +559,7 @@ public sealed class TopicBrowserViewModel : ObservableObject
         OnPropertyChanged(nameof(DiffRight));
         if (ComparisonMessages.Count < 2) IsDiffOpen = false;
         ToggleDiffCommand.RaiseCanExecuteChanged();
+        OnPropertyChanged(nameof(CanDiff));
         RecomputeDiff();
     }
 

@@ -5,6 +5,7 @@
              xmlns:msg="using:KafkaStudio.Core.Messaging"
              xmlns:conv="using:KafkaStudio.App.Converters"
              xmlns:shared="using:KafkaStudio.App.Views.Shared"
+             xmlns:search="using:KafkaStudio.Search"
              x:Class="KafkaStudio.App.Views.Topics.TopicBrowserView"
              x:DataType="vm:TopicBrowserViewModel"
              x:Name="Root">
@@ -19,7 +20,7 @@
 
     <!-- Primary toolbar: everything needed for day to day browsing. -->
     <Border Grid.Row="0" Classes="toolbar">
-      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto,2*,Auto,Auto">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto,2*,Auto,Auto,Auto">
         <ComboBox Grid.Column="0" Width="170" PlaceholderText="Connection…"
                   ItemsSource="{Binding ConnectionNames}" SelectedItem="{Binding SelectedConnection}"
                   ToolTip.Tip="Connection" />
@@ -42,13 +43,16 @@
         <Border Grid.Column="9" Classes="sep" />
 
         <TextBox Grid.Column="10" MinWidth="140" Text="{Binding MessageFilter}"
-                 Watermark="Search loaded messages (key, value, headers)" />
+                 Watermark="Filter loaded messages - text, or $.status = FAILED"
+                 ToolTip.Tip="Plain text: contains, in key, value or headers. Or a query: $.amount &gt; 100 and key starts with ORD- (see Find Data for the full syntax)" />
 
         <TextBlock Grid.Column="11" VerticalAlignment="Center" Classes="muted" ToolTip.Tip="shown / loaded">
           <Run Text="{Binding MatchedMessageCount}" /><Run Text=" / " /><Run Text="{Binding TotalMessageCount}" />
         </TextBlock>
-        <Button Grid.Column="12" Content="Export" Command="{Binding ExportMessagesCommand}" Margin="0"
+        <Button Grid.Column="12" Content="Export" Command="{Binding ExportMessagesCommand}"
                 ToolTip.Tip="Save the shown messages to a JSON file" />
+        <Button Grid.Column="13" Content="CSV" Command="{Binding ExportMessagesCsvCommand}" Margin="0"
+                ToolTip.Tip="Save the shown messages to a CSV file" />
       </Grid>
     </Border>
 
@@ -74,7 +78,7 @@
           <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
             <TextBlock Grid.Column="0" Text="Find anywhere" VerticalAlignment="Center" Classes="muted" Width="90" />
             <TextBox Grid.Column="1" MinWidth="260" Text="{Binding GlobalSearchTerm}"
-                     Watermark="Search every listed topic's messages - key, value and headers (contains)">
+                     Watermark="Search every listed topic - text (contains), or a query like $.orderId = ORD-42">
               <TextBox.KeyBindings>
                 <KeyBinding Gesture="Enter" Command="{Binding GlobalSearchCommand}" />
               </TextBox.KeyBindings>
@@ -164,7 +168,7 @@
           <RowDefinition Height="*" MinHeight="120" />
           <RowDefinition Height="Auto" />
           <RowDefinition MinHeight="0"
-                         Height="{Binding ComparisonMessages.Count, Converter={x:Static conv:CountToRowHeightConverter.Instance}, ConverterParameter=220}" />
+                         Height="{Binding ComparisonMessages.Count, Converter={x:Static conv:CountToRowHeightConverter.Instance}, ConverterParameter=260}" />
         </Grid.RowDefinitions>
 
         <!-- Messages of the loaded topic -->
@@ -178,6 +182,9 @@
               <Button Grid.Column="3" Classes="small" Content="Compare" ToolTip.Tip="Pin the selected message for side-by-side comparison"
                       Command="{Binding AddSelectedToComparisonCommand}" />
             </Grid>
+            <TextBlock DockPanel.Dock="Top" Classes="error" TextWrapping="Wrap" Margin="0,0,0,6"
+                       Text="{Binding MessageFilterError, StringFormat='Filter: {0} - showing every message'}"
+                       IsVisible="{Binding MessageFilterError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             <Panel>
               <TextBlock Classes="hint" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
                          Text="Open a topic to see its newest messages."
@@ -209,12 +216,16 @@
         <Border Grid.Row="0" Classes="pane" IsVisible="{Binding IsGlobalSearchActive}">
           <DockPanel>
             <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,6">
-              <Grid ColumnDefinitions="*,Auto,Auto">
+              <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
                 <TextBlock Grid.Column="0" Classes="paneTitle">
                   <Run Text="Search results" /><Run Text=" · " Foreground="{DynamicResource MutedTextBrush}" /><Run Text="{Binding GlobalSearchResults.Count}" /><Run Text=" matches" Foreground="{DynamicResource MutedTextBrush}" />
                 </TextBlock>
                 <ProgressBar Grid.Column="1" IsIndeterminate="True" IsVisible="{Binding IsGlobalSearching}" Width="16" Height="16" MinWidth="16" Margin="0,0,6,0" />
-                <Button Grid.Column="2" Classes="small" Content="Close results" Command="{Binding CloseSearchResultsCommand}"
+                <Button Grid.Column="2" Classes="small" Content="Export" Command="{Binding ExportSearchResultsCommand}" Margin="0,0,4,0"
+                        ToolTip.Tip="Save the shown results to a JSON file" />
+                <Button Grid.Column="3" Classes="small" Content="CSV" Command="{Binding ExportSearchResultsCsvCommand}" Margin="0,0,4,0"
+                        ToolTip.Tip="Save the shown results to a CSV file" />
+                <Button Grid.Column="4" Classes="small" Content="Close results" Command="{Binding CloseSearchResultsCommand}"
                         ToolTip.Tip="Back to the message list (results are kept - reopen with 'Show last results')" />
               </Grid>
               <TextBlock Classes="hint" Text="Click a topic to filter · double-click a result to open it in its topic." />
@@ -266,13 +277,70 @@
 
         <Border Grid.Row="2" Classes="pane" IsVisible="{Binding ComparisonMessages.Count}">
           <DockPanel>
-            <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+            <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,6">
               <TextBlock Grid.Column="0" Classes="paneTitle">
                 <Run Text="Compare messages" /><Run Text=" " /><Run Text="{Binding ComparisonMessages.Count}" Foreground="{DynamicResource MutedTextBrush}" />
               </TextBlock>
-              <Button Grid.Column="1" Classes="small" Content="Clear all" Command="{Binding ClearComparisonCommand}" />
+              <ToggleButton Grid.Column="1" Classes="small" Content="Field diff" Margin="0,0,4,0" Padding="8,2" FontSize="11"
+                            IsChecked="{Binding IsDiffOpen}" IsEnabled="{Binding CanDiff}"
+                            ToolTip.Tip="Field-by-field differences between two pinned messages (pin at least two)" />
+              <Button Grid.Column="2" Classes="small" Content="Clear all" Command="{Binding ClearComparisonCommand}" />
             </Grid>
-            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+
+            <!-- Structural diff of two pinned messages -->
+            <DockPanel IsVisible="{Binding IsDiffOpen}">
+              <DockPanel.Styles>
+                <Style Selector="ComboBox">
+                  <Setter Property="MinHeight" Value="24" />
+                  <Setter Property="Height" Value="24" />
+                  <Setter Property="Padding" Value="6,1" />
+                  <Setter Property="FontSize" Value="11" />
+                  <Setter Property="VerticalContentAlignment" Value="Center" />
+                </Style>
+                <Style Selector="TextBox">
+                  <Setter Property="MinHeight" Value="24" />
+                  <Setter Property="Height" Value="24" />
+                  <Setter Property="Padding" Value="6,1" />
+                  <Setter Property="FontSize" Value="11" />
+                  <Setter Property="VerticalContentAlignment" Value="Center" />
+                </Style>
+                <Style Selector="CheckBox">
+                  <Setter Property="FontSize" Value="11" />
+                  <Setter Property="MinHeight" Value="24" />
+                </Style>
+              </DockPanel.Styles>
+              <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,2">
+                <ComboBox Width="190" ItemsSource="{Binding ComparisonMessages}" SelectedItem="{Binding DiffLeft}" Margin="0,0,4,4">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ComparisonEntry"><TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" /></DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+                <Button Classes="small" Content="⇄" ToolTip.Tip="Swap sides" Command="{Binding SwapDiffSidesCommand}" Margin="0,0,4,4" />
+                <ComboBox Width="190" ItemsSource="{Binding ComparisonMessages}" SelectedItem="{Binding DiffRight}" Margin="0,0,10,4">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ComparisonEntry"><TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" /></DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+                <CheckBox Content="Ignore timestamps/ids" IsChecked="{Binding DiffIgnoreVolatile}" Margin="0,0,8,4" />
+                <CheckBox Content="Show equal" IsChecked="{Binding DiffShowUnchanged}" Margin="0,0,8,4" />
+                <TextBox Width="170" Text="{Binding DiffIgnorePaths}" Watermark="ignore: $.meta, headers.x" Margin="0,0,0,4" />
+              </WrapPanel>
+              <TextBlock DockPanel.Dock="Top" Classes="muted" Text="{Binding DiffSummary}" Margin="0,0,0,4" />
+              <ListBox Classes="rows" ItemsSource="{Binding DiffRows}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="search:DiffEntry">
+                    <Grid ColumnDefinitions="20,240,*,*" Margin="4,1">
+                      <TextBlock Grid.Column="0" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" Text="{Binding Symbol}" />
+                      <TextBlock Grid.Column="1" Classes="mono" Foreground="White" TextTrimming="CharacterEllipsis" Text="{Binding Path}" ToolTip.Tip="{Binding Path}" />
+                      <TextBlock Grid.Column="2" Classes="mono" Foreground="{DynamicResource FailureBrush}" TextTrimming="CharacterEllipsis" Text="{Binding LeftText}" ToolTip.Tip="{Binding LeftText}" />
+                      <TextBlock Grid.Column="3" Classes="mono" Foreground="{DynamicResource SuccessBrush}" TextTrimming="CharacterEllipsis" Text="{Binding RightText}" ToolTip.Tip="{Binding RightText}" />
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
+
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" IsVisible="{Binding !IsDiffOpen}">
               <ItemsControl ItemsSource="{Binding ComparisonMessages}">
                 <ItemsControl.ItemsPanel>
                   <ItemsPanelTemplate>

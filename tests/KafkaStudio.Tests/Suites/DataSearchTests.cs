@@ -127,6 +127,11 @@ public static class DataSearchTests
             // Words that merely start like a field are plain text.
             Assert.False(MessageQuery.Parse("keyboard").IsStructured);
             Assert.False(MessageQuery.Parse("value").IsStructured);
+            Assert.False(MessageQuery.Parse("(hello)").IsStructured);
+            Assert.False(MessageQuery.Parse("not found").IsStructured);
+            Assert.False(MessageQuery.Parse("don't panic").IsStructured);
+            Assert.True(MessageQuery.Parse("(key = a)").IsStructured);
+            Assert.True(MessageQuery.Parse("not (key = a)").IsStructured);
             Assert.Equal("key equals", MessageQuery.Parse("\"key equals\"").Term);
         });
 
@@ -458,7 +463,7 @@ public static class DataSearchTests
                 Topics = new[] { "payments" },
                 Name = "Payment for ORD-2 exists",
                 WithinSeconds = 2
-            }, out var script, out var error), error);
+            }, out var script, out var error), error ?? "");
             Assert.Contains("Scenario: Payment for ORD-2 exists", script);
 
             var document = Parser.Parse(script);

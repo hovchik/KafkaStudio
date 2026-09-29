@@ -35,7 +35,7 @@ public sealed class DataSearchViewModel : ObservableObject
     public DataSearchViewModel(AppState state)
     {
         Scope = new SearchScopeViewModel(state);
-        Actions = new MessageActions(state, () => Scope.SelectedConnection, s => Query!.ReportStatus(s));
+        Actions = new MessageActions(state, () => Scope.SelectedConnection, s => CurrentTab.ReportStatus(s));
         Query = new QuerySearchViewModel(state, Scope, Actions, Show);
         Bulk = new BulkCheckViewModel(state, Scope, Actions, Show);
         Trace = new TraceViewModel(state, Scope, Show);
@@ -65,6 +65,18 @@ public sealed class DataSearchViewModel : ObservableObject
     }
 
     private void Show(KafkaMessage? message) => SelectedMessage = message;
+
+    /// <summary>The tab being shown (shared actions report their outcome in its status line).</summary>
+    public ScanTabViewModel CurrentTab => SelectedTabIndex switch
+    {
+        BulkTab => Bulk,
+        TraceTab => Trace,
+        ReconcileTab => Reconcile,
+        SimilarTab => Similar,
+        DuplicatesTab => Duplicates,
+        FieldStatsTab => FieldStats,
+        _ => Query
+    };
 
     /// <summary>Switches to the Search tab and runs <paramref name="query"/> (optionally on one topic).</summary>
     public Task RunQueryAsync(string query, string? singleTopic = null)

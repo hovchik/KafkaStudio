@@ -194,7 +194,19 @@ public sealed class QuerySearchViewModel : ScanTabViewModel
 
     private bool? _lastRunFound;
     /// <summary>For the result badge: true = found, false = not found, null = no run yet.</summary>
-    public bool? LastRunFound { get => _lastRunFound; private set => SetProperty(ref _lastRunFound, value); }
+    public bool? LastRunFound
+    {
+        get => _lastRunFound;
+        private set
+        {
+            if (!SetProperty(ref _lastRunFound, value)) return;
+            OnPropertyChanged(nameof(IsFound));
+            OnPropertyChanged(nameof(IsNotFound));
+        }
+    }
+
+    public bool IsFound => LastRunFound == true;
+    public bool IsNotFound => LastRunFound == false;
 
     private KafkaMessage? _selectedHit;
     public KafkaMessage? SelectedHit

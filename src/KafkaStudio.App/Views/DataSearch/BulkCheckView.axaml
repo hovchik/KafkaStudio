@@ -1,0 +1,78 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.DataSearch"
+             xmlns:search="using:KafkaStudio.Search"
+             x:Class="KafkaStudio.App.Views.DataSearch.BulkCheckView"
+             x:DataType="vm:BulkCheckViewModel"
+             x:CompileBindings="True">
+
+  <Grid ColumnDefinitions="260,6,*">
+
+    <!-- Input -->
+    <DockPanel Grid.Column="0">
+      <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,6">
+        <TextBlock Classes="label" Text="IDS - ONE PER LINE, OR PASTE A CSV" />
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Grid.Column="0" Classes="muted" VerticalAlignment="Center">
+            <Run Text="{Binding ParsedIdCount}" /><Run Text=" id(s)" />
+          </TextBlock>
+          <Button Grid.Column="1" Classes="small" Content="Import file…" Command="{Binding ImportCommand}" />
+        </Grid>
+      </StackPanel>
+
+      <StackPanel DockPanel.Dock="Bottom" Spacing="6" Margin="0,6,0,0">
+        <Grid ColumnDefinitions="Auto,*">
+          <TextBlock Grid.Column="0" Classes="muted" Text="CSV column" VerticalAlignment="Center" Margin="0,0,6,0" />
+          <NumericUpDown Grid.Column="1" Value="{Binding CsvColumn}" Minimum="0" Maximum="1000" FormatString="0"
+                         Watermark="all cells" ToolTip.Tip="1-based column holding the ids (empty = every cell)" />
+        </Grid>
+        <CheckBox Content="First line is a header" IsChecked="{Binding SkipHeader}" />
+        <Grid ColumnDefinitions="Auto,*">
+          <TextBlock Grid.Column="0" Classes="muted" Text="Look in" VerticalAlignment="Center" Margin="0,0,6,0" />
+          <TextBox Grid.Column="1" Text="{Binding MatchField}" Watermark="any"
+                   ToolTip.Tip="any = key, headers or anywhere in the value · key · $.order.id · header &quot;name&quot;" />
+        </Grid>
+        <CheckBox Content="Match case" IsChecked="{Binding CaseSensitive}" />
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Button Content="Check ids" Classes="primary" Command="{Binding RunCommand}" />
+          <Button Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" />
+        </StackPanel>
+      </StackPanel>
+
+      <TextBox Text="{Binding IdsText}" AcceptsReturn="True" TextWrapping="NoWrap" FontFamily="Consolas,Menlo,monospace"
+               Watermark="ORD-1001&#x0a;ORD-1002&#x0a;…" VerticalContentAlignment="Top" />
+    </DockPanel>
+
+    <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
+
+    <!-- Results -->
+    <DockPanel Grid.Column="2">
+      <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,6">
+        <SelectableTextBlock Foreground="White" TextWrapping="Wrap" Text="{Binding Status}" />
+        <TextBlock Classes="muted" Text="{Binding Progress}" IsVisible="{Binding IsRunning}" />
+        <WrapPanel>
+          <CheckBox Content="Only missing" IsChecked="{Binding OnlyMissing}" Margin="0,0,10,0" />
+          <Button Classes="small" Content="Copy missing ids" Command="{Binding CopyMissingCommand}" Margin="0,0,6,0" />
+          <Button Classes="small" Content="Export CSV" Command="{Binding ExportCsvCommand}" />
+        </WrapPanel>
+      </StackPanel>
+
+      <ListBox Classes="rows" ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="search:IdPresence">
+            <Grid ColumnDefinitions="150,64,*,Auto" Margin="6,3">
+              <TextBlock Grid.Column="0" Classes="mono" Foreground="White" TextTrimming="CharacterEllipsis" Text="{Binding Id}" />
+              <Panel Grid.Column="1">
+                <TextBlock FontSize="11" Foreground="{DynamicResource SuccessBrush}" Text="{Binding Status}" IsVisible="{Binding Found}" />
+                <TextBlock FontSize="11" Foreground="{DynamicResource FailureBrush}" Text="missing" IsVisible="{Binding !Found}" />
+              </Panel>
+              <TextBlock Grid.Column="2" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" Text="{Binding TopicsText}" ToolTip.Tip="{Binding TopicsText}" />
+              <TextBlock Grid.Column="3" Classes="muted" FontSize="11" Margin="8,0,0,0"
+                         Text="{Binding First.Timestamp, StringFormat='{}{0:MM-dd HH:mm:ss}', FallbackValue=''}" ToolTip.Tip="First seen" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </DockPanel>
+  </Grid>
+</UserControl>

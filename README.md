@@ -1,7 +1,7 @@
 # KafkaStudio
 
 A Windows desktop IDE for working with Kafka day-to-day: browse and scan topics, produce/consume
-messages, and - the part a generic tool like Offset Explorer doesn't do - write checks and automation in
+messages, find data (does it exist, where, and is there anything similar?), and - the part a generic tool like Offset Explorer doesn't do - write checks and automation in
 a small, readable scripting language called **KafScript**. It covers the three workflows this project
 was built around:
 
@@ -20,12 +20,13 @@ Built with .NET 10 and Avalonia UI.
 | `KafkaStudio.Core` | Domain models + the `IKafkaGateway` abstraction everything else is built on, plus an in-memory fake broker/gateway used for tests and "offline demo" mode. | none |
 | `KafkaStudio.Scripting` | KafScript: lexer, parser, AST, and the interpreter that runs a parsed script against an `IKafkaGateway`. | none |
 | `KafkaStudio.Automation` | The scheduler for `Task` blocks, the rethrow engine/manager, run history, and a loader for `.kafscript` files. | none |
+| `KafkaStudio.Search` | Data finding: a query language for messages, existence and bulk id checks, traces, two-topic reconciliation, similarity, duplicates, field statistics, structural diffs, search → KafScript. | none |
 | `KafkaStudio.App.ViewModels` | All UI state and logic (MVVM), framework-agnostic. | none |
 | `KafkaStudio.Kafka` | The real Kafka client: `ConfluentKafkaGateway`, an `IKafkaGateway` implementation over Confluent.Kafka/librdkafka. | Confluent.Kafka |
 | `KafkaStudio.App` | The Avalonia desktop app: windows, views, styling. | Avalonia, Avalonia.Desktop, Avalonia.Themes.Fluent, Avalonia.Fonts.Inter |
-| `KafkaStudio.Tests` | A self-contained test suite (75 tests) covering the language, interpreter, scheduler, rethrow engine, ViewModels, the sample scripts, and regression tests for every fixed bug. | none (see below) |
+| `KafkaStudio.Tests` | A self-contained test suite (108 tests) covering the language, interpreter, scheduler, rethrow engine, data search engine, ViewModels, the sample scripts, and regression tests for every fixed bug. | none (see below) |
 
-Five of the seven projects - Core, Scripting, Automation, App.ViewModels, and Tests, which together are
+Six of the eight projects - Core, Scripting, Automation, Search, App.ViewModels, and Tests, which together are
 the engine that does the actual "checks and automation" work this app exists for - have **zero external
 dependencies** and build with nothing but the .NET SDK.
 
@@ -38,7 +39,7 @@ the solution is structured:
 - **Fully built and tested, for real, in that sandbox:** `KafkaStudio.Core`, `KafkaStudio.Scripting`,
   `KafkaStudio.Automation`, and `KafkaStudio.App.ViewModels` - i.e. the KafScript language, the
   interpreter, the rethrow engine, the scheduler, and every ViewModel. `dotnet test`-equivalent output
-  (75/75 passing) is reproducible by running `dotnet run --project tests/KafkaStudio.Tests`. This
+  (108/108 passing) is reproducible by running `dotnet run --project tests/KafkaStudio.Tests`. This
   includes actual end-to-end runs of the rethrow, scan+acknowledge, and cross-topic-timing-check
   scenarios in `/samples` against a simulated in-memory Kafka broker (`InMemoryKafkaBroker`) - not just
   unit tests of isolated pieces, but the real "produce on one topic, watch another, assert on timing"
@@ -91,9 +92,9 @@ every sample script against.
    tested before they're saved, can be edited/reconnected, and on Windows saved passwords are encrypted
    with DPAPI for your user account.
 2. **Topics** (`Ctrl+1`) - browse topics, open one to see its **newest** N messages (or all of them),
-   filter by key/value/headers, inspect a message (metadata, headers, pretty JSON, binary hex dump),
-   copy it, export to JSON, pin messages side by side for comparison, search across every topic, and
-   create topics.
+   filter by text or by field (`$.status = FAILED and key starts with ORD-`), inspect a message
+   (metadata, headers, pretty JSON, binary hex dump), copy it, export to JSON/CSV, pin messages side by
+   side and see a field-by-field diff, search across every topic, and create topics.
 3. **Produce** (`Ctrl+2`) - ad-hoc send with headers, explicit partition, tombstones, "send N times",
    JSON formatting and `{{$uuid}}`/`{{$now}}`-style templates. Any message elsewhere in the app can be
    opened here with **Edit in Producer** to resend or tweak it.
@@ -104,10 +105,17 @@ every sample script against.
    pass/fail history. Registered tasks survive restarts.
 7. **Rethrow Rules** (`Ctrl+6`) - point-and-click continuous relay from one topic to another, with an
    optional filter and extra header; at-least-once, retries on broker errors, rules are saved.
+8. **Find Data** (`Ctrl+7`) - does this (or similar) data exist, and where? Structured or fuzzy search
+   over a topic scope and time range, a one-click "Exists?" answer, bulk checks of id lists (found /
+   missing / duplicated), an id's journey across topics, two-topic reconciliation (only in A / only in
+   B / different), "find similar" (same key, same fields, near-duplicates, same shape), duplicate
+   detection, field statistics, saved searches and history, and "turn this search into a KafScript
+   check". Every message in the app has **Find similar** and **Trace key** buttons that jump here.
 
 Settings live in `%APPDATA%/KafkaStudio` (override with the `KAFKASTUDIO_DATA_DIR` environment variable).
 
-See [`docs/kafscript-language.md`](docs/kafscript-language.md) for the full KafScript reference, and
+See [`docs/find-data.md`](docs/find-data.md) for the Find Data guide and query language,
+[`docs/kafscript-language.md`](docs/kafscript-language.md) for the full KafScript reference, and
 `/samples` for runnable examples of all three priority workflows (rethrow, scan+acknowledge, cross-topic
 timing check).
 
@@ -140,15 +148,17 @@ src/
   KafkaStudio.Core/            domain models, IKafkaGateway, in-memory fake broker
   KafkaStudio.Scripting/       KafScript: lexer, parser, AST, interpreter
   KafkaStudio.Automation/      scheduler, rethrow engine, run history, script loader
+  KafkaStudio.Search/          data finding: queries, existence/bulk checks, traces, reconcile, similarity
   KafkaStudio.App.ViewModels/  MVVM layer (zero external dependencies)
   KafkaStudio.Kafka/           real Confluent.Kafka-backed IKafkaGateway
   KafkaStudio.App/             Avalonia desktop app
 tests/
-  KafkaStudio.Tests/           self-contained test suite (75 tests, no external test framework)
+  KafkaStudio.Tests/           self-contained test suite (108 tests, no external test framework)
 samples/
   *.kafscript                  runnable examples of every priority workflow
 docs/
   kafscript-language.md        full language reference
+  find-data.md                 Find Data screen and query language guide
 ```
 
 ## Why a hand-rolled test harness instead of xUnit

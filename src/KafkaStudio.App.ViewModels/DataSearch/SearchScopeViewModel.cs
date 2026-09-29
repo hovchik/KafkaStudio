@@ -319,6 +319,9 @@ public abstract class ScanTabViewModel : ObservableObject
 
     public RelayCommand CancelCommand { get; }
 
+    /// <summary>Every topic on the scope's connection, for this tab's topic pickers.</summary>
+    public ObservableCollection<string> TopicNames => Scope.TopicNames;
+
     private bool _isRunning;
     public bool IsRunning
     {
