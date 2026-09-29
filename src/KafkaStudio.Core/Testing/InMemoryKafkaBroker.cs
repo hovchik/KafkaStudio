@@ -31,6 +31,8 @@ public sealed class InMemoryKafkaBroker
 
     public void EnsureTopic(string topic) => GetOrCreate(topic);
 
+    public bool TopicExists(string topic) => _topics.ContainsKey(topic);
+
     public (long earliest, long latest) GetOffsets(string topic)
     {
         var log = GetOrCreate(topic);
@@ -43,6 +45,8 @@ public sealed class InMemoryKafkaBroker
     public KafkaMessage Append(string topic, string? key, string? value, byte[]? rawValue,
         IReadOnlyDictionary<string, string>? headers, DateTimeOffset timestamp)
     {
+        // Copy so a caller mutating its dictionary afterwards can't rewrite "stored" history.
+        headers = headers is null ? null : new Dictionary<string, string>(headers);
         var log = GetOrCreate(topic);
         KafkaMessage message;
         List<Channel<KafkaMessage>> subscribersSnapshot;

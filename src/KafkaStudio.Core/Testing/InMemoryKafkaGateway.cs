@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Text;
 using KafkaStudio.Core.Abstractions;
 using KafkaStudio.Core.Connections;
 using KafkaStudio.Core.Messaging;
@@ -33,6 +32,11 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
 
     public Task<TopicMetadata> DescribeTopicAsync(string topic, CancellationToken cancellationToken = default)
     {
+        if (!_broker.TopicExists(topic))
+        {
+            return Task.FromException<TopicMetadata>(new KeyNotFoundException($"topic '{topic}' not found"));
+        }
+
         var (earliest, latest) = _broker.GetOffsets(topic);
         var metadata = new TopicMetadata
         {
@@ -49,17 +53,23 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
     public Task CreateTopicAsync(string topic, int partitions, short replicationFactor,
         CancellationToken cancellationToken = default)
     {
+        if (_broker.TopicExists(topic))
+        {
+            return Task.FromException(new InvalidOperationException($"topic '{topic}' already exists"));
+        }
         _broker.EnsureTopic(topic);
         return Task.CompletedTask;
     }
 
     public Task<ProduceReceipt> ProduceAsync(ProduceRequest request, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        var raw = request.GetValueBytes();
         var message = _broker.Append(
             request.Topic,
             request.Key,
-            request.Value,
-            rawValue: request.Value is null ? null : Encoding.UTF8.GetBytes(request.Value),
+            request.RawValue is not null ? KafkaMessage.DecodeText(raw) : request.Value,
+            raw,
             request.Headers,
             _clock.UtcNow);
 
@@ -78,12 +88,17 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
         var (history, live, unsubscribe) = _broker.Subscribe(options.Topic);
         try
         {
+            // The subscription above is registered atomically with the history snapshot, so from here
+            // on nothing can be missed.
+            options.OnReady?.Invoke();
+
             long startOffset = options.StartPosition switch
             {
                 ConsumeStartPosition.Earliest => 0,
                 ConsumeStartPosition.Latest => history.Count,
                 ConsumeStartPosition.Committed => _broker.GetCommittedOffset(options.Topic, options.ConsumerGroup) + 1,
                 ConsumeStartPosition.FromTimestamp => FindFirstIndexAtOrAfter(history, options.FromTimestamp),
+                ConsumeStartPosition.Tail => Math.Max(0, history.Count - Math.Max(0, options.TailCount)),
                 _ => history.Count
             };
 

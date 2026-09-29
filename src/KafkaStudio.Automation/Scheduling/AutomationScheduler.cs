@@ -11,23 +11,33 @@ namespace KafkaStudio.Automation.Scheduling;
 /// and fires it via <see cref="ScriptRunner"/> when due. Deliberately hand-rolled on
 /// <see cref="PeriodicTimer"/> instead of a hosting framework's BackgroundService, so it has zero
 /// dependencies beyond the BCL and Core/Scripting.
+///
+/// Guarantees: a job never overlaps with itself (a slow "every 10 seconds" job that takes 30s skips
+/// the ticks it's busy for instead of piling up concurrent runs), and "at HH:MM" means local wall-clock
+/// time in <see cref="TimeZone"/> (the machine's time zone by default), not UTC.
 /// </summary>
 public sealed class AutomationScheduler : IAsyncDisposable
 {
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1);
 
     private readonly ConcurrentDictionary<string, ScheduledJob> _jobs = new();
+    private readonly ConcurrentDictionary<Task, byte> _inFlight = new();
     private readonly IClock _clock;
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
 
+    public event Action<ScheduledJob>? RunStarted;
     public event Action<ScheduledJob, ScriptRunResult>? RunCompleted;
     public event Action<ScheduledJob, Exception>? RunFailed;
 
-    public AutomationScheduler(IClock? clock = null)
+    public AutomationScheduler(IClock? clock = null, TimeZoneInfo? timeZone = null)
     {
         _clock = clock ?? SystemClock.Instance;
+        TimeZone = timeZone ?? TimeZoneInfo.Local;
     }
+
+    /// <summary>Time zone "at HH:MM" schedules are interpreted in.</summary>
+    public TimeZoneInfo TimeZone { get; }
 
     public IReadOnlyCollection<ScheduledJob> Jobs => (IReadOnlyCollection<ScheduledJob>)_jobs.Values;
 
@@ -41,11 +51,44 @@ public sealed class AutomationScheduler : IAsyncDisposable
 
     public void Unregister(string id) => _jobs.TryRemove(id, out _);
 
-    /// <summary>Runs a job immediately, outside of its normal schedule (e.g. a UI "Run now" button).</summary>
-    public Task RunNowAsync(string id, CancellationToken cancellationToken = default) =>
-        _jobs.TryGetValue(id, out var job)
-            ? RunJobAsync(job, cancellationToken)
-            : throw new KeyNotFoundException($"no scheduled job with id '{id}'");
+    /// <summary>Enables/disables a job. Re-enabling recomputes its next run from now, so a job that was
+    /// disabled for a while doesn't immediately fire for the slot it missed.</summary>
+    public void SetEnabled(string id, bool enabled)
+    {
+        if (!_jobs.TryGetValue(id, out var job)) return;
+        job.Enabled = enabled;
+        if (enabled && job.Block.Schedule?.Kind != ScheduleKind.RunOnce) ComputeNextRun(job);
+    }
+
+    /// <summary>Runs a job immediately, outside of its normal schedule (e.g. a UI "Run now" button).
+    /// Throws <see cref="InvalidOperationException"/> if that job is already running.</summary>
+    public Task RunNowAsync(string id, CancellationToken cancellationToken = default)
+    {
+        if (!_jobs.TryGetValue(id, out var job))
+        {
+            throw new KeyNotFoundException($"no scheduled job with id '{id}'");
+        }
+        if (!job.TryBeginRun())
+        {
+            throw new InvalidOperationException($"'{job.Block.Name}' is already running");
+        }
+
+        if (_cts is { } loopCts)
+        {
+            // Also stop a manual run when the scheduler shuts down.
+            var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, loopCts.Token);
+            return Track(RunAndDisposeAsync(job, linked));
+        }
+        return Track(RunJobAsync(job, cancellationToken, manual: true));
+    }
+
+    private async Task RunAndDisposeAsync(ScheduledJob job, CancellationTokenSource linked)
+    {
+        using (linked)
+        {
+            await RunJobAsync(job, linked.Token, manual: true).ConfigureAwait(false);
+        }
+    }
 
     public void Start()
     {
@@ -64,9 +107,9 @@ public sealed class AutomationScheduler : IAsyncDisposable
                 var now = _clock.UtcNow;
                 foreach (var job in _jobs.Values)
                 {
-                    if (job.Enabled && job.NextRunAt is { } next && next <= now)
+                    if (job.Enabled && job.NextRunAt is { } next && next <= now && job.TryBeginRun())
                     {
-                        _ = RunJobAsync(job, cancellationToken); // don't let one slow job stall the tick
+                        _ = Track(RunJobAsync(job, cancellationToken, manual: false)); // don't let one slow job stall the tick
                     }
                 }
             }
@@ -77,22 +120,43 @@ public sealed class AutomationScheduler : IAsyncDisposable
         }
     }
 
-    private async Task RunJobAsync(ScheduledJob job, CancellationToken cancellationToken)
+    private Task Track(Task task)
     {
-        job.LastRunAt = _clock.UtcNow;
-        job.RunCount++;
-        ComputeNextRun(job); // scheduled before running, so a slow job doesn't get queued again on the next tick
+        _inFlight[task] = 0;
+        _ = task.ContinueWith(t => _inFlight.TryRemove(t, out _), TaskScheduler.Default);
+        return task;
+    }
 
+    /// <summary>Precondition: <see cref="ScheduledJob.TryBeginRun"/> succeeded.</summary>
+    private async Task RunJobAsync(ScheduledJob job, CancellationToken cancellationToken, bool manual)
+    {
         try
         {
+            job.LastRunAt = _clock.UtcNow;
+            job.RunCount++;
+            // A manual run doesn't consume a "run once" job's scheduled run, nor shift an "every" cadence.
+            if (!manual) ComputeNextRun(job);
+            SafeInvoke(() => RunStarted?.Invoke(job));
+
             var runner = new ScriptRunner(job.Connections);
             var result = await runner.RunAsync(job.Block, cancellationToken).ConfigureAwait(false);
-            RunCompleted?.Invoke(job, result);
+            SafeInvoke(() => RunCompleted?.Invoke(job, result));
         }
         catch (Exception ex)
         {
-            RunFailed?.Invoke(job, ex);
+            SafeInvoke(() => RunFailed?.Invoke(job, ex));
         }
+        finally
+        {
+            job.EndRun();
+        }
+    }
+
+    // A throwing UI handler must not kill the scheduler or leave a job marked as running.
+    private static void SafeInvoke(Action action)
+    {
+        try { action(); }
+        catch { /* subscriber bug - ignore */ }
     }
 
     private void ComputeNextRun(ScheduledJob job)
@@ -109,16 +173,33 @@ public sealed class AutomationScheduler : IAsyncDisposable
         {
             ScheduleKind.RunOnce => job.LastRunAt is null ? now : null,
             ScheduleKind.Every => now + schedule.Every!.ToTimeSpan(),
-            ScheduleKind.At => NextDailyOccurrence(now, schedule.At!.Value),
+            ScheduleKind.At => NextDailyOccurrence(now, schedule.At!.Value, TimeZone),
             _ => null
         };
     }
 
-    private static DateTimeOffset NextDailyOccurrence(DateTimeOffset now, TimeOnly at)
+    /// <summary>Next instant (after <paramref name="now"/>) whose wall-clock time in
+    /// <paramref name="zone"/> is <paramref name="at"/>. Handles DST: a time skipped by a
+    /// spring-forward transition runs at the first valid instant after it; an ambiguous fall-back time
+    /// runs once, at its first occurrence.</summary>
+    public static DateTimeOffset NextDailyOccurrence(DateTimeOffset now, TimeOnly at, TimeZoneInfo zone)
     {
-        var candidate = new DateTimeOffset(now.Year, now.Month, now.Day, at.Hour, at.Minute, 0, now.Offset);
-        if (candidate <= now) candidate = candidate.AddDays(1);
-        return candidate;
+        var localNow = TimeZoneInfo.ConvertTime(now, zone);
+        for (var dayOffset = 0; dayOffset <= 2; dayOffset++)
+        {
+            var date = DateOnly.FromDateTime(localNow.DateTime).AddDays(dayOffset);
+            var local = date.ToDateTime(at, DateTimeKind.Unspecified);
+
+            while (zone.IsInvalidTime(local)) local = local.AddMinutes(1);
+
+            var offset = zone.IsAmbiguousTime(local)
+                ? zone.GetAmbiguousTimeOffsets(local).Max()
+                : zone.GetUtcOffset(local);
+            var candidate = new DateTimeOffset(local, offset);
+            if (candidate > now) return candidate.ToUniversalTime();
+        }
+
+        return now.AddDays(1); // unreachable in practice
     }
 
     public async ValueTask DisposeAsync()
@@ -129,6 +210,12 @@ public sealed class AutomationScheduler : IAsyncDisposable
             try { await _loopTask.ConfigureAwait(false); }
             catch { /* shutdown */ }
         }
+
+        // Let in-flight runs observe cancellation and close their Kafka subscriptions before the
+        // gateways they use get disposed.
+        try { await Task.WhenAll(_inFlight.Keys).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false); }
+        catch { /* shutdown */ }
+
         _cts?.Dispose();
     }
 }

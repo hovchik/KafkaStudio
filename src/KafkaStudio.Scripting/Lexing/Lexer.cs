@@ -78,9 +78,9 @@ public static class Lexer
                     }
                     // Trim a single leading/trailing newline for readability, mirroring common
                     // multi-line string conventions (so """\n{...}\n""" doesn't carry stray blank lines).
-                    var text = sb.ToString();
+                    // CRLF-saved files: normalize so payloads don't carry stray '\r' characters.
+                    var text = sb.ToString().Replace("\r\n", "\n");
                     if (text.StartsWith('\n')) text = text[1..];
-                    else if (text.StartsWith("\r\n")) text = text[2..];
                     if (text.EndsWith('\n')) text = text[..^1];
                     tokens.Add(new Token(TokenType.DocString, text, startLine));
                     continue;
@@ -123,10 +123,16 @@ public static class Lexer
                 }
             }
 
-            if (char.IsDigit(c))
+            if (char.IsAsciiDigit(c))
             {
                 var start = i;
-                while (i < n && (char.IsDigit(source[i]) || source[i] == '.')) i++;
+                var seenDot = false;
+                while (i < n && (char.IsAsciiDigit(source[i]) ||
+                                 (source[i] == '.' && !seenDot && i + 1 < n && char.IsAsciiDigit(source[i + 1]))))
+                {
+                    if (source[i] == '.') seenDot = true;
+                    i++;
+                }
                 tokens.Add(new Token(TokenType.Number, source[start..i], line));
                 continue;
             }

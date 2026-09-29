@@ -65,5 +65,19 @@ public sealed record ConnectionProfile
     public IReadOnlyDictionary<string, string> AdvancedProperties { get; init; } =
         new Dictionary<string, string>();
 
+    /// <summary>Bootstrap-servers placeholder used for in-memory demo connections.</summary>
+    public const string DemoBootstrapServers = "demo (in-memory)";
+
+    /// <summary>
+    /// True for an in-memory "offline / demo" connection. Stored explicitly: inferring it from the
+    /// bootstrap servers (e.g. "starts with demo") would misclassify a real host such as
+    /// "demo-kafka:9092". Profiles saved before this flag existed are recognized by the exact
+    /// <see cref="DemoBootstrapServers"/> placeholder.
+    /// </summary>
+    public bool IsDemo { get; init; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsDemoConnection => IsDemo || BootstrapServers == DemoBootstrapServers;
+
     public override string ToString() => $"{Name} ({BootstrapServers})";
 }

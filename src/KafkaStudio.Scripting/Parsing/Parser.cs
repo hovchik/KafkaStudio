@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using KafkaStudio.Scripting.Ast;
 using KafkaStudio.Scripting.Lexing;
+using KafkaStudio.Scripting.Runtime;
 
 namespace KafkaStudio.Scripting.Parsing;
 
@@ -82,9 +83,24 @@ public sealed class Parser
         {
             throw Error($"expected a number but found {Describe(Current)}");
         }
-        var value = double.Parse(Current.Text, CultureInfo.InvariantCulture);
+        if (!double.TryParse(Current.Text, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var value) ||
+            double.IsInfinity(value))
+        {
+            throw Error($"'{Current.Text}' is not a valid number");
+        }
         Advance();
         return value;
+    }
+
+    private int ExpectWholeNumber(string what, int min, int max)
+    {
+        var line = Current;
+        var value = ExpectNumber();
+        if (value != Math.Floor(value) || value < min || value > max)
+        {
+            throw new KafScriptException($"{what} must be a whole number between {min} and {max}, got '{line.Text}'", line.Line);
+        }
+        return (int)value;
     }
 
     private void ExpectEndOfLine()
@@ -149,11 +165,27 @@ public sealed class Parser
             SkipNewlines();
         }
 
+        if (string.IsNullOrEmpty(name))
+        {
+            throw new KafScriptException($"{kind} needs a name, e.g. '{kind}: My check'", line);
+        }
+
         var steps = new List<Step>();
         while (IsStepKeyword())
         {
             steps.Add(ParseStep());
             SkipNewlines();
+        }
+
+        // Anything that's neither another step nor the start of the next block is almost always a
+        // mistyped step keyword - say so, instead of the confusing "expected 'Scenario' or 'Task'".
+        if (!AtEof && !IsWord("scenario") && !IsWord("task"))
+        {
+            if (IsWord("schedule"))
+            {
+                throw Error("'schedule' must come directly after the Task/Scenario name line, before any steps");
+            }
+            throw Error($"expected a step starting with Given/When/Then/And/But (or a new Scenario/Task) but found {Describe(Current)}");
         }
 
         return new ScriptBlock(kind, name, schedule, steps, line);
@@ -185,15 +217,20 @@ public sealed class Parser
         }
         if (AcceptWord("every"))
         {
+            var durationLine = Current.Line;
             var duration = ParseDuration();
+            if (duration.ToTimeSpan() < TimeSpan.FromSeconds(1))
+            {
+                throw new KafScriptException("'schedule every' needs an interval of at least 1 second", durationLine);
+            }
             return new ScheduleSpec(ScheduleKind.Every, Every: duration);
         }
         if (AcceptWord("at"))
         {
-            var hour = (int)ExpectNumber();
+            var hour = ExpectWholeNumber("hour", 0, 23);
             if (Current.Type != TokenType.Colon) throw Error("expected ':' in time, e.g. 'at 9:30'");
             Advance();
-            var minute = (int)ExpectNumber();
+            var minute = ExpectWholeNumber("minute", 0, 59);
             return new ScheduleSpec(ScheduleKind.At, At: new TimeOnly(hour, minute));
         }
         throw Error("expected 'run once', 'every <duration>', or 'at <hh:mm>' after 'schedule'");
@@ -351,12 +388,27 @@ public sealed class Parser
         ExpectWord("scan");
         ExpectWord("topic");
         var topic = ExpectString();
-        var position = ParsePosition(allowNow: false);
+        var position = ParsePosition(allowNow: false, allowCommitted: true);
 
         int? limit = null;
-        if (AcceptWord("limit")) limit = (int)ExpectNumber();
+        string? group = null;
+        while (true)
+        {
+            if (limit is null && AcceptWord("limit")) limit = ExpectWholeNumber("limit", 1, 10_000_000);
+            else if (group is null && AcceptWord("group"))
+            {
+                group = ExpectString().Trim();
+                if (group.Length == 0) throw Error("consumer group name can't be empty");
+            }
+            else break;
+        }
 
-        return new ScanTopicAction(topic, position, limit);
+        if (position == TopicPosition.Committed && group is null)
+        {
+            throw Error("'from committed' needs a pinned consumer group, e.g. 'scan topic \"T\" from committed group \"my-sweeper\"'");
+        }
+
+        return new ScanTopicAction(topic, position, limit, group);
     }
 
     private ScriptAction ParseAcknowledge()
@@ -407,7 +459,7 @@ public sealed class Parser
         if (AcceptWord("json"))
         {
             source = ConditionField.Json;
-            path = ExpectString();
+            path = ExpectJsonPath();
         }
         else if (AcceptWord("key")) source = ConditionField.Key;
         else if (AcceptWord("value")) source = ConditionField.Value;
@@ -430,7 +482,9 @@ public sealed class Parser
         ExpectWord("assert");
         var name = ExpectWordText();
         var comparator = ParseComparator();
+        var expectedToken = Current;
         var expected = ExpectString();
+        if (comparator == Comparator.Matches) ValidateRegex(expected, expectedToken.Line);
         return new AssertVariableAction(name, comparator, expected);
     }
 
@@ -453,13 +507,36 @@ public sealed class Parser
         else if (AcceptWord("json"))
         {
             field = ConditionField.Json;
-            path = ExpectString();
+            path = ExpectJsonPath();
         }
         else throw Error("expected 'key', 'value', or 'json \"$.path\"' in condition");
 
         var comparator = ParseComparator();
+        var expectedToken = Current;
         var expected = ExpectString();
+        if (comparator == Comparator.Matches) ValidateRegex(expected, expectedToken.Line);
         return new Condition(field, path, comparator, expected);
+    }
+
+    private string ExpectJsonPath()
+    {
+        var token = Current;
+        var path = ExpectString();
+        if (JsonPathEvaluator.Validate(path) is { } problem)
+        {
+            throw new KafScriptException(problem, token.Line);
+        }
+        return path;
+    }
+
+    private static void ValidateRegex(string pattern, int line)
+    {
+        // Templated patterns ({{var}}) can only be checked once rendered, at run time.
+        if (pattern.Contains("{{", StringComparison.Ordinal)) return;
+        if (ConditionEvaluator.ValidatePattern(pattern) is { } problem)
+        {
+            throw new KafScriptException(problem, line);
+        }
     }
 
     private Comparator ParseComparator()
@@ -475,15 +552,16 @@ public sealed class Parser
         throw Error("expected 'equals', 'contains', 'matches', or 'not equals'");
     }
 
-    private TopicPosition ParsePosition(bool allowNow)
+    private TopicPosition ParsePosition(bool allowNow, bool allowCommitted = false)
     {
         ExpectWord("from");
         if (AcceptWord("beginning")) return TopicPosition.Beginning;
         if (AcceptWord("end")) return TopicPosition.End;
         if (allowNow && AcceptWord("now")) return TopicPosition.Now;
+        if (allowCommitted && AcceptWord("committed")) return TopicPosition.Committed;
         throw Error(allowNow
             ? "expected 'beginning', 'end', or 'now' after 'from'"
-            : "expected 'beginning' or 'end' after 'from'");
+            : "expected 'beginning', 'end' or 'committed' after 'from'");
     }
 
     private Duration ParseDuration()
