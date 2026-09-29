@@ -30,7 +30,7 @@ Built with .NET 10 and Avalonia UI.
 | `KafkaStudio.Kafka` | The real Kafka client: `ConfluentKafkaGateway`, an `IKafkaGateway` implementation over Confluent.Kafka/librdkafka. | Confluent.Kafka |
 | `KafkaStudio.App` | The Avalonia desktop app: windows, views, styling. | Avalonia, Avalonia.Desktop, Avalonia.Themes.Fluent, Avalonia.Fonts.Inter |
 | `KafkaStudio.Cli` | `kafkastudio`, the headless test runner for CI (a thin shell over `TestCommand` in Automation, plus the real Kafka client). | via KafkaStudio.Kafka |
-| `KafkaStudio.Tests` | A self-contained test suite (141 tests) covering the language, interpreter, scheduler, rethrow engine, data search engine, QA test engine (schema validation, suite runner, reports, CLI), ViewModels, the sample scripts, and regression tests for every fixed bug. | none (see below) |
+| `KafkaStudio.Tests` | A self-contained test suite (142 tests) covering the language, interpreter, scheduler, rethrow engine, data search engine, QA test engine (schema validation, suite runner, reports, CLI), ViewModels, the sample scripts, and regression tests for every fixed bug. | none (see below) |
 
 Six of the nine projects - Core, Scripting, Automation, Search, App.ViewModels, and Tests, which together are
 the engine that does the actual "checks and automation" work this app exists for - have **zero external
@@ -45,7 +45,7 @@ the solution is structured:
 - **Fully built and tested, for real, in that sandbox:** `KafkaStudio.Core`, `KafkaStudio.Scripting`,
   `KafkaStudio.Automation`, and `KafkaStudio.App.ViewModels` - i.e. the KafScript language, the
   interpreter, the rethrow engine, the scheduler, and every ViewModel. `dotnet test`-equivalent output
-  (141/141 passing) is reproducible by running `dotnet run --project tests/KafkaStudio.Tests`. This
+  (142/142 passing) is reproducible by running `dotnet run --project tests/KafkaStudio.Tests`. This
   includes actual end-to-end runs of the rethrow, scan+acknowledge, and cross-topic-timing-check
   scenarios in `/samples` against a simulated in-memory Kafka broker (`InMemoryKafkaBroker`) - not just
   unit tests of isolated pieces, but the real "produce on one topic, watch another, assert on timing"
@@ -62,8 +62,10 @@ the solution is structured:
 - **The QA features** (tags/Background/Outlines, the new checks, JSON Schema contracts, the suite runner,
   reports, the `kafkastudio test` CLI and the QA Lab screen) are covered by the test suite against the
   in-memory broker, and the CLI has been run end to end on Linux (demo cluster, report files, exit codes,
-  and an unreachable real broker failing fast with exit code 2). The QA Lab screens have been rendered
-  headlessly with demo data. They have not yet been run against a real Kafka cluster.
+  and an unreachable broker failing fast with exit code 2). The QA samples have also been run with the CLI against a real
+  Apache Kafka 3.8.1 broker (KRaft, single node), where all pass, a negative check catches a real leak, and
+  count checks work. On a real cluster a watched topic must already exist; see `docs/qa-testing.md`. The QA
+  Lab screens have been rendered headlessly with demo data but not click-tested on Windows.
 
 On a normal Windows dev machine with regular internet access, `dotnet restore` just works for every
 project here - the constraint above is specific to the environment this was built in, not to the code
@@ -177,7 +179,7 @@ src/
   KafkaStudio.App/             Avalonia desktop app
   KafkaStudio.Cli/             kafkastudio: headless test runner for CI
 tests/
-  KafkaStudio.Tests/           self-contained test suite (141 tests, no external test framework)
+  KafkaStudio.Tests/           self-contained test suite (142 tests, no external test framework)
 samples/
   *.kafscript                  runnable examples of every priority workflow
   qa/                          a QA test pack: contracts, negative checks, outlines, test data

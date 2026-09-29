@@ -93,6 +93,20 @@ public static class QaLabViewModelTests
             }
         });
 
+        runner.Add("ViewModels: QA Lab", "same-named scenarios and identical example rows are separate tests", async () =>
+        {
+            var state = new AppState();
+            state.AddDemoConnection("local");
+            File.Delete(KafkaStudio.Core.Persistence.JsonFileStore.PathFor("test-runner.json")); // no settings from earlier tests
+            var source = "Scenario: Twin\nGiven log \"a\"\n\nScenario: Twin\nGiven log \"b\"\n\n" +
+                         "Scenario Outline: Row <v>\nGiven log \"<v>\"\nExamples:\n| v |\n| 1 |\n| 1 |";
+            var vm = new TestRunnerViewModel(state, () => source, () => null);
+            Assert.Equal(4, vm.Tests.Count);
+            await vm.RunAllCommand.ExecuteAsync();
+            Assert.Equal(4, vm.PassedCount);
+            Assert.True(vm.Tests.All(t => t.State == TestItemState.Passed));
+        });
+
         runner.Add("ViewModels: QA Lab", "a failed test's bug report and the main window's QA Lab entry", async () =>
         {
             var state = new AppState();

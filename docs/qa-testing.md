@@ -92,6 +92,11 @@ When produce message to topic "orders" key "ORD-9" value "{ \"status\": \"CANCEL
 Then expect no message on topic "shipments" within 5 seconds where key equals "ORD-9"
 ```
 
+On a real cluster, a topic you `watch` (or `expect … on`) must already exist. Watching a missing topic
+is reported as an **error** (`Subscribed topic not available: … Unknown topic or partition`), not a
+failure. Output topics normally exist in a test environment; for a fresh one, create them first (or
+produce to them once, if the broker auto-creates topics).
+
 **Conditions** (in `where …` and `assert last message where …`) read `key`, `value`, `json "$.path"` or
 `header "name"`, and compare with `equals`, `not equals`, `contains`, `not contains`, `matches` (regex),
 `exists`, `not exists`, `greater than`, or `less than`. `greater than` and `less than` compare numbers as

@@ -10,8 +10,9 @@ namespace KafkaStudio.Automation.Testing;
 /// </summary>
 public sealed record TestCase(string FilePath, ScriptBlock? Block, string? FeatureName = null, string? LoadError = null)
 {
-    /// <summary>Stable identity within a run: file path + block name.</summary>
-    public string Id => $"{FilePath}::{Name}";
+    /// <summary>Identity within a run: file, line and name (the line keeps two same-named scenarios,
+    /// or two identical Examples rows, apart).</summary>
+    public string Id => $"{FilePath}:{Line}:{Name}";
 
     public string Name => Block?.Name ?? Path.GetFileName(FilePath);
 
