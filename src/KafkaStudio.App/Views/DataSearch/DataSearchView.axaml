@@ -1,0 +1,114 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.DataSearch"
+             xmlns:topics="using:KafkaStudio.Core.Topics"
+             xmlns:shared="using:KafkaStudio.App.Views.Shared"
+             x:Class="KafkaStudio.App.Views.DataSearch.DataSearchView"
+             x:DataType="vm:DataSearchViewModel"
+             x:CompileBindings="True">
+
+  <UserControl.Styles>
+    <!-- Compact tab headers (Fluent's defaults are sized for page-level navigation). -->
+    <Style Selector="TabItem">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="MinHeight" Value="30" />
+      <Setter Property="Padding" Value="10,4" />
+      <Setter Property="Margin" Value="0,0,2,0" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+
+    <!-- Scope shared by every tab: connection, topics, time range. -->
+    <Border Grid.Row="0" Classes="toolbar">
+      <WrapPanel>
+        <ComboBox Width="160" PlaceholderText="Connection…" ToolTip.Tip="Connection"
+                  ItemsSource="{Binding Scope.ConnectionNames}" SelectedItem="{Binding Scope.SelectedConnection}" Margin="0,0,6,4" />
+        <Button Content="⟳" ToolTip.Tip="Reload topics" Command="{Binding Scope.RefreshTopicsCommand}" Margin="0,0,6,4" />
+
+        <Border Classes="sep" Height="20" Margin="2,0,8,4" />
+
+        <TextBlock Text="Topics" Classes="muted" Margin="0,0,6,4" />
+        <ComboBox Width="190" PlaceholderText="(all topics)" ToolTip.Tip="Limit to a saved topic set (saved from Topics → search results)"
+                  ItemsSource="{Binding Scope.SavedTopicSets}" SelectedItem="{Binding Scope.SelectedTopicSet}" Margin="0,0,2,4">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="topics:SavedTopicSet">
+              <TextBlock>
+                <Run Text="{Binding Name}" /><Run Text="  ·  " Foreground="Gray" /><Run Text="{Binding Topics.Count}" Foreground="Gray" />
+              </TextBlock>
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+        <Button Content="✕" ToolTip.Tip="All topics" Command="{Binding Scope.ClearTopicSetCommand}" Margin="0,0,6,4" />
+        <TextBox Width="150" Text="{Binding Scope.TopicNameFilter}" Watermark="name contains…" Margin="0,0,6,4"
+                 ToolTip.Tip="Only topics whose name contains this" />
+
+        <Border Classes="sep" Height="20" Margin="2,0,8,4" />
+
+        <TextBlock Text="Range" Classes="muted" Margin="0,0,6,4" />
+        <ComboBox Width="190" ItemsSource="{Binding Scope.RangeKinds}" SelectedItem="{Binding Scope.SelectedRangeKind}" Margin="0,0,6,4"
+                  ToolTip.Tip="Which part of each topic to read - narrowing it is the biggest speed-up on large topics" />
+        <StackPanel Orientation="Horizontal" IsVisible="{Binding Scope.IsLastDuration}" Margin="0,0,0,4">
+          <NumericUpDown Width="110" Value="{Binding Scope.LastMinutes}" Minimum="0.1" Maximum="1000000" Increment="5" FormatString="0.#" />
+          <TextBlock Text="minutes" Classes="muted" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" IsVisible="{Binding Scope.IsBetween}" Margin="0,0,0,4">
+          <TextBox Width="150" Text="{Binding Scope.FromText}" Watermark="from (2026-01-10 14:30)" ToolTip.Tip="Start, local time - empty = beginning" />
+          <TextBox Width="150" Text="{Binding Scope.ToText}" Watermark="to (empty = now)" ToolTip.Tip="End, local time - empty = now" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" IsVisible="{Binding Scope.IsNewest}" Margin="0,0,0,4">
+          <NumericUpDown Width="110" Value="{Binding Scope.NewestCount}" Minimum="1" Maximum="100000000" Increment="100" FormatString="0" />
+          <TextBlock Text="per partition" Classes="muted" />
+        </StackPanel>
+
+        <ProgressBar IsIndeterminate="True" IsVisible="{Binding Scope.IsLoadingTopics}" Width="16" Height="16" MinWidth="16" Margin="0,0,6,4" />
+        <TextBlock Classes="muted" Text="{Binding Scope.ScopeSummary}" Margin="0,0,6,4" />
+        <TextBlock Classes="error" Text="{Binding Scope.TopicsError}" Margin="0,0,6,4"
+                   IsVisible="{Binding Scope.TopicsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      </WrapPanel>
+    </Border>
+
+    <Grid Grid.Row="1" Margin="0,6,0,0" ColumnDefinitions="*,6,0.75*">
+      <Border Grid.Column="0" Classes="pane">
+        <TabControl SelectedIndex="{Binding SelectedTabIndex}" Padding="0,6,0,0">
+          <TabItem Header="Search" ToolTip.Tip="Find messages by text or by field, or check whether something exists">
+            <ContentControl Content="{Binding Query}" />
+          </TabItem>
+          <TabItem Header="Bulk check" ToolTip.Tip="Which of a list of ids exist, where, and how often">
+            <ContentControl Content="{Binding Bulk}" />
+          </TabItem>
+          <TabItem Header="Trace" ToolTip.Tip="Follow one id across topics as a timeline">
+            <ContentControl Content="{Binding Trace}" />
+          </TabItem>
+          <TabItem Header="Reconcile" ToolTip.Tip="Join two topics on a field: what's missing, what differs">
+            <ContentControl Content="{Binding Reconcile}" />
+          </TabItem>
+          <TabItem Header="Similar" ToolTip.Tip="Messages like a reference message: same fields, near-duplicates, same shape">
+            <ContentControl Content="{Binding Similar}" />
+          </TabItem>
+          <TabItem Header="Duplicates" ToolTip.Tip="Messages that share a key, a value or chosen fields">
+            <ContentControl Content="{Binding Duplicates}" />
+          </TabItem>
+          <TabItem Header="Field stats" ToolTip.Tip="Every field of a topic: presence, nulls, distinct and top values">
+            <ContentControl Content="{Binding FieldStats}" />
+          </TabItem>
+        </TabControl>
+      </Border>
+
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
+
+      <!-- Shared detail of the message selected in any tab -->
+      <Border Grid.Column="2" Classes="pane">
+        <DockPanel>
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+            <TextBlock Grid.Column="0" Classes="paneTitle" Text="Message" />
+            <Button Grid.Column="1" Classes="small" Content="Use as 'Similar' reference"
+                    ToolTip.Tip="Find messages similar to this one"
+                    Command="{Binding FindSimilarOfSelectedCommand}" />
+          </Grid>
+          <shared:MessageDetailView Message="{Binding SelectedMessage}" Actions="{Binding Actions}" />
+        </DockPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

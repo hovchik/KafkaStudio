@@ -1,0 +1,80 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.DataSearch"
+             xmlns:search="using:KafkaStudio.Search"
+             x:Class="KafkaStudio.App.Views.DataSearch.FieldStatsView"
+             x:DataType="vm:FieldStatsViewModel"
+             x:CompileBindings="True"
+             x:Name="Root">
+
+  <DockPanel>
+    <Border DockPanel.Dock="Top" Classes="toolbar">
+      <WrapPanel>
+        <TextBlock Text="Topic" Classes="muted" Margin="0,0,6,2" />
+        <ComboBox Width="220" ItemsSource="{Binding TopicNames}" SelectedItem="{Binding Topic}" PlaceholderText="Pick a topic…" Margin="0,0,6,2" />
+        <Button Content="Analyse" Classes="primary" Command="{Binding RunCommand}" Margin="0,0,6,2" />
+        <Button Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" Margin="0,0,10,2" />
+        <TextBox Width="160" Text="{Binding PathFilter}" Watermark="filter fields…" Margin="0,0,6,2" />
+        <CheckBox Content="Only fields missing from some messages" IsChecked="{Binding OnlySometimesMissing}" Margin="0,0,0,2" />
+      </WrapPanel>
+    </Border>
+
+    <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="2,8,0,6">
+      <SelectableTextBlock Foreground="White" TextWrapping="Wrap" Text="{Binding Status}" />
+      <TextBlock Classes="muted" Text="{Binding Progress}" IsVisible="{Binding IsRunning}" />
+    </StackPanel>
+
+    <Grid ColumnDefinitions="1.6*,6,*">
+      <DockPanel Grid.Column="0">
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,54,54,36,56,64" Margin="6,0,6,4">
+          <TextBlock Grid.Column="0" Classes="label" Text="FIELD" />
+          <TextBlock Grid.Column="1" Classes="label" Text="IN" ToolTip.Tip="Share of messages that have the field" />
+          <TextBlock Grid.Column="2" Classes="label" Text="MISSING" />
+          <TextBlock Grid.Column="3" Classes="label" Text="NULL" />
+          <TextBlock Grid.Column="4" Classes="label" Text="DISTINCT" />
+          <TextBlock Grid.Column="5" Classes="label" Text="TYPE" />
+        </Grid>
+        <ListBox Classes="rows" ItemsSource="{Binding Fields}" SelectedItem="{Binding SelectedField}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="search:FieldStats">
+              <Grid ColumnDefinitions="*,54,54,36,56,64" Margin="6,3" ToolTip.Tip="{Binding Path}">
+                <TextBlock Grid.Column="0" Classes="mono" FontSize="11" Foreground="White" TextTrimming="CharacterEllipsis" Text="{Binding Path}" />
+                <TextBlock Grid.Column="1" FontSize="11" Foreground="White" Text="{Binding PresentText}" />
+                <TextBlock Grid.Column="2" FontSize="11" Foreground="{DynamicResource FailureBrush}" Text="{Binding Missing}" IsVisible="{Binding Missing}" />
+                <TextBlock Grid.Column="3" FontSize="11" Classes="muted" Text="{Binding Nulls}" />
+                <TextBlock Grid.Column="4" FontSize="11" Foreground="{DynamicResource AccentBrush}" Text="{Binding DistinctText}" />
+                <TextBlock Grid.Column="5" FontSize="11" Classes="muted" TextTrimming="CharacterEllipsis" Text="{Binding Types}" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
+
+      <DockPanel Grid.Column="2">
+        <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="0,0,0,4">
+          <TextBlock Classes="label" Text="TOP VALUES" />
+          <TextBlock Classes="hint" TextWrapping="Wrap" Text="Pick a field on the left. 'Find' searches the topic for messages with that value." />
+          <TextBlock Classes="muted" FontSize="11" TextWrapping="Wrap" IsVisible="{Binding SelectedField, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <Run Text="first seen " /><Run Text="{Binding SelectedField.FirstSeen, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss}', FallbackValue=''}" /><Run Text=" · last seen " /><Run Text="{Binding SelectedField.LastSeen, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss}', FallbackValue=''}" />
+          </TextBlock>
+        </StackPanel>
+        <ListBox Classes="rows" ItemsSource="{Binding SelectedField.TopValues, FallbackValue={x:Null}}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="search:ValueCount">
+              <Grid ColumnDefinitions="60,*,Auto" Margin="6,2">
+                <TextBlock Grid.Column="0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" Text="{Binding Count}" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Classes="mono" FontSize="11" Foreground="White" TextTrimming="CharacterEllipsis" Text="{Binding DisplayValue}"
+                           VerticalAlignment="Center" ToolTip.Tip="{Binding DisplayValue}" />
+                <Button Grid.Column="2" Classes="small" Content="Find" Margin="6,0,0,0"
+                        Command="{Binding #Root.((vm:FieldStatsViewModel)DataContext).SearchValueCommand, FallbackValue={x:Null}}"
+                        CommandParameter="{Binding}" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Grid>
+  </DockPanel>
+</UserControl>

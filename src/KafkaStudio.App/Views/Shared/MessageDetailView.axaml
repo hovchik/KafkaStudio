@@ -25,6 +25,12 @@
         <Button Classes="small" Content="Edit in Producer" Margin="0,0,4,4"
                 ToolTip.Tip="Open this message in the Produce screen to resend or modify it"
                 Command="{Binding #Detail.Actions.EditInProducerCommand}" CommandParameter="{Binding #Detail.Message}" />
+        <Button Classes="small" Content="Find similar" Margin="0,0,4,4"
+                ToolTip.Tip="Find Data: messages like this one - same key, same field values, near-duplicates or same shape"
+                Command="{Binding #Detail.Actions.FindSimilarCommand}" CommandParameter="{Binding #Detail.Message}" />
+        <Button Classes="small" Content="Trace key" Margin="0,0,4,4"
+                ToolTip.Tip="Find Data: every message carrying this key, across topics, as a timeline"
+                Command="{Binding #Detail.Actions.TraceKeyCommand}" CommandParameter="{Binding #Detail.Message}" />
       </WrapPanel>
 
       <!-- Metadata -->

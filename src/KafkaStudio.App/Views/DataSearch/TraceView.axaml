@@ -1,0 +1,57 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.DataSearch"
+             xmlns:search="using:KafkaStudio.Search"
+             xmlns:conv="using:KafkaStudio.App.Converters"
+             x:Class="KafkaStudio.App.Views.DataSearch.TraceView"
+             x:DataType="vm:TraceViewModel"
+             x:CompileBindings="True">
+
+  <DockPanel>
+    <Border DockPanel.Dock="Top" Classes="toolbar">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto">
+        <TextBox Grid.Column="0" Text="{Binding Id}" FontFamily="Consolas,Menlo,monospace" Watermark="Id to trace, e.g. ORD-1042">
+          <TextBox.KeyBindings>
+            <KeyBinding Gesture="Enter" Command="{Binding RunCommand}" />
+          </TextBox.KeyBindings>
+        </TextBox>
+        <TextBlock Grid.Column="1" Text="in" Classes="muted" />
+        <TextBox Grid.Column="2" Width="140" Text="{Binding MatchField}" Watermark="any"
+                 ToolTip.Tip="any = key, headers or anywhere in the value · key · $.order.id · header &quot;name&quot;" />
+        <CheckBox Grid.Column="3" Content="Match case" IsChecked="{Binding CaseSensitive}" />
+        <Button Grid.Column="4" Content="Trace" Classes="primary" Command="{Binding RunCommand}" />
+        <Button Grid.Column="5" Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" Margin="0" />
+      </Grid>
+    </Border>
+
+    <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="2,8,0,6">
+      <SelectableTextBlock Foreground="White" TextWrapping="Wrap" Text="{Binding Status}" />
+      <TextBlock Classes="muted" Text="{Binding Progress}" IsVisible="{Binding IsRunning}" />
+      <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" Text="{Binding PathText}"
+                 IsVisible="{Binding PathText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+    </StackPanel>
+
+    <ListBox Classes="rows" ItemsSource="{Binding Hops}" SelectedItem="{Binding SelectedHop}">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="search:TraceHop">
+          <Grid ColumnDefinitions="3,150,Auto,80,80,Auto,*" Margin="0,3,6,3">
+            <Border Grid.Column="0" Background="{Binding Message.Partition, Converter={x:Static conv:PartitionToBrushConverter.Instance}}" CornerRadius="2" />
+            <TextBlock Grid.Column="1" FontSize="11" Margin="6,0,8,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource AccentBrush}" Text="{Binding Message.Topic}" />
+            <TextBlock Grid.Column="2" Classes="muted" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center"
+                       Text="{Binding Message.Timestamp, StringFormat='{}{0:MM-dd HH:mm:ss.fff}'}" />
+            <TextBlock Grid.Column="3" FontSize="11" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"
+                       Text="{Binding SincePreviousText}" ToolTip.Tip="Time since the previous message" />
+            <TextBlock Grid.Column="4" Classes="muted" FontSize="11" VerticalAlignment="Center"
+                       Text="{Binding SinceFirstText}" ToolTip.Tip="Time since the first message" />
+            <TextBlock Grid.Column="5" Classes="muted" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center">
+              <Run Text="#" /><Run Text="{Binding Message.Partition}" /><Run Text="@" /><Run Text="{Binding Message.Offset}" />
+            </TextBlock>
+            <TextBlock Grid.Column="6" Classes="mono" Foreground="White" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                       Text="{Binding Message.ValuePreview}" />
+          </Grid>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</UserControl>

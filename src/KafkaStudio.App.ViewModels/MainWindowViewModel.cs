@@ -1,5 +1,6 @@
 using KafkaStudio.App.ViewModels.Connections;
 using KafkaStudio.App.ViewModels.Consumer;
+using KafkaStudio.App.ViewModels.DataSearch;
 using KafkaStudio.App.ViewModels.Mvvm;
 using KafkaStudio.App.ViewModels.Producer;
 using KafkaStudio.App.ViewModels.Rethrow;
@@ -33,6 +34,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public ScriptEditorViewModel Scripts { get; }
     public TasksViewModel Tasks { get; }
     public RethrowRulesViewModel Rethrow { get; }
+    public DataSearchViewModel DataSearch { get; }
 
     public IReadOnlyList<NavigationItem> NavigationItems { get; }
 
@@ -81,6 +83,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Scripts = new ScriptEditorViewModel(state);
         Tasks = new TasksViewModel(state);
         Rethrow = new RethrowRulesViewModel(state);
+        DataSearch = new DataSearchViewModel(state);
 
         NavigationItems = new List<NavigationItem>
         {
@@ -89,7 +92,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             new("consumer", "Consume", "↓", "Ctrl+3", Consumer),
             new("scripts", "Scripts", "{ }", "Ctrl+4", Scripts),
             new("tasks", "Tasks & Checks", "⏱", "Ctrl+5", Tasks),
-            new("rethrow", "Rethrow Rules", "⇄", "Ctrl+6", Rethrow)
+            new("rethrow", "Rethrow Rules", "⇄", "Ctrl+6", Rethrow),
+            new("search", "Find Data", "⌕", "Ctrl+7", DataSearch)
         };
 
         _selectedItem = NavigationItems[0];
@@ -111,6 +115,21 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             Producer.LoadMessage(connection, message);
             SelectedItem = NavigationItems.First(i => i.Key == "producer");
+        };
+        state.FindSimilarRequested += (connection, message) =>
+        {
+            DataSearch.FindSimilar(connection, message);
+            SelectedItem = NavigationItems.First(i => i.Key == "search");
+        };
+        state.TraceRequested += (connection, id) =>
+        {
+            SelectedItem = NavigationItems.First(i => i.Key == "search");
+            _ = DataSearch.TraceAsync(connection, id);
+        };
+        state.OpenScriptRequested += source =>
+        {
+            Scripts.AppendScript(source);
+            SelectedItem = NavigationItems.First(i => i.Key == "scripts");
         };
         CommandErrors.Unhandled += ex => state.PostToUi(() => Notification = $"Unexpected error: {ex.Message}");
     }

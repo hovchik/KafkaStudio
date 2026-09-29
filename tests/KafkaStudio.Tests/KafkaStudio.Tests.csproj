@@ -4,6 +4,7 @@
     <ProjectReference Include="..\..\src\KafkaStudio.Core\KafkaStudio.Core.csproj" />
     <ProjectReference Include="..\..\src\KafkaStudio.Scripting\KafkaStudio.Scripting.csproj" />
     <ProjectReference Include="..\..\src\KafkaStudio.Automation\KafkaStudio.Automation.csproj" />
+    <ProjectReference Include="..\..\src\KafkaStudio.Search\KafkaStudio.Search.csproj" />
     <ProjectReference Include="..\..\src\KafkaStudio.App.ViewModels\KafkaStudio.App.ViewModels.csproj" />
   </ItemGroup>
 

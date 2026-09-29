@@ -17,6 +17,8 @@ RethrowEngineTests.Register(runner);
 ViewModelTests.Register(runner);
 SampleScriptsTests.Register(runner);
 RegressionTests.Register(runner);
+DataSearchTests.Register(runner);
+DataSearchViewModelTests.Register(runner);
 
 var exitCode = await runner.RunAllAsync();
 try { Directory.Delete(dataDir, recursive: true); } catch { /* best effort */ }
