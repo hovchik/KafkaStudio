@@ -19,6 +19,8 @@ SampleScriptsTests.Register(runner);
 RegressionTests.Register(runner);
 DataSearchTests.Register(runner);
 DataSearchViewModelTests.Register(runner);
+QaLanguageTests.Register(runner);
+QaEngineTests.Register(runner);
 
 var exitCode = await runner.RunAllAsync();
 try { Directory.Delete(dataDir, recursive: true); } catch { /* best effort */ }

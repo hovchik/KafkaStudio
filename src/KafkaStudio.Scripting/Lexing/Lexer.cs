@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace KafkaStudio.Scripting.Lexing;
 
@@ -8,8 +9,13 @@ namespace KafkaStudio.Scripting.Lexing;
 /// flexible positions, so the lexer's job is just to split source text into words, quoted strings,
 /// triple-quoted doc-strings (for JSON payload bodies), numbers, colons, comments and newlines.
 /// </summary>
-public static class Lexer
+public static partial class Lexer
 {
+    /// <summary>"Scenario:", "Scenario Outline:", "Task:", "Feature:", "Background:", "Examples:" at the
+    /// start of a line. Everything after the colon is the block's name, taken verbatim.</summary>
+    [GeneratedRegex(@"\G(?<kw>(?:scenario(?:[ \t]+(?:outline|template))?|task|feature|background|examples))[ \t]*:", RegexOptions.IgnoreCase)]
+    private static partial Regex HeaderLine();
+
     public static List<Token> Tokenize(string source)
     {
         var tokens = new List<Token>();
@@ -20,6 +26,25 @@ public static class Lexer
         while (i < n)
         {
             var c = source[i];
+
+            if (char.IsLetter(c) && (tokens.Count == 0 || tokens[^1].Type is TokenType.Newline or TokenType.Tag) &&
+                HeaderLine().Match(source, i) is { Success: true } header)
+            {
+                // Header names may contain any punctuation ("Refund & cancel (EU) - 50%"), which the word
+                // rules below would reject, so the rest of the line is one Text token.
+                foreach (var word in header.Groups["kw"].Value.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    tokens.Add(new Token(TokenType.Word, word, line));
+                }
+                tokens.Add(new Token(TokenType.Colon, ":", line));
+                i += header.Length;
+                var lineEnd = source.IndexOf('\n', i);
+                if (lineEnd < 0) lineEnd = n;
+                var text = source[i..lineEnd].TrimEnd('\r').Trim();
+                if (text.Length > 0) tokens.Add(new Token(TokenType.Text, text, line));
+                i = lineEnd;
+                continue;
+            }
 
             if (c == '\r')
             {
@@ -44,6 +69,57 @@ public static class Lexer
             if (c == '#')
             {
                 while (i < n && source[i] != '\n') i++;
+                continue;
+            }
+
+            if (c == '@' && i + 1 < n && IsWordChar(source[i + 1]))
+            {
+                var start = ++i;
+                while (i < n && IsWordChar(source[i])) i++;
+                tokens.Add(new Token(TokenType.Tag, source[start..i], line));
+                continue;
+            }
+
+            if (c == '|')
+            {
+                // An Examples table row: the whole line, split into cells. "\|" is a literal pipe.
+                var cells = new List<string>();
+                var cell = new StringBuilder();
+                i++;
+                var closed = false;
+                while (i < n && source[i] != '\n')
+                {
+                    var ch = source[i];
+                    if (ch == '\\' && i + 1 < n && source[i + 1] == '|')
+                    {
+                        cell.Append('|');
+                        i += 2;
+                        continue;
+                    }
+                    if (ch == '|')
+                    {
+                        cells.Add(cell.ToString().Trim());
+                        cell.Clear();
+                        closed = true;
+                        i++;
+                        continue;
+                    }
+                    if (ch != '\r') cell.Append(ch);
+                    closed = closed && char.IsWhiteSpace(ch);
+                    i++;
+                }
+                if (!closed)
+                {
+                    throw new KafScriptException("table row must end with '|'", line);
+                }
+                tokens.Add(new Token(TokenType.TableRow, string.Join("|", cells), line) { Cells = cells });
+                continue;
+            }
+
+            if (c == '<' && TryReadPlaceholder(source, i, out var placeholder, out var end))
+            {
+                tokens.Add(new Token(TokenType.Placeholder, placeholder, line));
+                i = end;
                 continue;
             }
 
@@ -156,5 +232,23 @@ public static class Lexer
         tokens.Add(new Token(TokenType.Newline, "\n", line));
         tokens.Add(new Token(TokenType.Eof, string.Empty, line));
         return tokens;
+    }
+
+    private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c is '_' or '-' or '.' or ':';
+
+    /// <summary>Reads "&lt;name&gt;" (letters, digits, '_', '-', spaces) starting at <paramref name="start"/>.</summary>
+    private static bool TryReadPlaceholder(string source, int start, out string name, out int end)
+    {
+        var i = start + 1;
+        while (i < source.Length && (char.IsLetterOrDigit(source[i]) || source[i] is '_' or '-' or ' ')) i++;
+        if (i < source.Length && source[i] == '>' && i > start + 1 && char.IsLetter(source[start + 1]))
+        {
+            name = source[(start + 1)..i].Trim();
+            end = i + 1;
+            return true;
+        }
+        name = string.Empty;
+        end = start;
+        return false;
     }
 }
