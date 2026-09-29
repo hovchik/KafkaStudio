@@ -160,6 +160,10 @@ so on without editing it.
 
 Open **QA Lab** in the sidebar (`Ctrl+8`).
 
+**Help & examples** (`F1`, right of the tabs) lists how-tos for the current tab: running a pack, tag
+filters, environments, flaky tests, bug reports, contracts. **Try it** puts an example tag filter into the
+Test Runner, or a starter order-event schema into the Contract check.
+
 ### Test Runner
 
 - **Test sources:** add `.kafscript` files or whole folders (searched recursively). You can also include

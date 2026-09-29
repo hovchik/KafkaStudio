@@ -5,6 +5,10 @@
              x:DataType="vm:QaLabViewModel"
              x:CompileBindings="True">
 
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="F1" Command="{Binding Help.ToggleCommand}" />
+  </UserControl.KeyBindings>
+
   <UserControl.Styles>
     <Style Selector="TabItem">
       <Setter Property="FontSize" Value="13" />
@@ -14,12 +18,25 @@
     </Style>
   </UserControl.Styles>
 
-  <TabControl SelectedIndex="{Binding SelectedTabIndex}" Padding="0,6,0,0">
-    <TabItem Header="Test Runner" ToolTip.Tip="Run .kafscript regression packs by tag, with retries and shareable reports">
-      <ContentControl Content="{Binding Tests}" />
-    </TabItem>
-    <TabItem Header="Contract check" ToolTip.Tip="Validate a topic's messages against a JSON Schema, or infer one">
-      <ContentControl Content="{Binding Contracts}" />
-    </TabItem>
-  </TabControl>
+  <Grid ColumnDefinitions="*,Auto,Auto">
+    <TabControl Grid.Column="0" SelectedIndex="{Binding SelectedTabIndex}" Padding="0,6,0,0">
+      <TabItem Header="Test Runner" ToolTip.Tip="Run .kafscript regression packs by tag, with retries and shareable reports">
+        <ContentControl Content="{Binding Tests}" />
+      </TabItem>
+      <TabItem Header="Contract check" ToolTip.Tip="Validate a topic's messages against a JSON Schema, or infer one">
+        <ContentControl Content="{Binding Contracts}" />
+      </TabItem>
+    </TabControl>
+
+    <!-- Sits on the tab strip's free right-hand side. -->
+    <Button Grid.Column="0" Content="Help &amp; examples" Command="{Binding Help.ToggleCommand}"
+            HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,2,0,0"
+            ToolTip.Tip="How-tos for the Test Runner and Contract check (F1)" />
+
+    <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" IsVisible="{Binding Help.IsVisible}" />
+
+    <Border Grid.Column="2" Classes="pane" Width="360" IsVisible="{Binding Help.IsVisible}">
+      <ContentControl Content="{Binding Help}" />
+    </Border>
+  </Grid>
 </UserControl>

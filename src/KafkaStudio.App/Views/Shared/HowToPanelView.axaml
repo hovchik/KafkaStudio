@@ -1,0 +1,43 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.Shared"
+             x:Class="KafkaStudio.App.Views.Shared.HowToPanelView"
+             x:DataType="vm:HowToPanelViewModel"
+             x:CompileBindings="True">
+
+  <!-- A screen's "Help & examples" panel: task-oriented how-tos, filtered to the current tab by default. -->
+  <DockPanel>
+    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,4">
+      <TextBlock Grid.Column="0" Classes="paneTitle" Text="How to… · help &amp; examples" />
+      <Button Grid.Column="1" Classes="small" Content="✕" ToolTip.Tip="Close (F1)" Command="{Binding ToggleCommand}" />
+    </Grid>
+    <CheckBox DockPanel.Dock="Top" Content="Only this tab" IsChecked="{Binding CurrentTabOnly}" Margin="0,0,0,6"
+              ToolTip.Tip="Show only how-tos for the tab you're on (plus the ones for every tab)" />
+    <ScrollViewer>
+      <ItemsControl Name="HowToList" ItemsSource="{Binding Topics}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:HowToTopicViewModel">
+            <Border Classes="row" Padding="8">
+              <StackPanel Spacing="4">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Grid.Column="0" Text="{Binding Title}" FontWeight="SemiBold" Foreground="White" FontSize="12" TextWrapping="Wrap" />
+                  <Border Grid.Column="1" Classes="badge" Margin="6,0,0,0" VerticalAlignment="Top"><TextBlock Text="{Binding TabName}" /></Border>
+                </Grid>
+                <SelectableTextBlock Text="{Binding Steps}" TextWrapping="Wrap" Foreground="White" FontSize="12" />
+                <SelectableTextBlock Text="{Binding Example}" Classes="mono muted" FontSize="11" TextWrapping="Wrap"
+                                     IsVisible="{Binding HasExample}" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <Button Classes="small" Content="Try it" IsVisible="{Binding HasTry}"
+                          ToolTip.Tip="Fill this example in on its tab (nothing runs until you press the tab's button)"
+                          Command="{Binding #HowToList.((vm:HowToPanelViewModel)DataContext).TryCommand}" CommandParameter="{Binding}" />
+                  <Button Classes="small" Content="Go to tab" IsVisible="{Binding !IsGeneral}"
+                          Command="{Binding #HowToList.((vm:HowToPanelViewModel)DataContext).OpenTabCommand}" CommandParameter="{Binding}" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

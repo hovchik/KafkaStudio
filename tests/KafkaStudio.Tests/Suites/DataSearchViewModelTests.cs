@@ -279,6 +279,44 @@ public static class DataSearchViewModelTests
             Assert.Equal("payments", vm.GlobalSearchResults.Single().Topic);
         });
 
+        runner.Add("ViewModels: Find Data", "help & examples: every tab has how-tos, filters by tab, and 'Try it' fills in valid examples", async () =>
+        {
+            var vm = await Ready(await SeededState());
+            var topics = FindDataHelp.BuildTopics();
+            for (var tab = DataSearchViewModel.SearchTab; tab <= DataSearchViewModel.FieldStatsTab; tab++)
+                Assert.True(topics.Any(t => t.TabIndex == tab), $"tab {tab} has no how-to");
+
+            Assert.False(vm.Help.IsVisible);
+            vm.Help.ToggleCommand.Execute(null);
+            Assert.True(vm.Help.IsVisible);
+
+            // Only the current tab's topics (plus the general ones) are listed, following tab changes.
+            Assert.True(vm.Help.Topics.All(t => t.IsGeneral || t.TabIndex == DataSearchViewModel.SearchTab));
+            vm.SelectedTabIndex = DataSearchViewModel.TraceTab;
+            Assert.True(vm.Help.Topics.Any(t => t.TabIndex == DataSearchViewModel.TraceTab));
+            Assert.False(vm.Help.Topics.Any(t => t.TabIndex == DataSearchViewModel.SearchTab));
+            vm.Help.CurrentTabOnly = false;
+            Assert.Equal(topics.Count, vm.Help.Topics.Count);
+
+            foreach (var topic in topics.Where(t => t.HasTry))
+            {
+                vm.Help.TryCommand.Execute(topic);
+                Assert.Equal(topic.TabIndex, vm.SelectedTabIndex, $"'Try it' on '{topic.Title}' opens its tab");
+                if (topic.TabIndex == DataSearchViewModel.SearchTab)
+                {
+                    Assert.Equal(topic.TryText, vm.Query.QueryText);
+                    Assert.Null(vm.Query.QueryError, $"example query of '{topic.Title}' is invalid: {vm.Query.QueryError}");
+                }
+            }
+            Assert.Equal(DuplicateGroupBy.Fields, vm.Duplicates.GroupBy.Value);
+            Assert.Equal("$.orderId, $.eventType", vm.Duplicates.FieldsText);
+            Assert.Equal("ORD-1042", vm.Trace.Id);
+            Assert.Contains("ORD-1002", vm.Bulk.IdsText!);
+
+            vm.Help.OpenTabCommand.Execute(topics.First(t => t.TabIndex == DataSearchViewModel.FieldStatsTab));
+            Assert.Equal(DataSearchViewModel.FieldStatsTab, vm.SelectedTabIndex);
+        });
+
         runner.Add("ViewModels: Topic Browser", "compare strip shows a structural diff of two pinned messages", async () =>
         {
             var state = await SeededState();

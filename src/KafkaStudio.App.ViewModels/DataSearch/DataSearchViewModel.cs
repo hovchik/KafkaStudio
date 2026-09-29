@@ -1,6 +1,7 @@
 using KafkaStudio.App.ViewModels.Mvvm;
 using KafkaStudio.App.ViewModels.Shared;
 using KafkaStudio.Core.Messaging;
+using KafkaStudio.Search;
 
 namespace KafkaStudio.App.ViewModels.DataSearch;
 
@@ -48,13 +49,33 @@ public sealed class DataSearchViewModel : ObservableObject
             Similar.SetReference(SelectedMessage);
             SelectedTabIndex = SimilarTab;
         }, () => SelectedMessage is not null);
+        Help = new HowToPanelViewModel(FindDataHelp.BuildTopics(), () => SelectedTabIndex, tab => SelectedTabIndex = tab, TryExample);
+    }
+
+    /// <summary>The "Help &amp; examples" panel (F1): how-tos for each tab.</summary>
+    public HowToPanelViewModel Help { get; }
+
+    /// <summary>"Try it" on a how-to: fills its example into the tab it belongs to (without running anything).</summary>
+    private void TryExample(HowToTopicViewModel topic)
+    {
+        switch (topic.TabIndex)
+        {
+            case SearchTab: Query.QueryText = topic.TryText; break;
+            case BulkTab: Bulk.IdsText = topic.TryText; break;
+            case TraceTab: Trace.Id = topic.TryText; break;
+            case ReconcileTab: Reconcile.CompareFields = topic.TryText; break;
+            case DuplicatesTab:
+                Duplicates.GroupBy = Duplicates.GroupByChoices.First(c => c.Value == DuplicateGroupBy.Fields);
+                Duplicates.FieldsText = topic.TryText;
+                break;
+        }
     }
 
     /// <summary>Makes the message shown in the detail pane the Similar tab's reference.</summary>
     public RelayCommand FindSimilarOfSelectedCommand { get; }
 
     private int _selectedTabIndex;
-    public int SelectedTabIndex { get => _selectedTabIndex; set => SetProperty(ref _selectedTabIndex, value); }
+    public int SelectedTabIndex { get => _selectedTabIndex; set { if (SetProperty(ref _selectedTabIndex, value)) Help.Refresh(); } }
 
     private KafkaMessage? _selectedMessage;
     /// <summary>The message shown in the shared detail pane.</summary>
