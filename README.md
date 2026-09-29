@@ -23,7 +23,7 @@ Built with .NET 10 and Avalonia UI.
 | `KafkaStudio.App.ViewModels` | All UI state and logic (MVVM), framework-agnostic. | none |
 | `KafkaStudio.Kafka` | The real Kafka client: `ConfluentKafkaGateway`, an `IKafkaGateway` implementation over Confluent.Kafka/librdkafka. | Confluent.Kafka |
 | `KafkaStudio.App` | The Avalonia desktop app: windows, views, styling. | Avalonia, Avalonia.Desktop, Avalonia.Themes.Fluent, Avalonia.Fonts.Inter |
-| `KafkaStudio.Tests` | A self-contained test suite (42 tests) covering the language, interpreter, scheduler, rethrow engine, ViewModels, and the sample scripts. | none (see below) |
+| `KafkaStudio.Tests` | A self-contained test suite (75 tests) covering the language, interpreter, scheduler, rethrow engine, ViewModels, the sample scripts, and regression tests for every fixed bug. | none (see below) |
 
 Five of the seven projects - Core, Scripting, Automation, App.ViewModels, and Tests, which together are
 the engine that does the actual "checks and automation" work this app exists for - have **zero external
@@ -38,22 +38,20 @@ the solution is structured:
 - **Fully built and tested, for real, in that sandbox:** `KafkaStudio.Core`, `KafkaStudio.Scripting`,
   `KafkaStudio.Automation`, and `KafkaStudio.App.ViewModels` - i.e. the KafScript language, the
   interpreter, the rethrow engine, the scheduler, and every ViewModel. `dotnet test`-equivalent output
-  (42/42 passing) is reproducible by running `dotnet run --project tests/KafkaStudio.Tests`. This
+  (75/75 passing) is reproducible by running `dotnet run --project tests/KafkaStudio.Tests`. This
   includes actual end-to-end runs of the rethrow, scan+acknowledge, and cross-topic-timing-check
   scenarios in `/samples` against a simulated in-memory Kafka broker (`InMemoryKafkaBroker`) - not just
   unit tests of isolated pieces, but the real "produce on one topic, watch another, assert on timing"
   race condition working correctly under concurrency. (One such race condition *was* found and fixed
   this way during development - see `WatchHandle`'s doc comment in
   `src/KafkaStudio.Scripting/Runtime/WatchHandle.cs` for the story.)
-- **Written carefully, but not restore/compile-verified in that sandbox:** `KafkaStudio.Kafka`
-  (`ConfluentKafkaGateway`) and `KafkaStudio.App` (the Avalonia UI), because both need NuGet packages
-  nuget.org couldn't serve there. `ConfluentKafkaGateway` *was* compile-checked another way: against a
-  hand-written stand-in for Confluent.Kafka's real public API (method signatures, class shapes) built
-  from scratch for this purpose - real type errors would have been caught, though runtime behavior
-  against an actual broker obviously wasn't exercised. The Avalonia views don't have an equivalent
-  stand-in; they were written against well-established Avalonia 11 XAML/MVVM patterns, but you should
-  expect to fix at least minor XAML issues on first build, the way you would with any UI code that's
-  never been through a compiler.
+- **Since then, all seven projects restore, build (with no warnings) and run.** `ConfluentKafkaGateway`
+  has been exercised against a real Apache Kafka 3.8 broker (KRaft, single node): multi-partition
+  reads, newest-N reads, early-stop/limit reads, empty and missing topics, binary values and tombstones,
+  the cross-topic timing check, scan + acknowledge + resume with a pinned group, Rethrow Rules
+  (including binary payloads), and an unreachable broker. Every Avalonia screen has been rendered
+  headlessly with demo data to check layout and bindings. The app has not been manually click-tested on
+  Windows, so a quick smoke test there is still worthwhile.
 
 On a normal Windows dev machine with regular internet access, `dotnet restore` just works for every
 project here - the constraint above is specific to the environment this was built in, not to the code
@@ -88,13 +86,26 @@ every sample script against.
 
 ## Using it
 
-1. **Connections** - add a real cluster (bootstrap servers, security protocol, SASL if needed) or a demo
-   in-memory one.
-2. **Topics** - browse topics on a connection, scan a backlog.
-3. **Produce** / **Consume** - ad-hoc send/watch, for quick manual testing.
-4. **Scripts** - write and run KafScript scenarios interactively; see results per step.
-5. **Tasks & Checks** - register `Task` blocks from a script to run on a schedule.
-6. **Rethrow Rules** - point-and-click continuous relay from one topic to another, no script required.
+1. **Connections** (top of the sidebar, `Ctrl+K`) - add a real cluster (bootstrap servers, security
+   protocol, SASL, CA certificate, extra librdkafka settings) or a demo in-memory one. Connections are
+   tested before they're saved, can be edited/reconnected, and on Windows saved passwords are encrypted
+   with DPAPI for your user account.
+2. **Topics** (`Ctrl+1`) - browse topics, open one to see its **newest** N messages (or all of them),
+   filter by key/value/headers, inspect a message (metadata, headers, pretty JSON, binary hex dump),
+   copy it, export to JSON, pin messages side by side for comparison, search across every topic, and
+   create topics.
+3. **Produce** (`Ctrl+2`) - ad-hoc send with headers, explicit partition, tombstones, "send N times",
+   JSON formatting and `{{$uuid}}`/`{{$now}}`-style templates. Any message elsewhere in the app can be
+   opened here with **Edit in Producer** to resend or tweak it.
+4. **Consume** (`Ctrl+3`) - live tail with pause/resume, live filtering, a message inspector and export.
+5. **Scripts** (`Ctrl+4`) - write and run KafScript scenarios; step results stream in live, runs can be
+   stopped, scripts open from / save to `.kafscript` files (`Ctrl+O` / `Ctrl+S`, run with `F5`).
+6. **Tasks & Checks** (`Ctrl+5`) - register `Task` blocks to run on a schedule; pause/resume, run now,
+   pass/fail history. Registered tasks survive restarts.
+7. **Rethrow Rules** (`Ctrl+6`) - point-and-click continuous relay from one topic to another, with an
+   optional filter and extra header; at-least-once, retries on broker errors, rules are saved.
+
+Settings live in `%APPDATA%/KafkaStudio` (override with the `KAFKASTUDIO_DATA_DIR` environment variable).
 
 See [`docs/kafscript-language.md`](docs/kafscript-language.md) for the full KafScript reference, and
 `/samples` for runnable examples of all three priority workflows (rethrow, scan+acknowledge, cross-topic
@@ -133,7 +144,7 @@ src/
   KafkaStudio.Kafka/           real Confluent.Kafka-backed IKafkaGateway
   KafkaStudio.App/             Avalonia desktop app
 tests/
-  KafkaStudio.Tests/           self-contained test suite (42 tests, no external test framework)
+  KafkaStudio.Tests/           self-contained test suite (75 tests, no external test framework)
 samples/
   *.kafscript                  runnable examples of every priority workflow
 docs/

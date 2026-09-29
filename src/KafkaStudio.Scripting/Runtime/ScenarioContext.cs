@@ -17,7 +17,11 @@ public sealed class ScenarioContext
 
     public string? LastWatchedTopic { get; set; }
 
-    internal Dictionary<string, WatchHandle> Watches { get; } = new(StringComparer.OrdinalIgnoreCase);
+    // Ordinal: Kafka topic names are case-sensitive ("Orders" and "orders" are different topics).
+    internal Dictionary<string, WatchHandle> Watches { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Superseded watches whose disposal hasn't been awaited yet (see ScriptRunner.ExecuteWatch).</summary>
+    internal List<Task> PendingDisposals { get; } = new();
 
     public async ValueTask DisposeWatchesAsync()
     {
@@ -26,5 +30,9 @@ public sealed class ScenarioContext
             await handle.DisposeAsync().ConfigureAwait(false);
         }
         Watches.Clear();
+
+        try { await Task.WhenAll(PendingDisposals).ConfigureAwait(false); }
+        catch { /* best effort teardown */ }
+        PendingDisposals.Clear();
     }
 }

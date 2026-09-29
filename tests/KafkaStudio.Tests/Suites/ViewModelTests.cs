@@ -69,7 +69,9 @@ public static class ViewModelTests
             await vm.RunAllCommand.Execute2();
 
             Assert.Contains("1 scenario(s)/task(s) passed", vm.RunSummary ?? "");
-            Assert.Equal(2, vm.StepResults.Count);
+            Assert.Equal(2, vm.StepResults.Count(r => !r.IsBlockHeader));
+            Assert.Equal(1, vm.StepResults.Count(r => r.IsBlockHeader));
+            Assert.Contains("produce message", vm.StepResults.Last().Description);
         });
 
         runner.Add("ViewModels: Tasks", "registering a Task block schedules a job the UI can see", () =>

@@ -4,7 +4,7 @@ public enum StepKeyword { Given, When, Then, And, But }
 
 public enum BlockKind { Scenario, Task }
 
-public enum TopicPosition { Beginning, End, Now }
+public enum TopicPosition { Beginning, End, Now, Committed }
 
 public enum TimeUnit { Milliseconds, Seconds, Minutes, Hours }
 

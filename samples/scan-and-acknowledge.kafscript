@@ -9,7 +9,9 @@ Given use connection "local"
 When produce message to topic "orders-dlq" value "poison message 1"
 And produce message to topic "orders-dlq" value "poison message 2"
 And produce message to topic "orders-dlq" value "poison message 3"
-Then scan topic "orders-dlq" from beginning limit 50
+# "group" pins the consumer group, so the acknowledgements below are remembered: the next run of this
+# scan ("from committed") only sees messages that arrived since - each message is handled once.
+Then scan topic "orders-dlq" from committed group "dlq-sweeper" limit 50
 And log message
 # "log message" reports the most recently scanned message; all scanned messages get acknowledged below
 # regardless of what was last logged.

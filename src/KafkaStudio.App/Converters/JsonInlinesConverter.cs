@@ -17,6 +17,8 @@ public sealed class JsonInlinesConverter : IValueConverter
 {
     public static readonly JsonInlinesConverter Instance = new();
 
+    private const int MaxColorizedLength = 100_000;
+
     private static readonly IBrush PunctuationBrush = Brushes.Gray;
     private static readonly IBrush KeyBrush = new SolidColorBrush(Color.FromRgb(0x9C, 0xDC, 0xFE));
     private static readonly IBrush StringBrush = new SolidColorBrush(Color.FromRgb(0xCE, 0x91, 0x78));
@@ -34,7 +36,9 @@ public sealed class JsonInlinesConverter : IValueConverter
             return inlines;
         }
 
-        if (!TryTokenize(text, inlines))
+        // Syntax colouring creates one Run per token; for very large payloads that would make the
+        // detail pane sluggish, so fall back to plain text past a size limit.
+        if (text.Length > MaxColorizedLength || !TryTokenize(text, inlines))
         {
             inlines.Clear();
             inlines.Add(new Run(text) { Foreground = DefaultBrush });

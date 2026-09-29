@@ -1,95 +1,142 @@
-using System.Text.RegularExpressions;
 using KafkaStudio.Core.Abstractions;
 using KafkaStudio.Core.Messaging;
-using KafkaStudio.Scripting.Ast;
 using KafkaStudio.Scripting.Runtime;
 
 namespace KafkaStudio.Automation.Rethrow;
 
 /// <summary>Executes a single <see cref="RethrowRule"/> until cancelled: subscribe to the source topic
-/// and relay every matching message to the destination topic.</summary>
+/// and relay every matching message to the destination topic.
+///
+/// Delivery is at-least-once: a message's offset is committed only after it has been produced to the
+/// destination (or deliberately skipped by the filters), so a crash or broker error mid-relay re-delivers
+/// it instead of silently dropping it. A standing relay is also resilient: if the subscription itself
+/// fails (broker restart, network blip), the engine reports it via <see cref="RelayFailed"/> and
+/// resubscribes with exponential backoff instead of stopping for good.</summary>
 public sealed class RethrowEngine
 {
+    public static readonly TimeSpan InitialRetryDelay = TimeSpan.FromSeconds(1);
+    public static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
+
     public event Action<RethrowRule, KafkaMessage, ProduceReceipt>? MessageRelayed;
     public event Action<RethrowRule, KafkaMessage>? MessageSkipped;
     public event Action<RethrowRule, Exception>? RelayFailed;
+
+    /// <summary>Throws <see cref="ArgumentException"/> when the rule can't work at all.</summary>
+    public static void Validate(RethrowRule rule, IReadOnlyDictionary<string, IKafkaGateway> connections)
+    {
+        if (string.IsNullOrWhiteSpace(rule.Name)) throw new ArgumentException("rule name is required");
+        if (string.IsNullOrWhiteSpace(rule.SourceTopic)) throw new ArgumentException("source topic is required");
+        if (string.IsNullOrWhiteSpace(rule.DestinationTopic)) throw new ArgumentException("destination topic is required");
+        if (!connections.ContainsKey(rule.SourceConnection))
+            throw new ArgumentException($"unknown source connection '{rule.SourceConnection}'");
+        if (!connections.ContainsKey(rule.DestinationConnection))
+            throw new ArgumentException($"unknown destination connection '{rule.DestinationConnection}'");
+        if (rule.SourceConnection == rule.DestinationConnection && rule.SourceTopic == rule.DestinationTopic)
+            throw new ArgumentException("source and destination are the same topic - the rule would relay its own output forever");
+        foreach (var filter in rule.Filters)
+        {
+            if (filter.Comparator == Scripting.Ast.Comparator.Matches && ConditionEvaluator.ValidatePattern(filter.Expected) is { } problem)
+                throw new ArgumentException(problem);
+            if (filter.JsonPath is not null && JsonPathEvaluator.Validate(filter.JsonPath) is { } pathProblem)
+                throw new ArgumentException(pathProblem);
+        }
+    }
 
     public async Task RunAsync(
         RethrowRule rule,
         IReadOnlyDictionary<string, IKafkaGateway> connections,
         CancellationToken cancellationToken = default)
     {
-        if (!connections.TryGetValue(rule.SourceConnection, out var source))
-        {
-            throw new KeyNotFoundException($"unknown source connection '{rule.SourceConnection}'");
-        }
-        if (!connections.TryGetValue(rule.DestinationConnection, out var destination))
-        {
-            throw new KeyNotFoundException($"unknown destination connection '{rule.DestinationConnection}'");
-        }
+        Validate(rule, connections);
+        var source = connections[rule.SourceConnection];
+        var destination = connections[rule.DestinationConnection];
 
-        var options = new ConsumeOptions
-        {
-            Topic = rule.SourceTopic,
-            ConsumerGroup = $"rethrow-{rule.Name}",
-            StartPosition = ConsumeStartPosition.Latest,
-            AutoAcknowledge = true
-        };
+        var delay = InitialRetryDelay;
+        var hasCommitted = false;
 
-        await foreach (var message in source.ConsumeAsync(options, cancellationToken).ConfigureAwait(false))
+        while (!cancellationToken.IsCancellationRequested)
         {
+            var options = new ConsumeOptions
+            {
+                Topic = rule.SourceTopic,
+                ConsumerGroup = $"rethrow-{rule.Name}",
+                // First subscription starts at the tail (a new rule relays new traffic, not history);
+                // after a failure, resume from what was committed so nothing in between is lost.
+                StartPosition = hasCommitted ? ConsumeStartPosition.Committed : ConsumeStartPosition.Latest,
+                AutoAcknowledge = false
+            };
+
             try
             {
-                if (!Matches(message, rule.Filters))
+                await foreach (var message in source.ConsumeAsync(options, cancellationToken).ConfigureAwait(false))
                 {
-                    MessageSkipped?.Invoke(rule, message);
-                    continue;
+                    await RelayAsync(rule, source, destination, message, cancellationToken).ConfigureAwait(false);
+                    hasCommitted = true;
+                    delay = InitialRetryDelay; // healthy again
                 }
 
-                var key = rule.KeepSourceKey ? message.Key : rule.FixedKey;
-                var headers = new Dictionary<string, string>(message.Headers);
-                foreach (var (name, value) in rule.ExtraHeaders) headers[name] = value;
-
-                var receipt = await destination.ProduceAsync(new ProduceRequest
-                {
-                    Topic = rule.DestinationTopic,
-                    Key = key,
-                    Value = message.Value ?? string.Empty,
-                    Headers = headers
-                }, cancellationToken).ConfigureAwait(false);
-
-                MessageRelayed?.Invoke(rule, message, receipt);
+                return; // the stream ended normally (gateway closed)
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                RelayFailed?.Invoke(rule, ex);
+                return;
             }
+            catch (Exception ex)
+            {
+                RelayFailed?.Invoke(rule, new InvalidOperationException(
+                    $"subscription to '{rule.SourceTopic}' failed, retrying in {delay.TotalSeconds:0}s: {ex.Message}", ex));
+            }
+
+            try
+            {
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            delay = TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, MaxRetryDelay.Ticks));
         }
     }
 
-    private static bool Matches(KafkaMessage message, IReadOnlyList<Condition> filters)
+    private async Task RelayAsync(RethrowRule rule, IKafkaGateway source, IKafkaGateway destination,
+        KafkaMessage message, CancellationToken cancellationToken)
     {
-        foreach (var filter in filters)
+        bool matches;
+        try
         {
-            var actual = filter.Field switch
-            {
-                ConditionField.Key => message.Key,
-                ConditionField.Value => message.Value,
-                ConditionField.Json => message.Value is null ? null : JsonPathEvaluator.Evaluate(message.Value, filter.JsonPath!),
-                _ => null
-            };
-
-            var ok = filter.Comparator switch
-            {
-                Comparator.Equals => actual == filter.Expected,
-                Comparator.NotEquals => actual != filter.Expected,
-                Comparator.Contains => actual is not null && actual.Contains(filter.Expected, StringComparison.Ordinal),
-                Comparator.Matches => actual is not null && Regex.IsMatch(actual, filter.Expected),
-                _ => false
-            };
-
-            if (!ok) return false;
+            matches = ConditionEvaluator.Matches(message, rule.Filters);
         }
-        return true;
+        catch (Exception ex)
+        {
+            // A filter that can't be evaluated (e.g. regex timeout) - report and skip this message.
+            RelayFailed?.Invoke(rule, ex);
+            matches = false;
+        }
+
+        if (!matches)
+        {
+            MessageSkipped?.Invoke(rule, message);
+            await source.AcknowledgeAsync(message, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var key = rule.KeepSourceKey ? message.Key : rule.FixedKey;
+        var headers = new Dictionary<string, string>(message.Headers);
+        foreach (var (name, value) in rule.ExtraHeaders) headers[name] = value;
+
+        // Produce failures (destination down, auth, too large) propagate to RunAsync, which reports
+        // them and resubscribes from the last commit - i.e. this message is retried, not lost.
+        var receipt = await destination.ProduceAsync(new ProduceRequest
+        {
+            Topic = rule.DestinationTopic,
+            Key = key,
+            Value = message.Value,
+            RawValue = message.RawValue,
+            Headers = headers
+        }, cancellationToken).ConfigureAwait(false);
+
+        await source.AcknowledgeAsync(message, cancellationToken).ConfigureAwait(false);
+        MessageRelayed?.Invoke(rule, message, receipt);
     }
 }

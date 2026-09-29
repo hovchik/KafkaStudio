@@ -1,4 +1,4 @@
-using System.Text.Json;
+using KafkaStudio.Core.Persistence;
 
 namespace KafkaStudio.Core.Topics;
 
@@ -8,37 +8,13 @@ namespace KafkaStudio.Core.Topics;
 /// </summary>
 public static class SavedTopicSetStore
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
+    private const string FileName = "topic-sets.json";
 
-    private static string FilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "KafkaStudio",
-        "topic-sets.json");
+    public static IReadOnlyList<SavedTopicSet> Load() =>
+        JsonFileStore.Load<List<SavedTopicSet>>(FileName, new List<SavedTopicSet>())
+            .Where(s => !string.IsNullOrWhiteSpace(s.Name) && s.Topics is not null)
+            .ToList();
 
-    public static IReadOnlyList<SavedTopicSet> Load()
-    {
-        try
-        {
-            if (!File.Exists(FilePath)) return Array.Empty<SavedTopicSet>();
-            var json = File.ReadAllText(FilePath);
-            return JsonSerializer.Deserialize<List<SavedTopicSet>>(json) ?? new List<SavedTopicSet>();
-        }
-        catch
-        {
-            return Array.Empty<SavedTopicSet>();
-        }
-    }
-
-    public static void Save(IEnumerable<SavedTopicSet> sets)
-    {
-        var path = FilePath;
-        var directory = Path.GetDirectoryName(path);
-        if (!string.IsNullOrEmpty(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        var json = JsonSerializer.Serialize(sets.ToList(), SerializerOptions);
-        File.WriteAllText(path, json);
-    }
+    /// <summary>Returns an error message on failure, or null on success.</summary>
+    public static string? Save(IEnumerable<SavedTopicSet> sets) => JsonFileStore.TrySave(FileName, sets.ToList());
 }

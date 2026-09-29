@@ -1,74 +1,114 @@
 <UserControl xmlns="https://github.com/avaloniaui"
-			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-			 xmlns:vm="using:KafkaStudio.App.ViewModels.Connections"
-			 x:Class="KafkaStudio.App.Views.Connections.ConnectionsView"
-			 x:DataType="vm:ConnectionsViewModel">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.Connections"
+             x:Class="KafkaStudio.App.Views.Connections.ConnectionsView"
+             x:DataType="vm:ConnectionsViewModel">
 
-  <Grid RowDefinitions="Auto,Auto,*">
+  <!-- Lives in the right-hand flyout, so it's laid out as a vertical form + list. -->
+  <StackPanel Spacing="10">
 
-	<!-- Single-line toolbar: the common case is name + servers + connect. -->
-	<Border Grid.Row="0" Classes="toolbar">
-	  <Grid ColumnDefinitions="*,2*,Auto,Auto,Auto,*">
-		<TextBox Grid.Column="0" MinWidth="120" Text="{Binding NewConnectionName}" Watermark="Name, e.g. Staging" />
-		<TextBox Grid.Column="1" MinWidth="180" Text="{Binding NewBootstrapServers}" Watermark="host:9092,host2:9092" />
+    <!-- Existing connections -->
+    <Border Classes="pane">
+      <StackPanel Spacing="6">
+        <TextBlock Classes="paneTitle">
+          <Run Text="Connections" /><Run Text=" " /><Run Text="{Binding Connections.Count}" Foreground="{DynamicResource MutedTextBrush}" />
+        </TextBlock>
+        <TextBlock Classes="hint" IsVisible="{Binding !Connections.Count}"
+                   Text="No connections yet. Add a real cluster below, or a demo (in-memory) connection to try KafkaStudio without a broker." />
+        <ItemsControl Name="ConnectionsList" ItemsSource="{Binding Connections}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ConnectionRowViewModel">
+              <Border Classes="row">
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto">
+                  <Ellipse Grid.Row="0" Grid.Column="0" Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center"
+                           Fill="{DynamicResource SuccessBrush}" IsVisible="{Binding IsConnected}" />
+                  <Ellipse Grid.Row="0" Grid.Column="0" Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center"
+                           Fill="{DynamicResource FailureBrush}" IsVisible="{Binding !IsConnected}" />
+                  <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="White" FontSize="13" VerticalAlignment="Center" />
+                    <Border Classes="badge"><TextBlock Text="{Binding Kind}" /></Border>
+                  </StackPanel>
+                  <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding BootstrapServers}" Classes="muted" TextTrimming="CharacterEllipsis" />
+                  <StackPanel Grid.Row="2" Grid.Column="1" Spacing="4" Margin="0,4,0,0">
+                    <TextBlock Text="{Binding Status}" Classes="muted" TextWrapping="Wrap" MaxHeight="64"
+                               Classes.error="{Binding HasError}" />
+                    <WrapPanel>
+                      <Button Classes="small" Content="Test" Margin="0,0,4,0"
+                              Command="{Binding #ConnectionsList.DataContext.TestConnectionCommand}" CommandParameter="{Binding}" />
+                      <Button Classes="small" Content="Reconnect" Margin="0,0,4,0"
+                              Command="{Binding #ConnectionsList.DataContext.ReconnectCommand}" CommandParameter="{Binding}" />
+                      <Button Classes="small" Content="Edit" Margin="0,0,4,0"
+                              Command="{Binding #ConnectionsList.DataContext.EditConnectionCommand}" CommandParameter="{Binding}" />
+                      <Button Classes="small danger" Content="Remove"
+                              Command="{Binding #ConnectionsList.DataContext.RemoveConnectionCommand}" CommandParameter="{Binding}" />
+                    </WrapPanel>
+                  </StackPanel>
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </Border>
 
-		<Border Grid.Column="2" Classes="sep" />
+    <!-- Add / edit form -->
+    <Border Classes="pane">
+      <StackPanel Classes="form" Spacing="2">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Grid.Column="0" Classes="paneTitle" Text="Add or edit a connection" />
+          <Button Grid.Column="1" Classes="small" Content="Clear form" Command="{Binding ResetFormCommand}" />
+        </Grid>
 
-		<Button Grid.Column="3" Content="Connect" Classes="primary" Command="{Binding AddConnectionCommand}" />
-		<Button Grid.Column="4" Content="Add demo" Command="{Binding AddDemoConnectionCommand}"
-				ToolTip.Tip="Add a demo (in-memory) connection to try KafkaStudio without a broker" />
-		<TextBlock Grid.Column="5" Classes="muted" Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
-	  </Grid>
-	</Border>
+        <TextBlock Classes="label" Text="NAME" />
+        <TextBox Text="{Binding NewConnectionName}" Watermark="e.g. local, staging-eu" />
+        <TextBlock Classes="hint" Text="A connection with this name already exists - saving will replace it."
+                   IsVisible="{Binding IsEditingExisting}" />
 
-	<!-- Security settings are needed rarely, so they stay collapsed. -->
-	<Expander Grid.Row="1" Header="Security — SASL / SSL" Margin="0,4,0,0">
-	  <Border Classes="toolbar" Margin="0,4,0,0">
-		<Grid ColumnDefinitions="Auto,*,Auto,*,Auto,*,Auto,*">
-		  <TextBlock Grid.Column="0" Text="Protocol" Classes="muted" />
-		  <ComboBox Grid.Column="1" ItemsSource="{Binding SecurityProtocolOptions}"
-					SelectedItem="{Binding NewSecurityProtocol}" HorizontalAlignment="Stretch" />
-		  <TextBlock Grid.Column="2" Text="Mechanism" Classes="muted" />
-		  <ComboBox Grid.Column="3" ItemsSource="{Binding SaslMechanismOptions}"
-					SelectedItem="{Binding NewSaslMechanism}" HorizontalAlignment="Stretch" />
-		  <TextBlock Grid.Column="4" Text="Username" Classes="muted" />
-		  <TextBox Grid.Column="5" Text="{Binding NewSaslUsername}" Watermark="optional" />
-		  <TextBlock Grid.Column="6" Text="Password" Classes="muted" />
-		  <TextBox Grid.Column="7" Text="{Binding NewSaslPassword}" Watermark="optional" PasswordChar="*" />
-		</Grid>
-	  </Border>
-	</Expander>
+        <TextBlock Classes="label" Text="BOOTSTRAP SERVERS" />
+        <TextBox Text="{Binding NewBootstrapServers}" Watermark="host:9092,host2:9092" />
 
-	<!-- Data area fills everything else. -->
-	<Border Grid.Row="2" Classes="pane" Margin="0,6,0,0">
-	  <DockPanel>
-		<TextBlock DockPanel.Dock="Top" Classes="paneTitle" Margin="0,0,0,6">
-		  <Run Text="Connections" /><Run Text=" " /><Run Text="{Binding Connections.Count}" Foreground="{DynamicResource MutedTextBrush}" />
-		</TextBlock>
-		<ScrollViewer>
-		  <ItemsControl Name="ConnectionsList" ItemsSource="{Binding Connections}">
-			<ItemsControl.ItemTemplate>
-			  <DataTemplate x:DataType="vm:ConnectionRowViewModel">
-				<Border Classes="row">
-				  <Grid ColumnDefinitions="*,Auto,Auto,Auto">
-					<StackPanel Grid.Column="0" Spacing="1">
-					  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="White" FontSize="12" />
-					  <TextBlock Text="{Binding BootstrapServers}" Classes="muted" />
-					</StackPanel>
-					<TextBlock Grid.Column="1" Text="{Binding Status}" Classes="muted" VerticalAlignment="Center" Margin="0,0,12,0" />
-					<Button Grid.Column="2" Content="Test" Padding="8,2" Margin="0,0,6,0"
-							Command="{Binding #ConnectionsList.DataContext.TestConnectionCommand}"
-							CommandParameter="{Binding}" />
-					<Button Grid.Column="3" Content="Remove" Padding="8,2"
-							Command="{Binding #ConnectionsList.DataContext.RemoveConnectionCommand}"
-							CommandParameter="{Binding}" />
-				  </Grid>
-				</Border>
-			  </DataTemplate>
-			</ItemsControl.ItemTemplate>
-		  </ItemsControl>
-		</ScrollViewer>
-	  </DockPanel>
-	</Border>
-  </Grid>
+        <TextBlock Classes="label" Text="SECURITY PROTOCOL" />
+        <ComboBox ItemsSource="{Binding SecurityProtocolOptions}" SelectedItem="{Binding NewSecurityProtocol}" HorizontalAlignment="Stretch" />
+
+        <StackPanel Spacing="2" IsVisible="{Binding UsesSasl}">
+          <TextBlock Classes="label" Text="SASL MECHANISM" Margin="0,6,0,2" />
+          <ComboBox ItemsSource="{Binding SaslMechanismOptions}" SelectedItem="{Binding NewSaslMechanism}" HorizontalAlignment="Stretch" />
+          <TextBlock Classes="label" Text="USERNAME" Margin="0,6,0,2" />
+          <TextBox Text="{Binding NewSaslUsername}" />
+          <TextBlock Classes="label" Text="PASSWORD" Margin="0,6,0,2" />
+          <TextBox Text="{Binding NewSaslPassword}" PasswordChar="•" RevealPassword="{Binding #RevealPassword.IsChecked}" />
+          <CheckBox Name="RevealPassword" Content="Show password" />
+        </StackPanel>
+
+        <StackPanel Spacing="2" IsVisible="{Binding UsesSsl}">
+          <TextBlock Classes="label" Text="CA CERTIFICATE (OPTIONAL)" Margin="0,6,0,2" />
+          <TextBox Text="{Binding NewSslCaLocation}" Watermark="path to CA .pem for a private CA" />
+          <CheckBox Content="Skip certificate verification (dev clusters only)" IsChecked="{Binding NewSslSkipVerification}" />
+        </StackPanel>
+
+        <Expander Header="Advanced" Margin="0,8,0,0" HorizontalAlignment="Stretch">
+          <StackPanel Classes="form" Spacing="2">
+            <TextBlock Classes="label" Text="CLIENT ID" />
+            <TextBox Text="{Binding NewClientId}" />
+            <TextBlock Classes="label" Text="EXTRA LIBRDKAFKA SETTINGS (key=value per line)" />
+            <TextBox Text="{Binding NewAdvancedProperties}" AcceptsReturn="True" MinHeight="70" TextWrapping="NoWrap"
+                     FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12"
+                     Watermark="socket.timeout.ms=30000&#x0a;ssl.certificate.location=/path/client.pem" />
+          </StackPanel>
+        </Expander>
+
+        <WrapPanel Margin="0,10,0,0">
+          <Button Content="Save &amp; connect" Classes="primary" Command="{Binding AddConnectionCommand}" Margin="0,0,6,0"
+                  ToolTip.Tip="Connects and lists topics to verify the settings before saving" />
+          <Button Content="Add as demo (in-memory)" Command="{Binding AddDemoConnectionCommand}"
+                  ToolTip.Tip="A simulated broker inside the app - try every screen and script without Kafka" />
+          <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Width="16" Height="16" MinWidth="16" Margin="8,0,0,0" VerticalAlignment="Center" />
+        </WrapPanel>
+        <TextBlock Classes="hint" Text="{Binding StatusMessage}" Margin="0,6,0,0"
+                   IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <TextBlock Classes="hint" Margin="0,6,0,0"
+                   Text="Saved in your user profile. On Windows, SASL passwords are encrypted for your account." />
+      </StackPanel>
+    </Border>
+  </StackPanel>
 </UserControl>

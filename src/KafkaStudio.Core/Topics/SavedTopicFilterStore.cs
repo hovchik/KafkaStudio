@@ -1,4 +1,4 @@
-using System.Text.Json;
+using KafkaStudio.Core.Persistence;
 
 namespace KafkaStudio.Core.Topics;
 
@@ -8,37 +8,14 @@ namespace KafkaStudio.Core.Topics;
 /// </summary>
 public static class SavedTopicFilterStore
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
+    private const string FileName = "topic-filters.json";
 
-    private static string FilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "KafkaStudio",
-        "topic-filters.json");
+    public static IReadOnlyList<string> Load() =>
+        JsonFileStore.Load<List<string>>(FileName, new List<string>())
+            .Where(f => !string.IsNullOrWhiteSpace(f))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
 
-    public static IReadOnlyList<string> Load()
-    {
-        try
-        {
-            if (!File.Exists(FilePath)) return Array.Empty<string>();
-            var json = File.ReadAllText(FilePath);
-            return JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
-        }
-        catch
-        {
-            return Array.Empty<string>();
-        }
-    }
-
-    public static void Save(IEnumerable<string> filters)
-    {
-        var path = FilePath;
-        var directory = Path.GetDirectoryName(path);
-        if (!string.IsNullOrEmpty(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        var json = JsonSerializer.Serialize(filters.ToList(), SerializerOptions);
-        File.WriteAllText(path, json);
-    }
+    /// <summary>Returns an error message on failure, or null on success.</summary>
+    public static string? Save(IEnumerable<string> filters) => JsonFileStore.TrySave(FileName, filters.ToList());
 }

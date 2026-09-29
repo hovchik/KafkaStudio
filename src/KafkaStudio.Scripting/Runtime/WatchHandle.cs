@@ -5,23 +5,28 @@ using KafkaStudio.Core.Messaging;
 namespace KafkaStudio.Scripting.Runtime;
 
 /// <summary>
-/// Backs a "watch topic" step. The critical correctness property here is that <see cref="Start"/>
-/// does not return until the underlying subscription is actually registered with the gateway - it
-/// does not wait for a message to arrive, just for the act of subscribing to have happened. That's
-/// what makes "Given watch topic B from now" followed immediately by "When produce message to topic A"
-/// race-free for the cross-topic timing check: without this guarantee, a fast reacting downstream
-/// system could produce to B before our subscription existed, and we'd miss it.
+/// Backs a "watch topic" step. The critical correctness property here is that <see cref="StartAsync"/>
+/// does not return until the underlying subscription is actually live - it does not wait for a message
+/// to arrive, just for the gateway to report (via <see cref="ConsumeOptions.OnReady"/>) that its read
+/// positions are pinned. That's what makes "Given watch topic B from now" followed immediately by
+/// "When produce message to topic A" race-free for the cross-topic timing check: without this
+/// guarantee, a fast reacting downstream system could produce to B before our subscription existed,
+/// and we'd miss it.
 ///
-/// The trick: getting an <see cref="IAsyncEnumerator{T}"/> and calling <c>MoveNextAsync()</c> on it
-/// runs the async iterator's body *synchronously* up to its first genuine suspension point (the point
-/// where it's actually waiting for the next message) - so calling that here, before handing off to a
-/// background pump task, is enough. No artificial delay, no polling.
+/// History: an earlier version relied on the in-memory gateway registering its subscription
+/// synchronously inside the first <c>MoveNextAsync()</c>. That held for the fake broker but not for a
+/// real cluster, where assignment and offset lookup happen over the network - hence the explicit
+/// readiness signal, which both gateways now raise.
 /// </summary>
 internal sealed class WatchHandle : IAsyncDisposable
 {
+    /// <summary>Upper bound on waiting for readiness, so a gateway that never signals can't hang a script.</summary>
+    public static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(30);
+
     private readonly Channel<KafkaMessage> _channel;
     private readonly CancellationTokenSource _cts;
     private readonly Task _pumpTask;
+    private int _disposed;
 
     public ChannelReader<KafkaMessage> Reader => _channel.Reader;
 
@@ -32,37 +37,56 @@ internal sealed class WatchHandle : IAsyncDisposable
         _pumpTask = pumpTask;
     }
 
-    public static WatchHandle Start(IKafkaGateway gateway, ConsumeOptions options, CancellationToken parentToken)
+    public static async Task<WatchHandle> StartAsync(IKafkaGateway gateway, ConsumeOptions options, CancellationToken parentToken)
     {
         var cts = CancellationTokenSource.CreateLinkedTokenSource(parentToken);
         var channel = Channel.CreateUnbounded<KafkaMessage>(
             new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        var enumerator = gateway.ConsumeAsync(options, cts.Token).GetAsyncEnumerator(cts.Token);
+        var readyOptions = options with
+        {
+            OnReady = () =>
+            {
+                options.OnReady?.Invoke();
+                ready.TrySetResult();
+            }
+        };
 
-        // Deliberately not awaited here: invoking MoveNextAsync() runs the gateway's subscribe logic
-        // synchronously before this call returns, which is the whole point - see the class doc comment.
-        var firstMove = enumerator.MoveNextAsync();
+        var pumpTask = Task.Run(() => PumpAsync(gateway, readyOptions, channel, ready, cts.Token));
+        var handle = new WatchHandle(channel, cts, pumpTask);
 
-        var pumpTask = Task.Run(() => PumpAsync(enumerator, firstMove, channel, cts.Token));
+        try
+        {
+            await ready.Task.WaitAsync(ReadyTimeout, parentToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            // Carry on: the subscription may still become live, and an "expect" step will time out
+            // with a clear message if nothing arrives.
+        }
+        catch
+        {
+            await handle.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
 
-        return new WatchHandle(channel, cts, pumpTask);
+        return handle;
     }
 
     private static async Task PumpAsync(
-        IAsyncEnumerator<KafkaMessage> enumerator,
-        ValueTask<bool> firstMove,
+        IKafkaGateway gateway,
+        ConsumeOptions options,
         Channel<KafkaMessage> channel,
+        TaskCompletionSource ready,
         CancellationToken cancellationToken)
     {
         Exception? failure = null;
         try
         {
-            var hasCurrent = await firstMove.ConfigureAwait(false);
-            while (hasCurrent)
+            await foreach (var message in gateway.ConsumeAsync(options, cancellationToken).ConfigureAwait(false))
             {
-                await channel.Writer.WriteAsync(enumerator.Current, cancellationToken).ConfigureAwait(false);
-                hasCurrent = await enumerator.MoveNextAsync().ConfigureAwait(false);
+                await channel.Writer.WriteAsync(message, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -76,13 +100,13 @@ internal sealed class WatchHandle : IAsyncDisposable
         finally
         {
             channel.Writer.TryComplete(failure);
-            try { await enumerator.DisposeAsync().ConfigureAwait(false); }
-            catch { /* best effort - we're already tearing down */ }
+            ready.TrySetResult(); // never leave StartAsync waiting on a subscription that died
         }
     }
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _cts.Cancel();
         try
         {
@@ -90,7 +114,7 @@ internal sealed class WatchHandle : IAsyncDisposable
         }
         catch
         {
-            // shutdown path, the pump's own try/catch already handled/logged anything worth losing
+            // shutdown path, the pump's own try/catch already handled anything worth reporting
         }
         finally
         {

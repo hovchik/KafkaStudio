@@ -1,69 +1,112 @@
 <UserControl xmlns="https://github.com/avaloniaui"
-			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-			 xmlns:vm="using:KafkaStudio.App.ViewModels.Rethrow"
-			 x:Class="KafkaStudio.App.Views.Rethrow.RethrowRulesView"
-			 x:DataType="vm:RethrowRulesViewModel">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.Rethrow"
+             x:Class="KafkaStudio.App.Views.Rethrow.RethrowRulesView"
+             x:DataType="vm:RethrowRulesViewModel">
 
-  <Grid RowDefinitions="Auto,*">
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
 
-	<!-- Single-line toolbar: define source -> destination and add the rule. -->
-	<Border Grid.Row="0" Classes="toolbar">
-	  <Grid ColumnDefinitions="*,Auto,Auto,*,Auto,Auto,*,Auto,Auto,*">
-		<TextBox Grid.Column="0" MinWidth="110" Text="{Binding NewName}" Watermark="rule name" />
+    <!-- Row 1: name, source -> destination, add. -->
+    <Border Grid.Row="0" Classes="toolbar">
+      <Grid ColumnDefinitions="*,Auto,Auto,*,Auto,Auto,*,Auto,Auto">
+        <TextBox Grid.Column="0" MinWidth="110" Text="{Binding NewName}" Watermark="rule name" />
 
-		<Border Grid.Column="1" Classes="sep" />
+        <Border Grid.Column="1" Classes="sep" />
 
-		<ComboBox Grid.Column="2" Width="150" ItemsSource="{Binding ConnectionNames}"
-				  SelectedItem="{Binding NewSourceConnection}" ToolTip.Tip="Source connection" />
-		<TextBox Grid.Column="3" MinWidth="120" Text="{Binding NewSourceTopic}" Watermark="source topic" />
+        <ComboBox Grid.Column="2" Width="150" PlaceholderText="source conn." ItemsSource="{Binding ConnectionNames}"
+                  SelectedItem="{Binding NewSourceConnection}" ToolTip.Tip="Source connection" />
+        <TextBox Grid.Column="3" MinWidth="120" Text="{Binding NewSourceTopic}" Watermark="source topic" />
 
-		<TextBlock Grid.Column="4" Text="→" Foreground="White" />
+        <TextBlock Grid.Column="4" Text="→" Foreground="White" FontSize="16" />
 
-		<ComboBox Grid.Column="5" Width="150" ItemsSource="{Binding ConnectionNames}"
-				  SelectedItem="{Binding NewDestinationConnection}" ToolTip.Tip="Destination connection" />
-		<TextBox Grid.Column="6" MinWidth="120" Text="{Binding NewDestinationTopic}" Watermark="destination topic" />
+        <ComboBox Grid.Column="5" Width="150" PlaceholderText="destination conn." ItemsSource="{Binding ConnectionNames}"
+                  SelectedItem="{Binding NewDestinationConnection}" ToolTip.Tip="Destination connection" />
+        <TextBox Grid.Column="6" MinWidth="120" Text="{Binding NewDestinationTopic}" Watermark="destination topic" />
 
-		<Border Grid.Column="7" Classes="sep" />
+        <Border Grid.Column="7" Classes="sep" />
 
-		<Button Grid.Column="8" Content="Add rule" Classes="primary" Command="{Binding AddRuleCommand}" />
-		<TextBlock Grid.Column="9" Classes="muted" Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
-	  </Grid>
-	</Border>
+        <Button Grid.Column="8" Content="Add / update rule" Classes="primary" Command="{Binding AddRuleCommand}" Margin="0"
+                ToolTip.Tip="Adds the rule (or replaces the stopped rule with the same name)" />
+      </Grid>
+    </Border>
 
-	<!-- Data area fills everything else. -->
-	<Border Grid.Row="1" Classes="pane" Margin="0,6,0,0">
-	  <DockPanel>
-		<TextBlock DockPanel.Dock="Top" Classes="paneTitle" Margin="0,0,0,6">
-		  <Run Text="Rules" /><Run Text=" " /><Run Text="{Binding Rules.Count}" Foreground="{DynamicResource MutedTextBrush}" />
-		</TextBlock>
-		<ScrollViewer>
-		  <ItemsControl Name="RulesList" ItemsSource="{Binding Rules}">
-			<ItemsControl.ItemTemplate>
-			  <DataTemplate x:DataType="vm:RethrowRuleRowViewModel">
-				<Border Classes="row">
-				  <Grid ColumnDefinitions="*,Auto,Auto,Auto" RowDefinitions="Auto,Auto">
-					<StackPanel Grid.Row="0" Grid.Column="0" Spacing="1">
-					  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="White" FontSize="12" />
-					  <TextBlock Text="{Binding Description}" Classes="muted" />
-					</StackPanel>
-					<TextBlock Grid.Row="0" Grid.Column="1" Classes="muted" VerticalAlignment="Center" Margin="0,0,12,0">
-					  <Run Text="relayed: " /><Run Text="{Binding RelayedCount}" />
-					</TextBlock>
-					<Button Grid.Row="0" Grid.Column="2" Content="Start" Padding="8,2" Margin="0,0,6,0"
-							Command="{Binding #RulesList.DataContext.StartCommand}" CommandParameter="{Binding}"
-							IsEnabled="{Binding !IsRunning}" />
-					<Button Grid.Row="0" Grid.Column="3" Content="Stop" Padding="8,2"
-							Command="{Binding #RulesList.DataContext.StopCommand}" CommandParameter="{Binding}"
-							IsEnabled="{Binding IsRunning}" />
-					<TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4" Text="{Binding LastError}"
-							   Classes="status-failed" TextWrapping="Wrap" Margin="0,6,0,0" />
-				  </Grid>
-				</Border>
-			  </DataTemplate>
-			</ItemsControl.ItemTemplate>
-		  </ItemsControl>
-		</ScrollViewer>
-	  </DockPanel>
-	</Border>
+    <!-- Row 2: optional filter, key handling, extra header. -->
+    <Border Grid.Row="1" Classes="toolbar" Margin="0,4,0,0">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto">
+        <TextBlock Grid.Column="0" Text="Only relay where" Classes="muted" />
+        <ComboBox Grid.Column="1" Width="110" ItemsSource="{Binding FilterFieldOptions}" SelectedItem="{Binding NewFilterField}" />
+        <TextBox Grid.Column="2" Width="120" Text="{Binding NewFilterPath}" Watermark="$.status" IsVisible="{Binding IsJsonFilter}" />
+        <ComboBox Grid.Column="3" Width="110" ItemsSource="{Binding ComparatorOptions}" SelectedItem="{Binding NewFilterComparator}"
+                  IsVisible="{Binding HasFilter}" />
+        <TextBox Grid.Column="4" MinWidth="100" Text="{Binding NewFilterValue}" Watermark="value / regex" IsVisible="{Binding HasFilter}" />
+
+        <Border Grid.Column="5" Classes="sep" />
+
+        <CheckBox Grid.Column="6" Content="Keep key" IsChecked="{Binding NewKeepSourceKey}"
+                  ToolTip.Tip="Relay with the source message's key (otherwise no key)" />
+        <TextBlock Grid.Column="7" Text="Add header" Classes="muted" />
+        <TextBox Grid.Column="8" Width="110" Text="{Binding NewHeaderName}" Watermark="name" />
+        <TextBox Grid.Column="9" Width="120" Text="{Binding NewHeaderValue}" Watermark="value" Margin="0" />
+      </Grid>
+    </Border>
+
+    <!-- Rules -->
+    <Border Grid.Row="2" Classes="pane" Margin="0,6,0,0">
+      <DockPanel>
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,6">
+          <TextBlock Grid.Column="0" Classes="paneTitle">
+            <Run Text="Rules" /><Run Text=" " /><Run Text="{Binding Rules.Count}" Foreground="{DynamicResource MutedTextBrush}" />
+          </TextBlock>
+          <Button Grid.Column="1" Classes="small" Content="Start all" Command="{Binding StartAllCommand}" Margin="0,0,4,0" />
+          <Button Grid.Column="2" Classes="small" Content="Stop all" Command="{Binding StopAllCommand}" />
+        </Grid>
+        <Panel>
+          <TextBlock Classes="hint" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" MaxWidth="520"
+                     Text="A rule continuously copies messages from a source topic to a destination topic (optionally filtered). Offsets are committed only after a message is relayed, so nothing is lost if the destination is briefly unavailable. Rules are saved; they always load stopped."
+                     IsVisible="{Binding !Rules.Count}" />
+          <ScrollViewer>
+            <ItemsControl Name="RulesList" ItemsSource="{Binding Rules}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:RethrowRuleRowViewModel">
+                  <Border Classes="row">
+                    <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+                      <Ellipse Grid.Row="0" Grid.Column="0" Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center"
+                               Fill="{DynamicResource SuccessBrush}" IsVisible="{Binding IsRunning}" />
+                      <Ellipse Grid.Row="0" Grid.Column="0" Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center"
+                               Fill="{DynamicResource MutedTextBrush}" IsVisible="{Binding IsStopped}" />
+                      <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="White" FontSize="12" VerticalAlignment="Center" />
+                        <Border Classes="badge ok" IsVisible="{Binding IsRunning}"><TextBlock Text="running" /></Border>
+                      </StackPanel>
+                      <WrapPanel Grid.Row="0" Grid.Column="2">
+                        <Button Classes="small" Content="Start" Margin="0,0,4,0"
+                                Command="{Binding #RulesList.DataContext.StartCommand}" CommandParameter="{Binding}" />
+                        <Button Classes="small" Content="Stop" Margin="0,0,4,0"
+                                Command="{Binding #RulesList.DataContext.StopCommand}" CommandParameter="{Binding}" />
+                        <Button Classes="small" Content="Edit" Margin="0,0,4,0"
+                                Command="{Binding #RulesList.DataContext.EditCommand}" CommandParameter="{Binding}" />
+                        <Button Classes="small danger" Content="Remove"
+                                Command="{Binding #RulesList.DataContext.RemoveCommand}" CommandParameter="{Binding}" />
+                      </WrapPanel>
+                      <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Classes="muted" Margin="0,2,0,0" TextWrapping="Wrap">
+                        <Run Text="{Binding Description}" /><Run Text="   ·   " /><Run Text="{Binding FilterDescription}" /><Run Text="   ·   " /><Run Text="{Binding KeyDescription}" />
+                      </TextBlock>
+                      <TextBlock Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Classes="muted" Margin="0,2,0,0" TextTrimming="CharacterEllipsis">
+                        <Run Text="relayed " /><Run Text="{Binding RelayedCount}" Foreground="White" /><Run Text="   skipped " /><Run Text="{Binding SkippedCount}" Foreground="White" /><Run Text="   " /><Run Text="{Binding LastActivity}" />
+                      </TextBlock>
+                      <SelectableTextBlock Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding LastError}"
+                                           Classes="error" Margin="0,4,0,0" IsVisible="{Binding HasError}" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Panel>
+      </DockPanel>
+    </Border>
+
+    <TextBlock Grid.Row="3" Classes="muted" Margin="4,6,0,0" TextTrimming="CharacterEllipsis"
+               Text="{Binding StatusMessage}" ToolTip.Tip="{Binding StatusMessage}" />
   </Grid>
 </UserControl>

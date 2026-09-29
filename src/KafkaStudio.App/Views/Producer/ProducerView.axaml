@@ -1,73 +1,104 @@
 <UserControl xmlns="https://github.com/avaloniaui"
-			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-			 xmlns:vm="using:KafkaStudio.App.ViewModels.Producer"
-			 x:Class="KafkaStudio.App.Views.Producer.ProducerView"
-			 x:DataType="vm:ProducerViewModel">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.Producer"
+             x:Class="KafkaStudio.App.Views.Producer.ProducerView"
+             x:DataType="vm:ProducerViewModel">
 
-  <Grid RowDefinitions="Auto,Auto,*">
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Ctrl+Enter" Command="{Binding SendCommand}" />
+  </UserControl.KeyBindings>
 
-	<!-- Single-line toolbar: destination + send. -->
-	<Border Grid.Row="0" Classes="toolbar">
-	  <Grid ColumnDefinitions="Auto,*,Auto,*,Auto,Auto,*">
-		<ComboBox Grid.Column="0" Width="170" ItemsSource="{Binding ConnectionNames}"
-				  SelectedItem="{Binding SelectedConnection}" ToolTip.Tip="Connection" />
-		<AutoCompleteBox Grid.Column="1" MinWidth="160" ItemsSource="{Binding TopicNames}" Text="{Binding Topic}"
-						 FilterMode="Contains" Watermark="topic" />
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
 
-		<Border Grid.Column="2" Classes="sep" />
+    <!-- Destination + send. -->
+    <Border Grid.Row="0" Classes="toolbar">
+      <Grid ColumnDefinitions="Auto,*,Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+        <ComboBox Grid.Column="0" Width="170" PlaceholderText="Connection…" ItemsSource="{Binding ConnectionNames}"
+                  SelectedItem="{Binding SelectedConnection}" ToolTip.Tip="Connection" />
+        <AutoCompleteBox Grid.Column="1" MinWidth="160" ItemsSource="{Binding TopicNames}" Text="{Binding Topic}"
+                         FilterMode="Contains" Watermark="topic" />
 
-		<TextBox Grid.Column="3" MinWidth="120" Text="{Binding Key}" Watermark="key (optional)" />
-		<Button Grid.Column="4" Content="Send" Classes="primary" Command="{Binding SendCommand}" />
-		<Button Grid.Column="5" Content="Add header" Command="{Binding AddHeaderCommand}" />
-		<TextBlock Grid.Column="6" Classes="muted" Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
-	  </Grid>
-	</Border>
+        <Border Grid.Column="2" Classes="sep" />
 
-	<!-- Headers only take space when there are any. -->
-	<Border Grid.Row="1" Classes="toolbar" Margin="0,6,0,0" IsVisible="{Binding Headers.Count}">
-	  <ItemsControl Name="HeadersList" ItemsSource="{Binding Headers}">
-		<ItemsControl.ItemTemplate>
-		  <DataTemplate x:DataType="vm:HeaderEntryViewModel">
-			<Grid ColumnDefinitions="*,*,Auto" Margin="0,0,0,2">
-			  <TextBox Grid.Column="0" Text="{Binding Name}" Watermark="header name" />
-			  <TextBox Grid.Column="1" Text="{Binding Value}" Watermark="header value" />
-			  <Button Grid.Column="2" Content="✕" Command="{Binding #HeadersList.DataContext.RemoveHeaderCommand}" CommandParameter="{Binding}" />
-			</Grid>
-		  </DataTemplate>
-		</ItemsControl.ItemTemplate>
-	  </ItemsControl>
-	</Border>
+        <TextBox Grid.Column="3" MinWidth="120" Text="{Binding Key}" Watermark="key (optional, e.g. {{$uuid}})" />
+        <TextBox Grid.Column="4" Width="80" Text="{Binding Partition}" Watermark="partition"
+                 ToolTip.Tip="Optional explicit partition (empty = let the partitioner decide)" />
+        <TextBlock Grid.Column="5" Text="×" Classes="muted" />
+        <NumericUpDown Grid.Column="6" Width="110" Value="{Binding RepeatCount}" Minimum="1" Maximum="100000" FormatString="0"
+                       ToolTip.Tip="Send this many messages - templates like {{$uuid}} are evaluated fresh for each" />
+        <CheckBox Grid.Column="7" Content="Tombstone" IsChecked="{Binding IsTombstone}"
+                  ToolTip.Tip="Send a null value (deletes the key on compacted topics)" />
+        <Button Grid.Column="8" Content="Send" Classes="primary" Command="{Binding SendCommand}" ToolTip.Tip="Send (Ctrl+Enter)" />
+        <Button Grid.Column="9" Content="Cancel" Command="{Binding CancelSendCommand}" IsVisible="{Binding IsSending}" />
+        <Button Grid.Column="10" Content="+ Header" Command="{Binding AddHeaderCommand}" />
+        <ProgressBar Grid.Column="11" IsIndeterminate="True" IsVisible="{Binding IsSending}" Width="16" Height="16" MinWidth="16" />
+      </Grid>
+    </Border>
 
-	<!-- Data area: value editor + recently sent, resizable. -->
-	<Grid Grid.Row="2" Margin="0,6,0,0" ColumnDefinitions="*,6,320">
-	  <Border Grid.Column="0" Classes="pane">
-		<DockPanel>
-		  <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Text="Value" Margin="0,0,0,6" />
-		  <TextBox Text="{Binding Value}" AcceptsReturn="True" TextWrapping="Wrap"
-				   FontFamily="Consolas,monospace" FontSize="13"
-				   Background="{DynamicResource SidebarBrush}" BorderThickness="0" Padding="10"
-				   Watermark="{}{ &quot;example&quot;: true }" />
-		</DockPanel>
-	  </Border>
+    <!-- Headers only take space when there are any. -->
+    <Border Grid.Row="1" Classes="toolbar" Margin="0,6,0,0" IsVisible="{Binding Headers.Count}">
+      <ItemsControl Name="HeadersList" ItemsSource="{Binding Headers}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:HeaderEntryViewModel">
+            <Grid ColumnDefinitions="*,*,Auto" Margin="0,0,0,2">
+              <TextBox Grid.Column="0" Text="{Binding Name}" Watermark="header name" />
+              <TextBox Grid.Column="1" Text="{Binding Value}" Watermark="header value (templates allowed)" />
+              <Button Grid.Column="2" Content="✕" ToolTip.Tip="Remove header"
+                      Command="{Binding #HeadersList.DataContext.RemoveHeaderCommand}" CommandParameter="{Binding}" />
+            </Grid>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </Border>
 
-	  <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
+    <!-- Value editor + recently sent, resizable. -->
+    <Grid Grid.Row="2" Margin="0,6,0,0" ColumnDefinitions="*,6,340">
+      <Border Grid.Column="0" Classes="pane">
+        <DockPanel>
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,6">
+            <TextBlock Grid.Column="0" Classes="paneTitle" Text="Value" Margin="0,0,8,0" />
+            <TextBlock Grid.Column="1" Classes="muted" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="{Binding ValueInfo}" />
+            <Button Grid.Column="2" Classes="small" Content="Format JSON" Command="{Binding FormatJsonCommand}" />
+          </Grid>
+          <TextBlock DockPanel.Dock="Bottom" Classes="hint" Margin="0,6,0,0">
+            <Run Text="Templates: " /><Run Text="{}{{$uuid}}  {{$now}}  {{$timestamp}}  {{$date}}  {{$random}}" FontFamily="Cascadia Mono,Consolas,monospace" /><Run Text="  - evaluated per message." />
+          </TextBlock>
+          <TextBox Text="{Binding Value}" AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
+                   FontFamily="Cascadia Mono,Consolas,Menlo,monospace" FontSize="13"
+                   Background="{DynamicResource SidebarBrush}" BorderThickness="0" Padding="10"
+                   IsEnabled="{Binding !IsTombstone}"
+                   Watermark="{}{ &quot;example&quot;: true }" />
+        </DockPanel>
+      </Border>
 
-	  <Border Grid.Column="2" Classes="pane">
-		<DockPanel>
-		  <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Text="Recently sent" Margin="0,0,0,6" />
-		  <ScrollViewer>
-			<ItemsControl ItemsSource="{Binding History}">
-			  <ItemsControl.ItemTemplate>
-				<DataTemplate>
-				  <Border Classes="row">
-					<SelectableTextBlock Text="{Binding}" Classes="muted" TextWrapping="Wrap" />
-				  </Border>
-				</DataTemplate>
-			  </ItemsControl.ItemTemplate>
-			</ItemsControl>
-		  </ScrollViewer>
-		</DockPanel>
-	  </Border>
-	</Grid>
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
+
+      <Border Grid.Column="2" Classes="pane">
+        <DockPanel>
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+            <TextBlock Grid.Column="0" Classes="paneTitle" Text="Recently sent" />
+            <Button Grid.Column="1" Classes="small" Content="Clear" Command="{Binding ClearHistoryCommand}" />
+          </Grid>
+          <ScrollViewer>
+            <ItemsControl ItemsSource="{Binding History}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:SentMessageRow">
+                  <Border Classes="row">
+                    <StackPanel Spacing="2">
+                      <SelectableTextBlock Text="{Binding Summary}" FontSize="12" Foreground="White" TextWrapping="Wrap"
+                                           Classes.error="{Binding Failed}" />
+                      <SelectableTextBlock Text="{Binding Detail}" Classes="muted mono" TextWrapping="Wrap" MaxHeight="60" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
+    </Grid>
+
+    <TextBlock Grid.Row="3" Classes="muted" Margin="4,6,0,0" TextTrimming="CharacterEllipsis"
+               Text="{Binding StatusMessage}" ToolTip.Tip="{Binding StatusMessage}" />
   </Grid>
 </UserControl>

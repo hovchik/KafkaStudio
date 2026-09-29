@@ -1,90 +1,134 @@
 <UserControl xmlns="https://github.com/avaloniaui"
-			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-			 xmlns:vm="using:KafkaStudio.App.ViewModels.Scripts"
-			 xmlns:conv="using:KafkaStudio.App.Converters"
-			 xmlns:shared="using:KafkaStudio.App.ViewModels.Shared"
-			 x:Class="KafkaStudio.App.Views.Scripts.ScriptEditorView"
-			 x:DataType="vm:ScriptEditorViewModel">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.Scripts"
+             xmlns:conv="using:KafkaStudio.App.Converters"
+             xmlns:shared="using:KafkaStudio.App.ViewModels.Shared"
+             x:Class="KafkaStudio.App.Views.Scripts.ScriptEditorView"
+             x:DataType="vm:ScriptEditorViewModel">
+
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Ctrl+Enter" Command="{Binding RunAllCommand}" />
+    <KeyBinding Gesture="F5" Command="{Binding RunAllCommand}" />
+    <KeyBinding Gesture="Shift+F5" Command="{Binding StopCommand}" />
+    <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}" />
+    <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveAsCommand}" />
+    <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenCommand}" />
+    <KeyBinding Gesture="F1" Command="{Binding ToggleHelpCommand}" />
+  </UserControl.KeyBindings>
 
   <Grid RowDefinitions="Auto,*">
 
-	<!-- Single-line toolbar. -->
-	<Border Grid.Row="0" Classes="toolbar">
-	  <Grid ColumnDefinitions="Auto,Auto,*,Auto">
-		<Button Grid.Column="0" Content="Run all" Classes="primary" Command="{Binding RunAllCommand}" />
-		<ProgressBar Grid.Column="1" IsIndeterminate="True" IsVisible="{Binding IsRunning}" Width="16" Height="16"
-					 VerticalAlignment="Center" Margin="0,0,6,0" />
-		<TextBlock Grid.Column="2" Classes="muted" Text="{Binding RunSummary}" TextTrimming="CharacterEllipsis" />
-		<Button Grid.Column="3" Content="Help &amp; examples" Command="{Binding ToggleHelpCommand}" Margin="0" />
-	  </Grid>
-	</Border>
+    <Border Grid.Row="0" Classes="toolbar">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto">
+        <Button Grid.Column="0" Content="New" Command="{Binding NewCommand}" />
+        <Button Grid.Column="1" Content="Open…" Command="{Binding OpenCommand}" ToolTip.Tip="Open a .kafscript file (Ctrl+O)" />
+        <Button Grid.Column="2" Content="Save" Command="{Binding SaveCommand}" ToolTip.Tip="Save (Ctrl+S) · Save as: Ctrl+Shift+S" />
+        <Border Grid.Column="3" Classes="sep" />
+        <Button Grid.Column="4" Content="▶ Run all" Classes="primary" Command="{Binding RunAllCommand}" ToolTip.Tip="Run every Scenario/Task (Ctrl+Enter or F5)" />
+        <Button Grid.Column="5" Content="■ Stop" Command="{Binding StopCommand}" ToolTip.Tip="Stop the run (Shift+F5)" />
+        <ProgressBar Grid.Column="6" IsIndeterminate="True" IsVisible="{Binding IsRunning}" Width="16" Height="16" MinWidth="16"
+                     VerticalAlignment="Center" Margin="0,0,6,0" />
+        <Border Grid.Column="7" Classes="sep" />
+        <TextBlock Grid.Column="8" Text="{Binding RunSummary}" TextTrimming="CharacterEllipsis" FontWeight="SemiBold"
+                   Foreground="{Binding LastRunPassed, Converter={x:Static conv:PassFailBrushConverter.Instance}}" />
+        <Button Grid.Column="9" Content="Help &amp; examples" Command="{Binding ToggleHelpCommand}" Margin="0" ToolTip.Tip="F1" />
+      </Grid>
+    </Border>
 
-	<!-- Data area: editor + results (+ optional help), all resizable. -->
-	<Grid Grid.Row="1" Margin="0,6,0,0" ColumnDefinitions="1.4*,6,1*,Auto,Auto">
+    <!-- Editor + results (+ optional help), all resizable. -->
+    <Grid Grid.Row="1" Margin="0,6,0,0" ColumnDefinitions="1.4*,6,1*,Auto,Auto">
 
-	  <Border Grid.Column="0" Classes="pane">
-		<DockPanel>
-		  <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Text="Script (KafScript)" Margin="0,0,0,6" />
-		  <TextBlock DockPanel.Dock="Bottom" Text="{Binding ParseError}" Classes="status-failed"
-					 TextWrapping="Wrap" Margin="0,6,0,0" IsVisible="{Binding ParseError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-		  <TextBox Text="{Binding Source}"
-				   AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
-				   FontFamily="Consolas,Menlo,monospace" FontSize="13"
-				   Background="{DynamicResource SidebarBrush}" BorderThickness="0" Padding="10" />
-		</DockPanel>
-	  </Border>
+      <Border Grid.Column="0" Classes="pane">
+        <DockPanel>
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*" Margin="0,0,0,6">
+            <TextBlock Grid.Column="0" Classes="paneTitle" Text="{Binding Title}" Margin="0,0,10,0" />
+            <TextBlock Grid.Column="1" Classes="muted" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="{Binding DocumentSummary}" />
+          </Grid>
+          <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0" Spacing="2">
+            <TextBlock Classes="error" Text="{Binding ParseError}"
+                       IsVisible="{Binding ParseError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <TextBlock Classes="hint" Text="{Binding ConnectionsHint}" />
+          </StackPanel>
+          <TextBox Text="{Binding Source}"
+                   AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
+                   FontFamily="Cascadia Mono,Consolas,Menlo,monospace" FontSize="13"
+                   Background="{DynamicResource SidebarBrush}" BorderThickness="0" Padding="10" />
+        </DockPanel>
+      </Border>
 
-	  <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
 
-	  <Border Grid.Column="2" Classes="pane">
-		<DockPanel>
-		  <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Text="Step results" Margin="0,0,0,6" />
-		  <ScrollViewer>
-			<ItemsControl ItemsSource="{Binding StepResults}">
-			  <ItemsControl.ItemTemplate>
-				<DataTemplate x:DataType="vm:StepResultRowViewModel">
-				  <Border Classes="row">
-					<StackPanel Spacing="2">
-					  <StackPanel Orientation="Horizontal" Spacing="6">
-						<TextBlock Text="{Binding Keyword}" Classes="muted" />
-						<TextBlock Text="{Binding Description}" Foreground="White" FontSize="12" />
-					  </StackPanel>
-					  <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="12"
-								 Foreground="{Binding Status, Converter={x:Static conv:StepStatusToBrushConverter.Instance}}" />
-					</StackPanel>
-				  </Border>
-				</DataTemplate>
-			  </ItemsControl.ItemTemplate>
-			</ItemsControl>
-		  </ScrollViewer>
-		</DockPanel>
-	  </Border>
+      <Border Grid.Column="2" Classes="pane">
+        <DockPanel>
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+            <TextBlock Grid.Column="0" Classes="paneTitle" Text="Step results" />
+            <Button Grid.Column="1" Classes="small" Content="Clear" Command="{Binding ClearResultsCommand}" />
+          </Grid>
+          <Panel>
+            <TextBlock Classes="hint" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
+                       Text="Run the script (Ctrl+Enter) - each step's result streams in here."
+                       IsVisible="{Binding !StepResults.Count}" />
+            <ScrollViewer>
+              <ItemsControl ItemsSource="{Binding StepResults}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:StepResultRowViewModel">
+                    <Panel>
+                      <!-- Block header -->
+                      <TextBlock IsVisible="{Binding IsBlockHeader}" Margin="0,8,0,4" FontWeight="SemiBold" Foreground="White" FontSize="13">
+                        <Run Text="{Binding Keyword}" Foreground="{DynamicResource AccentBrush}" /><Run Text=": " /><Run Text="{Binding Description}" />
+                      </TextBlock>
+                      <!-- Step -->
+                      <Border Classes="row" IsVisible="{Binding !IsBlockHeader}">
+                        <Grid ColumnDefinitions="18,*,Auto" RowDefinitions="Auto,Auto">
+                          <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding StatusGlyph}" FontWeight="Bold"
+                                     Foreground="{Binding Status, Converter={x:Static conv:StepStatusToBrushConverter.Instance}}" />
+                          <TextBlock Grid.Row="0" Grid.Column="1" TextWrapping="Wrap" FontSize="12">
+                            <Run Text="{Binding Line, StringFormat='L{0} '}" Foreground="{DynamicResource MutedTextBrush}" /><Run Text="{Binding Keyword}" Foreground="{DynamicResource MutedTextBrush}" /><Run Text=" " /><Run Text="{Binding Description}" Foreground="White" />
+                          </TextBlock>
+                          <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding DurationText}" Classes="muted" FontSize="11" Margin="6,0,0,0" />
+                          <SelectableTextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Message}" TextWrapping="Wrap" FontSize="12"
+                                               Margin="0,2,0,0"
+                                               Foreground="{Binding Status, Converter={x:Static conv:StepStatusToBrushConverter.Instance}}" />
+                        </Grid>
+                      </Border>
+                    </Panel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Panel>
+        </DockPanel>
+      </Border>
 
-	  <GridSplitter Grid.Column="3" ResizeDirection="Columns" Width="6" IsVisible="{Binding IsHelpVisible}" />
+      <GridSplitter Grid.Column="3" ResizeDirection="Columns" Width="6" IsVisible="{Binding IsHelpVisible}" />
 
-	  <Border Grid.Column="4" Classes="pane" Width="320" IsVisible="{Binding IsHelpVisible}">
-		<DockPanel>
-		  <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Text="KafScript help &amp; examples" Margin="0,0,0,6" />
-		  <ScrollViewer>
-			<ItemsControl ItemsSource="{Binding HelpTopics}">
-			  <ItemsControl.ItemTemplate>
-				<DataTemplate x:DataType="shared:HelpTopicViewModel" x:CompileBindings="False">
-				  <Border Classes="row" Padding="8">
-					<StackPanel Spacing="3">
-					  <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="White" FontSize="12" />
-					  <TextBlock Text="{Binding Syntax}" FontFamily="Consolas,Menlo,monospace" FontSize="12" TextWrapping="Wrap" Classes="muted" />
-					  <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="White" FontSize="12" />
-					  <TextBlock Text="{Binding Example}" FontFamily="Consolas,Menlo,monospace" FontSize="11" TextWrapping="Wrap" Classes="muted" />
-					  <Button Content="Insert into script" Command="{Binding $parent[ItemsControl].DataContext.InsertExampleCommand}" CommandParameter="{Binding}" HorizontalAlignment="Left" Padding="6,2" />
-					</StackPanel>
-				  </Border>
-				</DataTemplate>
-			  </ItemsControl.ItemTemplate>
-			</ItemsControl>
-		  </ScrollViewer>
-		</DockPanel>
-	  </Border>
+      <Border Grid.Column="4" Classes="pane" Width="340" IsVisible="{Binding IsHelpVisible}">
+        <DockPanel>
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+            <TextBlock Grid.Column="0" Classes="paneTitle" Text="KafScript help &amp; examples" />
+            <Button Grid.Column="1" Classes="small" Content="✕" Command="{Binding ToggleHelpCommand}" />
+          </Grid>
+          <ScrollViewer>
+            <ItemsControl Name="HelpTopicsList" ItemsSource="{Binding HelpTopics}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="shared:HelpTopicViewModel">
+                  <Border Classes="row" Padding="8">
+                    <StackPanel Spacing="3">
+                      <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="White" FontSize="12" />
+                      <SelectableTextBlock Text="{Binding Syntax}" Classes="mono muted" TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="White" FontSize="12" />
+                      <SelectableTextBlock Text="{Binding Example}" Classes="mono muted" FontSize="11" TextWrapping="Wrap" />
+                      <Button Classes="small" Content="Insert into script" HorizontalAlignment="Left"
+                              Command="{Binding #HelpTopicsList.DataContext.InsertExampleCommand}" CommandParameter="{Binding}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
 
-	</Grid>
+    </Grid>
   </Grid>
 </UserControl>

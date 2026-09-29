@@ -61,22 +61,44 @@ public static class KafScriptHelp
         {
             Title = "Rethrow last message",
             Syntax = "rethrow last message to topic \"T\" [with key same|\"K\"] [header \"H\" to \"V\"]...",
-            Description = "Republishes the most recently seen message to a different topic.",
+            Description = "Republishes the most recently seen message (byte-for-byte, with its headers) to a different topic.",
             Example = "Then rethrow last message to topic \"orders-fulfillment\" with key same header \"relayed-by\" to \"kafka-studio\""
         },
         new HelpTopicViewModel
         {
             Title = "Scan topic",
-            Syntax = "scan topic \"T\" from beginning|end [limit N]",
-            Description = "Bulk-reads a topic's backlog into the scenario's \"scanned messages\" list, stopping at limit or once caught up.",
-            Example = "Then scan topic \"orders-dlq\" from beginning limit 500"
+            Syntax = "scan topic \"T\" from beginning|end|committed [group \"G\"] [limit N]",
+            Description = "Bulk-reads a topic's current backlog into the scenario's \"scanned messages\" list, stopping at limit or once caught up. " +
+                          "Pin a consumer group to make acknowledgements stick: a later 'from committed' scan resumes after the last acknowledged message.",
+            Example = "Then scan topic \"orders-dlq\" from committed group \"dlq-sweeper\" limit 500"
         },
         new HelpTopicViewModel
         {
             Title = "Acknowledge messages",
             Syntax = "acknowledge last message / acknowledge each scanned message",
-            Description = "Commits the consumer offset for the last message, or for every message collected by the most recent scan.",
+            Description = "Commits the consumer offset for the last consumed message, or for every message collected by the most recent scan.",
             Example = "Then acknowledge each scanned message"
+        },
+        new HelpTopicViewModel
+        {
+            Title = "Templates & built-ins",
+            Syntax = "{{NAME}}  {{$uuid}}  {{$now}}  {{$timestamp}}  {{$date}}  {{$random}}",
+            Description = "Any quoted value can use {{variables}} (from set/capture) and dynamic built-ins, evaluated fresh each time - handy for unique keys and ids.",
+            Example = "When produce message to topic \"orders\" key \"{{$uuid}}\" value \"{ \\\"createdAt\\\": \\\"{{$now}}\\\" }\""
+        },
+        new HelpTopicViewModel
+        {
+            Title = "Log",
+            Syntax = "log key | log value | log message | log \"text with {{vars}}\"",
+            Description = "Writes the last message (or a literal) into the step results - useful while developing a check.",
+            Example = "And log message"
+        },
+        new HelpTopicViewModel
+        {
+            Title = "Wait",
+            Syntax = "wait for DURATION",
+            Description = "Pauses the scenario. Durations: ms, seconds, minutes, hours (e.g. 500 ms, 2 seconds).",
+            Example = "And wait for 2 seconds"
         },
         new HelpTopicViewModel
         {

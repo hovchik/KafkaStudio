@@ -11,7 +11,16 @@ public partial class TopicBrowserView : UserControl
         InitializeComponent();
     }
 
-    private void OnTopicDoubleTapped(object? sender, TappedEventArgs e)
+    private void OnTopicDoubleTapped(object? sender, TappedEventArgs e) => OpenSelectedTopic(sender);
+
+    private void OnTopicListKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        OpenSelectedTopic(sender);
+        e.Handled = true;
+    }
+
+    private void OpenSelectedTopic(object? sender)
     {
         if (DataContext is not TopicBrowserViewModel vm) return;
         if (sender is not ListBox { SelectedItem: TopicRowViewModel row }) return;
@@ -22,10 +31,19 @@ public partial class TopicBrowserView : UserControl
         }
     }
 
-    private void OnGlobalSearchHitDoubleTapped(object? sender, TappedEventArgs e)
+    private void OnGlobalSearchHitDoubleTapped(object? sender, TappedEventArgs e) => OpenSelectedHit(sender);
+
+    private void OnSearchResultsKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        OpenSelectedHit(sender);
+        e.Handled = true;
+    }
+
+    private void OpenSelectedHit(object? sender)
     {
         if (DataContext is not TopicBrowserViewModel vm) return;
-        if (sender is not Control { DataContext: GlobalSearchHit hit }) return;
+        if (sender is not ListBox { SelectedItem: GlobalSearchHit hit }) return;
 
         if (vm.OpenGlobalSearchHitCommand.CanExecute(hit))
         {

@@ -5,28 +5,50 @@
         x:DataType="vm:MainWindowViewModel"
         Title="KafkaStudio"
         Icon="/Assets/app.ico"
-        Width="1280" Height="800"
-        MinWidth="1360" MinHeight="640"
+        Width="1440" Height="880"
+        MinWidth="1024" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
         Background="{DynamicResource AppBackgroundBrush}">
 
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Ctrl+D1" Command="{Binding NavigateCommand}" CommandParameter="topics" />
+    <KeyBinding Gesture="Ctrl+D2" Command="{Binding NavigateCommand}" CommandParameter="producer" />
+    <KeyBinding Gesture="Ctrl+D3" Command="{Binding NavigateCommand}" CommandParameter="consumer" />
+    <KeyBinding Gesture="Ctrl+D4" Command="{Binding NavigateCommand}" CommandParameter="scripts" />
+    <KeyBinding Gesture="Ctrl+D5" Command="{Binding NavigateCommand}" CommandParameter="tasks" />
+    <KeyBinding Gesture="Ctrl+D6" Command="{Binding NavigateCommand}" CommandParameter="rethrow" />
+    <KeyBinding Gesture="Ctrl+K" Command="{Binding OpenConnectionsCommand}" />
+  </Window.KeyBindings>
+
   <Grid>
-    <Grid ColumnDefinitions="240,*">
+    <Grid ColumnDefinitions="210,*">
 
       <!-- Sidebar -->
       <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}" Padding="0,16">
         <DockPanel>
-          <StackPanel DockPanel.Dock="Top" Margin="20,0,20,24" Spacing="2">
+          <StackPanel DockPanel.Dock="Top" Margin="18,0,18,20" Spacing="2">
             <TextBlock Text="KafkaStudio" FontSize="20" FontWeight="Bold" Foreground="White" />
             <TextBlock Text="Kafka checks &amp; automation" FontSize="12" Opacity="0.6" Foreground="White" />
           </StackPanel>
+
+          <Button DockPanel.Dock="Bottom" Margin="10,8,10,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                  Command="{Binding OpenConnectionsCommand}" ToolTip.Tip="Manage connections (Ctrl+K)">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="⚙" Foreground="White" />
+              <TextBlock Text="{Binding ConnectionsSummary}" Foreground="White" />
+            </StackPanel>
+          </Button>
 
           <ListBox ItemsSource="{Binding NavigationItems}"
                    SelectedItem="{Binding SelectedItem}"
                    Background="Transparent"
                    Margin="8,0">
             <ListBox.ItemTemplate>
-              <DataTemplate>
-                <TextBlock Text="{Binding Label}" Padding="12,10" FontSize="14" />
+              <DataTemplate x:DataType="vm:NavigationItem">
+                <Grid ColumnDefinitions="26,*" Margin="6,8" Background="Transparent" ToolTip.Tip="{Binding Shortcut}">
+                  <TextBlock Grid.Column="0" Text="{Binding Icon}" FontSize="14" Opacity="0.85" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="14" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                </Grid>
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
@@ -35,34 +57,50 @@
 
       <!-- Content -->
       <Border Grid.Column="1" Background="{DynamicResource ContentBackgroundBrush}">
-        <DockPanel Margin="24,16,24,24">
-          <!-- Docked to the right so it shares the first line with the active view's toolbar -->
-          <Button DockPanel.Dock="Right" Content="Connections" Classes="primary"
-                  Command="{Binding OpenConnectionsCommand}"
-                  VerticalAlignment="Top" Height="36" Padding="14,0" Margin="12,0,0,0"
-                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+        <DockPanel Margin="20,14,20,14">
+          <!-- First-run guidance: nothing works until a connection exists. -->
+          <Border DockPanel.Dock="Top" Classes="empty" Margin="0,0,0,10" IsVisible="{Binding HasNoConnections}">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Grid.Column="0" Spacing="2">
+                <TextBlock Text="Start by adding a connection" FontWeight="SemiBold" Foreground="White" />
+                <TextBlock Classes="hint" Text="Connect to a real cluster, or add a demo (in-memory) connection to try every screen and script without Kafka." />
+              </StackPanel>
+              <Button Grid.Column="1" Content="Add connection" Classes="primary" Command="{Binding OpenConnectionsCommand}" VerticalAlignment="Center" />
+            </Grid>
+          </Border>
+
           <ContentControl Content="{Binding SelectedItem.ViewModel}" />
         </DockPanel>
       </Border>
 
     </Grid>
 
-    <!-- Connections flyout panel -->
-    <Border IsVisible="{Binding IsConnectionsOpen}"
-            Background="#B0000000"
-            HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+    <!-- Notification (errors that no screen status line covers) -->
+    <Border Classes="notification" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,18" MaxWidth="720"
+            IsVisible="{Binding Notification, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+      <Grid ColumnDefinitions="*,Auto">
+        <SelectableTextBlock Grid.Column="0" Text="{Binding Notification}" Foreground="White" TextWrapping="Wrap" VerticalAlignment="Center" />
+        <Button Grid.Column="1" Classes="small" Content="Dismiss" Margin="12,0,0,0" Command="{Binding DismissNotificationCommand}" />
+      </Grid>
+    </Border>
+
+    <!-- Connections flyout panel (click the dimmed area or press Esc to close) -->
+    <Grid IsVisible="{Binding IsConnectionsOpen}">
+      <Border Background="#B0000000" PointerPressed="OnFlyoutBackdropPressed" />
       <Border HorizontalAlignment="Right" VerticalAlignment="Stretch"
-              Width="480" Background="{DynamicResource ContentBackgroundBrush}"
+              Width="520" Background="{DynamicResource ContentBackgroundBrush}"
               BoxShadow="-4 0 16 0 #40000000">
         <DockPanel Margin="16">
-          <Button DockPanel.Dock="Top" Content="Close" Command="{Binding CloseConnectionsCommand}"
-                  HorizontalAlignment="Right" Margin="0,0,0,8" />
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+            <TextBlock Grid.Column="0" Classes="h1" Text="Connections" Foreground="White" />
+            <Button Grid.Column="1" Content="Close" Command="{Binding CloseConnectionsCommand}" ToolTip.Tip="Esc" VerticalAlignment="Center" />
+          </Grid>
           <ScrollViewer>
             <ContentControl Content="{Binding Connections}" />
           </ScrollViewer>
         </DockPanel>
       </Border>
-    </Border>
+    </Grid>
 
   </Grid>
 

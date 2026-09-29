@@ -34,8 +34,13 @@ public sealed record RethrowAction(
     string? KeyOverride,
     IReadOnlyList<HeaderAssignment> Headers) : ScriptAction;
 
-/// <summary>scan topic "T" [from beginning|end] [limit N] - bulk-reads without committing per message.</summary>
-public sealed record ScanTopicAction(string Topic, TopicPosition Position, int? Limit) : ScriptAction;
+/// <summary>
+/// scan topic "T" from beginning|end|committed [group "G"] [limit N] - bulk-reads without committing
+/// per message. <see cref="ConsumerGroup"/> pins the consumer group so "acknowledge each scanned
+/// message" commits progress a later "from committed" scan resumes from; without it every scan uses
+/// a throwaway group.
+/// </summary>
+public sealed record ScanTopicAction(string Topic, TopicPosition Position, int? Limit, string? ConsumerGroup = null) : ScriptAction;
 
 /// <summary>acknowledge last message | acknowledge each scanned message</summary>
 public sealed record AcknowledgeAction(bool EachScanned) : ScriptAction;

@@ -71,7 +71,7 @@
     <Setter Property="FontWeight" Value="Bold" />
   </Style>
 
-  <Style Selector="TextBlock.muted">
+  <Style Selector="TextBlock.muted, SelectableTextBlock.muted">
     <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
     <Setter Property="FontSize" Value="12" />
   </Style>
@@ -194,6 +194,117 @@
 
   <Style Selector="GridSplitter">
     <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <!-- ===== Additions: lists, detail panes, badges, buttons ===== -->
+
+  <Style Selector="ListBox">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <!-- Compact, virtualized message/row lists. -->
+  <Style Selector="ListBox.rows ListBoxItem">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Margin" Value="0,0,0,2" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="CornerRadius" Value="4" />
+  </Style>
+  <Style Selector="ListBox.rows ListBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="#446E8BFF" />
+  </Style>
+  <Style Selector="ListBox.rows ListBoxItem:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#22FFFFFF" />
+  </Style>
+  <Style Selector="ListBox.rows ListBoxItem:selected:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#556E8BFF" />
+  </Style>
+
+  <Style Selector="TextBlock.mono, SelectableTextBlock.mono">
+    <Setter Property="FontFamily" Value="Cascadia Mono,Consolas,Menlo,monospace" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+
+  <Style Selector="TextBlock.label">
+    <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="TextBlock.hint">
+    <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+
+  <Style Selector="TextBlock.error, SelectableTextBlock.error">
+    <Setter Property="Foreground" Value="{DynamicResource FailureBrush}" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+
+  <Style Selector="Border.badge">
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="5,0" />
+    <Setter Property="Background" Value="#33FFFFFF" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.badge TextBlock">
+    <Setter Property="FontSize" Value="10" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="Margin" Value="0" />
+  </Style>
+  <Style Selector="Border.badge.ok">
+    <Setter Property="Background" Value="#334CD97B" />
+  </Style>
+  <Style Selector="Border.badge.bad">
+    <Setter Property="Background" Value="#44FF6B6B" />
+  </Style>
+  <Style Selector="Border.badge.warn">
+    <Setter Property="Background" Value="#44E0AF68" />
+  </Style>
+
+  <!-- Small secondary buttons used inside rows and detail panes. -->
+  <Style Selector="Button.small">
+    <Setter Property="Padding" Value="7,2" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Button.danger">
+    <Setter Property="Foreground" Value="{DynamicResource FailureBrush}" />
+  </Style>
+
+  <!-- Text that is a clickable link-like action. -->
+  <Style Selector="Button.link">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="4,0" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+
+  <Style Selector="Border.notification">
+    <Setter Property="Background" Value="#E6352A2F" />
+    <Setter Property="BorderBrush" Value="{DynamicResource FailureBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="12,8" />
+  </Style>
+
+  <Style Selector="Border.empty">
+    <Setter Property="Background" Value="#1A6E8BFF" />
+    <Setter Property="BorderBrush" Value="#556E8BFF" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="14,10" />
+  </Style>
+
+  <!-- Stacked form layout (Connections flyout, Rethrow form). -->
+  <Style Selector="StackPanel.form > TextBlock.label">
+    <Setter Property="Margin" Value="0,6,0,2" />
   </Style>
 
 </Styles>

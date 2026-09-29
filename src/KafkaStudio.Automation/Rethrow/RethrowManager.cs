@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using KafkaStudio.Core.Abstractions;
+using KafkaStudio.Core.Messaging;
 
 namespace KafkaStudio.Automation.Rethrow;
 
@@ -12,10 +13,16 @@ public sealed class RethrowManager : IAsyncDisposable
     private readonly RethrowEngine _engine = new();
     private readonly ConcurrentDictionary<string, RunningRule> _running = new();
 
-    public event Action<RethrowRule, Core.Messaging.KafkaMessage, Core.Messaging.ProduceReceipt>? MessageRelayed
+    public event Action<RethrowRule, KafkaMessage, ProduceReceipt>? MessageRelayed
     {
         add => _engine.MessageRelayed += value;
         remove => _engine.MessageRelayed -= value;
+    }
+
+    public event Action<RethrowRule, KafkaMessage>? MessageSkipped
+    {
+        add => _engine.MessageSkipped += value;
+        remove => _engine.MessageSkipped -= value;
     }
 
     public event Action<RethrowRule, Exception>? RelayFailed
@@ -24,20 +31,51 @@ public sealed class RethrowManager : IAsyncDisposable
         remove => _engine.RelayFailed -= value;
     }
 
+    /// <summary>
+    /// Raised when a rule stops on its own (not via <see cref="StopAsync"/>) - e.g. its stream ended or
+    /// it failed permanently. The exception is null for a clean end. Without this a dead relay would
+    /// keep showing as "running" forever.
+    /// </summary>
+    public event Action<RethrowRule, Exception?>? RuleStopped;
+
     public IReadOnlyCollection<string> RunningRuleNames => (IReadOnlyCollection<string>)_running.Keys;
 
     public bool IsRunning(string ruleName) => _running.ContainsKey(ruleName);
 
+    /// <summary>Starts relaying. Throws <see cref="ArgumentException"/> for an invalid rule and
+    /// <see cref="InvalidOperationException"/> if a rule with that name is already running.</summary>
     public void Start(RethrowRule rule, IReadOnlyDictionary<string, IKafkaGateway> connections)
     {
-        if (_running.ContainsKey(rule.Name))
+        RethrowEngine.Validate(rule, connections);
+
+        var cts = new CancellationTokenSource();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var task = Task.Run(async () =>
         {
+            await gate.Task.ConfigureAwait(false); // don't start before we're registered
+            await _engine.RunAsync(rule, connections, cts.Token).ConfigureAwait(false);
+        });
+        var running = new RunningRule(cts, task);
+
+        if (!_running.TryAdd(rule.Name, running))
+        {
+            cts.Cancel();
+            gate.TrySetResult();
+            cts.Dispose();
             throw new InvalidOperationException($"rethrow rule '{rule.Name}' is already running");
         }
 
-        var cts = new CancellationTokenSource();
-        var task = Task.Run(() => _engine.RunAsync(rule, connections, cts.Token));
-        _running[rule.Name] = new RunningRule(cts, task);
+        _ = task.ContinueWith(t =>
+        {
+            // Only report if the rule wasn't stopped deliberately (StopAsync removes it first).
+            if (((ICollection<KeyValuePair<string, RunningRule>>)_running).Remove(new KeyValuePair<string, RunningRule>(rule.Name, running)))
+            {
+                running.Cts.Dispose();
+                RuleStopped?.Invoke(rule, t.Exception?.GetBaseException());
+            }
+        }, TaskScheduler.Default);
+
+        gate.TrySetResult();
     }
 
     public async Task StopAsync(string ruleName)
