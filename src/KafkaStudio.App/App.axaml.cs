@@ -16,7 +16,11 @@ public partial class App : Application
     private MainWindowViewModel? _mainViewModel;
     private bool _shutdownCleanupDone;
 
-    public override void Initialize() => AvaloniaXamlLoader.Load(this);
+    public override void Initialize()
+    {
+        AvaloniaXamlLoader.Load(this);
+        Behaviors.NumericInput.Register();
+    }
 
     public override void OnFrameworkInitializationCompleted()
     {
