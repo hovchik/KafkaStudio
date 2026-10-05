@@ -73,6 +73,9 @@ itself.
 
 ## Building and running (Windows)
 
+Just want to install it? Grab `KafkaStudio-Setup-<version>.exe` from the *Windows installer* GitHub Actions
+run, or build it yourself with `.\installer\build-installer.ps1` - see [installer/README.md](installer/README.md).
+
 Prerequisites: [.NET 10 SDK](https://dotnet.microsoft.com/download) or later.
 
 ```powershell
