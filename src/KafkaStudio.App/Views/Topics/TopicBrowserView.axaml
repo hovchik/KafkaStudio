@@ -248,7 +248,7 @@
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </StackPanel>
-            <ListBox Classes="rows" ItemsSource="{Binding FilteredGlobalSearchResults}" x:Name="SearchResultsList"
+            <ListBox Classes="rows" ItemsSource="{Binding FilteredGlobalSearchResults}" x:Name="SearchResultsList" SelectedItem="{Binding SelectedGlobalSearchHit}"
                      DoubleTapped="OnGlobalSearchHitDoubleTapped" KeyDown="OnSearchResultsKeyDown">
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:GlobalSearchHit">
