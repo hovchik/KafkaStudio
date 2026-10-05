@@ -215,6 +215,14 @@ public sealed class TopicBrowserViewModel : ObservableObject
         }
     }
 
+    private GlobalSearchHit? _selectedGlobalSearchHit;
+    /// <summary>The highlighted search result row; selecting one shows its message in the detail pane.</summary>
+    public GlobalSearchHit? SelectedGlobalSearchHit
+    {
+        get => _selectedGlobalSearchHit;
+        set { if (SetProperty(ref _selectedGlobalSearchHit, value) && value is not null) SelectedMessage = value.Message; }
+    }
+
     private int _matchedMessageCount;
     public int MatchedMessageCount { get => _matchedMessageCount; private set => SetProperty(ref _matchedMessageCount, value); }
 
