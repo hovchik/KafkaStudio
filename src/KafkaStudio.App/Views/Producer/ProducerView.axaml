@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:KafkaStudio.App.ViewModels.Producer"
+             xmlns:b="using:KafkaStudio.App.Behaviors"
              x:Class="KafkaStudio.App.Views.Producer.ProducerView"
              x:DataType="vm:ProducerViewModel">
 
@@ -21,7 +22,7 @@
         <Border Grid.Column="2" Classes="sep" />
 
         <TextBox Grid.Column="3" MinWidth="120" Text="{Binding Key}" Watermark="key (optional, e.g. {{$uuid}})" />
-        <TextBox Grid.Column="4" Width="80" Text="{Binding Partition}" Watermark="partition"
+        <TextBox Grid.Column="4" Width="80" Text="{Binding Partition}" Watermark="partition" b:NumericInput.IsEnabled="True"
                  ToolTip.Tip="Optional explicit partition (empty = let the partitioner decide)" />
         <TextBlock Grid.Column="5" Text="×" Classes="muted" />
         <NumericUpDown Grid.Column="6" Width="110" Value="{Binding RepeatCount}" Minimum="1" Maximum="100000" FormatString="0"
