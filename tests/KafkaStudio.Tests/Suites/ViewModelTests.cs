@@ -24,6 +24,44 @@ public static class ViewModelTests
             await main.DisposeAsync();
         });
 
+        runner.Add("ViewModels: Connections", "exported connections import back, passwords only when asked", async () =>
+        {
+            var state = new AppState();
+            var main = new MainWindowViewModel(state);
+            state.AddDemoConnection("demo-a");
+            var secured = new KafkaStudio.Core.Connections.ConnectionProfile
+            {
+                Name = "secured", BootstrapServers = "broker:9092",
+                SecurityProtocol = KafkaStudio.Core.Connections.SecurityProtocolKind.SaslSsl,
+                SaslMechanism = KafkaStudio.Core.Connections.SaslMechanismKind.Plain,
+                SaslUsername = "u", SaslPassword = "secret"
+            };
+
+            var withoutSecrets = KafkaStudio.Core.Connections.ConnectionProfileTransfer.Export(new[] { secured }, includePasswords: false);
+            Assert.False(withoutSecrets.Contains("secret"));
+            var json = KafkaStudio.Core.Connections.ConnectionProfileTransfer.Export(
+                state.ConnectionProfiles.Values.Append(secured), includePasswords: true);
+
+            var path = Path.Combine(Path.GetTempPath(), $"ks-conn-{Guid.NewGuid():N}.json");
+            File.WriteAllText(path, json);
+            try
+            {
+                var target = new AppState();
+                var targetMain = new MainWindowViewModel(target);
+                await targetMain.Connections.ImportConnectionsFromFileAsync(path);
+                Assert.Equal(2, targetMain.Connections.Connections.Count);
+                Assert.True(target.ConnectionProfiles["demo-a"].IsDemoConnection);
+                Assert.Equal("secret", target.ConnectionProfiles["secured"].SaslPassword);
+                Assert.Equal(KafkaStudio.Core.Connections.SecurityProtocolKind.SaslSsl, target.ConnectionProfiles["secured"].SecurityProtocol);
+                await targetMain.DisposeAsync();
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+            await main.DisposeAsync();
+        });
+
         runner.Add("ViewModels: Producer", "SendCommand produces a message through the shared state", async () =>
         {
             var state = new AppState();

@@ -127,6 +127,12 @@ public sealed class ConnectionsViewModel : ObservableObject
     public AsyncRelayCommand<ConnectionRowViewModel> ReconnectCommand { get; }
     public RelayCommand<ConnectionRowViewModel> EditConnectionCommand { get; }
     public RelayCommand ResetFormCommand { get; }
+    public AsyncRelayCommand ExportConnectionsCommand { get; }
+    public AsyncRelayCommand ImportConnectionsCommand { get; }
+
+    private bool _exportIncludesPasswords;
+    /// <summary>When set, SASL passwords are written to the export file in plain text.</summary>
+    public bool ExportIncludesPasswords { get => _exportIncludesPasswords; set => SetProperty(ref _exportIncludesPasswords, value); }
 
     public ConnectionsViewModel(AppState state)
     {
@@ -141,6 +147,8 @@ public sealed class ConnectionsViewModel : ObservableObject
         ReconnectCommand = new AsyncRelayCommand<ConnectionRowViewModel>(ReconnectAsync, allowConcurrentExecutions: true);
         EditConnectionCommand = new RelayCommand<ConnectionRowViewModel>(LoadIntoForm);
         ResetFormCommand = new RelayCommand(ResetForm);
+        ExportConnectionsCommand = new AsyncRelayCommand(ExportConnectionsAsync, () => Connections.Count > 0);
+        ImportConnectionsCommand = new AsyncRelayCommand(ImportConnectionsAsync);
 
         RefreshFromState();
     }
@@ -296,6 +304,61 @@ public sealed class ConnectionsViewModel : ObservableObject
         }
     }
 
+    private async Task ExportConnectionsAsync()
+    {
+        if (_state.FileDialogs is null) return;
+        var path = await _state.FileDialogs.PickSaveFileAsync("Export connections", ConnectionProfileTransfer.FileExtension,
+            "KafkaStudio connections", "kafkastudio-connections.json").ConfigureAwait(true);
+        if (path is null) return;
+        try
+        {
+            var profiles = _state.ConnectionProfiles.Values.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            await File.WriteAllTextAsync(path, ConnectionProfileTransfer.Export(profiles, ExportIncludesPasswords)).ConfigureAwait(true);
+            StatusMessage = $"Exported {profiles.Count} connection(s) to {Path.GetFileName(path)}"
+                            + (ExportIncludesPasswords ? " (passwords included in plain text)." : " (without passwords).");
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Export failed: {ex.Message}";
+        }
+    }
+
+    private async Task ImportConnectionsAsync()
+    {
+        if (_state.FileDialogs is null) return;
+        var path = await _state.FileDialogs.PickOpenFileAsync("Import connections", ConnectionProfileTransfer.FileExtension,
+            "KafkaStudio connections").ConfigureAwait(true);
+        if (path is null) return;
+        await ImportConnectionsFromFileAsync(path).ConfigureAwait(true);
+    }
+
+    /// <summary>Imports connections from an exported file; same-named connections are replaced.</summary>
+    public async Task ImportConnectionsFromFileAsync(string path)
+    {
+        IsBusy = true;
+        try
+        {
+            var profiles = ConnectionProfileTransfer.Import(await File.ReadAllTextAsync(path).ConfigureAwait(true));
+            if (profiles.Count == 0)
+            {
+                StatusMessage = $"No connections found in {Path.GetFileName(path)}.";
+                return;
+            }
+            var replaced = profiles.Count(p => _state.ConnectionProfiles.ContainsKey(p.Name));
+            StatusMessage = $"Importing {profiles.Count} connection(s)...";
+            await _state.ImportConnectionsAsync(profiles).ConfigureAwait(true);
+            StatusMessage = $"Imported {profiles.Count} connection(s)" + (replaced > 0 ? $", {replaced} replaced." : ".");
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Import failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private void LoadIntoForm(ConnectionRowViewModel? row)
     {
         if (row is null) return;
@@ -351,5 +414,6 @@ public sealed class ConnectionsViewModel : ObservableObject
             });
         }
         OnPropertyChanged(nameof(IsEditingExisting));
+        ExportConnectionsCommand.RaiseCanExecuteChanged();
     }
 }

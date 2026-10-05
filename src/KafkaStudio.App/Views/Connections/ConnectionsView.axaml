@@ -10,9 +10,18 @@
     <!-- Existing connections -->
     <Border Classes="pane">
       <StackPanel Spacing="6">
-        <TextBlock Classes="paneTitle">
-          <Run Text="Connections" /><Run Text=" " /><Run Text="{Binding Connections.Count}" Foreground="{DynamicResource MutedTextBrush}" />
-        </TextBlock>
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Grid.Column="0" Classes="paneTitle">
+            <Run Text="Connections" /><Run Text=" " /><Run Text="{Binding Connections.Count}" Foreground="{DynamicResource MutedTextBrush}" />
+          </TextBlock>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+            <Button Classes="small" Content="Import..." Command="{Binding ImportConnectionsCommand}"
+                    ToolTip.Tip="Add connections from an exported JSON file (same names are replaced)" />
+            <Button Classes="small" Content="Export..." Command="{Binding ExportConnectionsCommand}"
+                    ToolTip.Tip="Save all connections to a JSON file to share or move to another machine" />
+          </StackPanel>
+        </Grid>
+        <CheckBox Content="Include passwords in export (plain text)" IsChecked="{Binding ExportIncludesPasswords}" />
         <TextBlock Classes="hint" IsVisible="{Binding !Connections.Count}"
                    Text="No connections yet. Add a real cluster below, or a demo (in-memory) connection to try KafkaStudio without a broker." />
         <ItemsControl Name="ConnectionsList" ItemsSource="{Binding Connections}">

@@ -131,6 +131,24 @@ public sealed class AppState : IAsyncDisposable
         RaiseConnectionsChanged();
     }
 
+    /// <summary>Adds (or replaces) saved profiles without a live gateway, then tries to connect each one.
+    /// Failures are listed on the Connections screen like any other unreachable connection.</summary>
+    public async Task ImportConnectionsAsync(IEnumerable<ConnectionProfile> profiles)
+    {
+        var names = new List<string>();
+        foreach (var profile in profiles)
+        {
+            ConnectionProfiles[profile.Name] = profile;
+            names.Add(profile.Name);
+        }
+        PersistProfiles();
+        foreach (var name in names)
+        {
+            await ReconnectAsync(name).ConfigureAwait(false);
+        }
+        RaiseConnectionsChanged();
+    }
+
     private void ReplaceGateway(string name, IKafkaGateway gateway)
     {
         if (Connections.TryGetValue(name, out var old) && !ReferenceEquals(old, gateway))
