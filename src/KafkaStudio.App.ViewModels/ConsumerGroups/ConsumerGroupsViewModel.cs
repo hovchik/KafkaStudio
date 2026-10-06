@@ -6,10 +6,24 @@ using KafkaStudio.Core.Messaging;
 
 namespace KafkaStudio.App.ViewModels.ConsumerGroups;
 
-/// <summary>A consumer group's committed offset on one partition, as a list row.</summary>
-public sealed class GroupOffsetRowViewModel
+/// <summary>
+/// A consumer group's committed offset on one partition, as a list row. While the partition has lag the
+/// row offers an editable target offset (prefilled with the End offset, i.e. "skip the backlog") and an
+/// Apply button that commits it straight away.
+/// </summary>
+public sealed class GroupOffsetRowViewModel : ObservableObject
 {
-    public GroupOffsetRowViewModel(ConsumerGroupOffset offset) => Offset = offset;
+    private readonly Func<GroupOffsetRowViewModel, Task> _apply;
+    private readonly Func<bool> _groupActive;
+
+    public GroupOffsetRowViewModel(ConsumerGroupOffset offset, Func<bool> groupActive, Func<GroupOffsetRowViewModel, Task> apply)
+    {
+        Offset = offset;
+        _groupActive = groupActive;
+        _apply = apply;
+        _newOffset = offset.EndOffset;
+        ApplyCommand = new AsyncRelayCommand(() => _apply(this), () => CanEdit);
+    }
 
     public ConsumerGroupOffset Offset { get; }
     public string Topic => Offset.Topic;
@@ -18,17 +32,28 @@ public sealed class GroupOffsetRowViewModel
     public long Earliest => Offset.EarliestOffset;
     public long End => Offset.EndOffset;
     public long Lag => Offset.Lag;
-}
 
-/// <summary>One line of the reset confirmation: where a partition is now and where it will move to.</summary>
-public sealed class OffsetChangeRowViewModel
-{
-    public OffsetChangeRowViewModel(OffsetChange change) => Change = change;
+    /// <summary>Only partitions the group is behind on can be edited.</summary>
+    public bool HasLag => Offset.Lag > 0;
 
-    public OffsetChange Change { get; }
-    public string Label => $"{Change.Topic} #{Change.Partition}";
-    public string From => Change.CurrentOffset?.ToString(CultureInfo.InvariantCulture) ?? "-";
-    public long To => Change.NewOffset;
+    /// <summary>Lag, and the group has no live members (Kafka rejects offset changes otherwise).</summary>
+    public bool CanEdit => HasLag && !_groupActive();
+
+    private long? _newOffset;
+    /// <summary>The offset to commit; defaults to the End offset.</summary>
+    public long? NewOffset
+    {
+        get => _newOffset;
+        set => SetProperty(ref _newOffset, value);
+    }
+
+    public AsyncRelayCommand ApplyCommand { get; }
+
+    public void RaiseCanEditChanged()
+    {
+        OnPropertyChanged(nameof(CanEdit));
+        ApplyCommand.RaiseCanExecuteChanged();
+    }
 }
 
 /// <summary>
@@ -36,9 +61,8 @@ public sealed class OffsetChangeRowViewModel
 /// lag, and moves its committed offsets (to earliest, latest, a timestamp or an explicit offset).
 ///
 /// Kafka only accepts offset changes for a group with no live members, so an active group shows a
-/// warning and the reset is disabled. A reset is always a two step action: "Preview reset" plans the
-/// new offsets (nothing is changed), the confirmation lists every partition's old and new offset, and
-/// only "Apply" commits them.
+/// warning and editing is disabled. A partition with lag gets an editable target offset (prefilled with
+/// its End offset) and an Apply button.
 /// </summary>
 public sealed class ConsumerGroupsViewModel : ObservableObject
 {
@@ -51,9 +75,6 @@ public sealed class ConsumerGroupsViewModel : ObservableObject
     public ObservableCollection<ConsumerGroupSummary> Groups { get; } = new();
     public ObservableCollection<GroupOffsetRowViewModel> Offsets { get; } = new();
     public ObservableCollection<ConsumerGroupMember> Members { get; } = new();
-    public ObservableCollection<OffsetChangeRowViewModel> PendingChanges { get; } = new();
-
-    public IReadOnlyList<OffsetResetTarget> ResetTargets { get; } = Enum.GetValues<OffsetResetTarget>();
 
     private string? _selectedConnection;
     public string? SelectedConnection
@@ -104,8 +125,7 @@ public sealed class ConsumerGroupsViewModel : ObservableObject
             OnPropertyChanged(nameof(DetailSummary));
             OnPropertyChanged(nameof(IsGroupActive));
             OnPropertyChanged(nameof(ActiveGroupWarning));
-            OnPropertyChanged(nameof(Topics));
-            RaiseResetCommands();
+            foreach (var row in Offsets) row.RaiseCanEditChanged();
         }
     }
 
@@ -121,84 +141,6 @@ public sealed class ConsumerGroupsViewModel : ObservableObject
         ? $"This group is active ({Detail!.State}, {Detail.Members.Count} member(s)). Kafka only lets you change offsets of a group with no live members - stop its consumers, then refresh."
         : null;
 
-    /// <summary>Topics the selected group has offsets for (reset can be narrowed to one).</summary>
-    public IReadOnlyList<string> Topics =>
-        Detail?.Offsets.Select(o => o.Topic).Distinct(StringComparer.Ordinal).OrderBy(t => t, StringComparer.Ordinal).ToList()
-        ?? new List<string>();
-
-    private GroupOffsetRowViewModel? _selectedOffset;
-    public GroupOffsetRowViewModel? SelectedOffset
-    {
-        get => _selectedOffset;
-        set
-        {
-            if (SetProperty(ref _selectedOffset, value))
-            {
-                if (value is null) OnlySelectedPartition = false;
-                OnPropertyChanged(nameof(HasSelectedOffset));
-            }
-        }
-    }
-
-    public bool HasSelectedOffset => SelectedOffset is not null;
-
-    // ------------------------------------------------------------------ reset inputs ----
-
-    private OffsetResetTarget _resetTarget = OffsetResetTarget.Earliest;
-    public OffsetResetTarget ResetTarget
-    {
-        get => _resetTarget;
-        set
-        {
-            if (!SetProperty(ref _resetTarget, value)) return;
-            OnPropertyChanged(nameof(IsTimestampTarget));
-            OnPropertyChanged(nameof(IsOffsetTarget));
-            CancelReset();
-            RaiseResetCommands();
-        }
-    }
-
-    public bool IsTimestampTarget => ResetTarget == OffsetResetTarget.Timestamp;
-    public bool IsOffsetTarget => ResetTarget == OffsetResetTarget.Offset;
-
-    private string? _resetTimestamp;
-    /// <summary>Date/time to rewind to, e.g. "2026-10-06 08:00" (UTC unless it carries an offset).</summary>
-    public string? ResetTimestamp
-    {
-        get => _resetTimestamp;
-        set { if (SetProperty(ref _resetTimestamp, value)) { CancelReset(); RaiseResetCommands(); } }
-    }
-
-    private long? _resetOffset;
-    public long? ResetOffset
-    {
-        get => _resetOffset;
-        set { if (SetProperty(ref _resetOffset, value)) { CancelReset(); RaiseResetCommands(); } }
-    }
-
-    private string? _resetTopic;
-    /// <summary>Null/empty = every topic of the group.</summary>
-    public string? ResetTopic
-    {
-        get => _resetTopic;
-        set { if (SetProperty(ref _resetTopic, string.IsNullOrEmpty(value) ? null : value)) CancelReset(); }
-    }
-
-    private bool _onlySelectedPartition;
-    /// <summary>Restricts the reset to the partition row selected in the table.</summary>
-    public bool OnlySelectedPartition
-    {
-        get => _onlySelectedPartition;
-        set { if (SetProperty(ref _onlySelectedPartition, value && SelectedOffset is not null)) CancelReset(); }
-    }
-
-    private bool _isConfirming;
-    /// <summary>True while the planned changes are shown waiting for "Apply".</summary>
-    public bool IsConfirming { get => _isConfirming; private set => SetProperty(ref _isConfirming, value); }
-
-    private string? _confirmationText;
-    public string? ConfirmationText { get => _confirmationText; private set => SetProperty(ref _confirmationText, value); }
-
     private string? _statusMessage;
     public string? StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
 
@@ -209,9 +151,6 @@ public sealed class ConsumerGroupsViewModel : ObservableObject
 
     public AsyncRelayCommand RefreshCommand { get; }
     public AsyncRelayCommand RefreshDetailCommand { get; }
-    public AsyncRelayCommand PreviewResetCommand { get; }
-    public AsyncRelayCommand ApplyResetCommand { get; }
-    public RelayCommand CancelResetCommand { get; }
 
     public ConsumerGroupsViewModel(AppState state)
     {
@@ -222,9 +161,6 @@ public sealed class ConsumerGroupsViewModel : ObservableObject
         RefreshDetailCommand = new AsyncRelayCommand(
             () => SelectedGroup is { } g ? LoadDetailAsync(g.GroupId) : Task.CompletedTask,
             () => SelectedGroup is not null, allowConcurrentExecutions: true);
-        PreviewResetCommand = new AsyncRelayCommand(PreviewResetAsync, CanPreviewReset);
-        ApplyResetCommand = new AsyncRelayCommand(ApplyResetAsync, () => IsConfirming && PendingChanges.Count > 0);
-        CancelResetCommand = new RelayCommand(CancelReset, () => IsConfirming);
 
         RefreshConnectionNames();
     }
@@ -307,14 +243,11 @@ public sealed class ConsumerGroupsViewModel : ObservableObject
             var detail = await gateway.DescribeConsumerGroupAsync(groupId, cts.Token).ConfigureAwait(true);
             if (cts.IsCancellationRequested) return;
 
-            var selectedKey = SelectedOffset is { } s ? (s.Topic, s.Partition) : ((string, int)?)null;
+            Detail = detail;
             Offsets.Clear();
-            foreach (var o in detail.Offsets) Offsets.Add(new GroupOffsetRowViewModel(o));
+            foreach (var o in detail.Offsets) Offsets.Add(new GroupOffsetRowViewModel(o, () => IsGroupActive, ApplyRowAsync));
             Members.Clear();
             foreach (var m in detail.Members) Members.Add(m);
-            SelectedOffset = selectedKey is { } k ? Offsets.FirstOrDefault(r => (r.Topic, r.Partition) == k) : null;
-            Detail = detail;
-            if (ResetTopic is not null && !Topics.Contains(ResetTopic)) ResetTopic = null;
             StatusMessage = $"{detail.GroupId}: {detail.Offsets.Count} partition(s), total lag {detail.TotalLag:N0}.";
         }
         catch (OperationCanceledException) { }
@@ -326,127 +259,38 @@ public sealed class ConsumerGroupsViewModel : ObservableObject
 
     private void ClearDetail()
     {
-        CancelReset();
         Offsets.Clear();
         Members.Clear();
-        SelectedOffset = null;
         Detail = null;
     }
 
-    // ------------------------------------------------------------------ resetting offsets ----
+    // ------------------------------------------------------------------ editing offsets ----
 
-    private bool TryBuildRequest(out OffsetResetRequest? request, out string? error)
-    {
-        request = null;
-        error = null;
-        if (Detail is null) return false;
-
-        DateTimeOffset? timestamp = null;
-        if (ResetTarget == OffsetResetTarget.Timestamp)
-        {
-            if (!DateTimeOffset.TryParse(ResetTimestamp, CultureInfo.InvariantCulture,
-                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed))
-            {
-                error = "Enter the timestamp as a date and time, e.g. 2026-10-06 08:00 (UTC unless it has an offset).";
-                return false;
-            }
-            timestamp = parsed;
-        }
-
-        if (ResetTarget == OffsetResetTarget.Offset && (ResetOffset is null || ResetOffset < 0))
-        {
-            error = "Enter the offset to move to (0 or higher).";
-            return false;
-        }
-
-        request = new OffsetResetRequest
-        {
-            GroupId = Detail.GroupId,
-            Target = ResetTarget,
-            Topic = OnlySelectedPartition ? SelectedOffset?.Topic : ResetTopic,
-            Partition = OnlySelectedPartition ? SelectedOffset?.Partition : null,
-            Timestamp = timestamp,
-            Offset = ResetTarget == OffsetResetTarget.Offset ? ResetOffset : null
-        };
-        return true;
-    }
-
-    private bool CanPreviewReset() => SelectedConnection is not null && Detail is { IsActive: false };
-
-    private void RaiseResetCommands()
-    {
-        PreviewResetCommand?.RaiseCanExecuteChanged();
-        ApplyResetCommand?.RaiseCanExecuteChanged();
-        CancelResetCommand?.RaiseCanExecuteChanged();
-    }
-
-    private async Task PreviewResetAsync()
-    {
-        if (SelectedConnection is null || !_state.Connections.TryGetValue(SelectedConnection, out var gateway)) return;
-        if (!TryBuildRequest(out var request, out var error))
-        {
-            if (error is not null) StatusMessage = error;
-            return;
-        }
-
-        CancelReset();
-        try
-        {
-            StatusMessage = "Working out the new offsets...";
-            var changes = await gateway.PlanOffsetResetAsync(request!, CancellationToken.None).ConfigureAwait(true);
-            foreach (var c in changes) PendingChanges.Add(new OffsetChangeRowViewModel(c));
-
-            var scope = request!.Partition is not null ? "1 partition"
-                : request.Topic is not null ? $"topic {request.Topic}" : "all topics";
-            ConfirmationText = $"Move '{request.GroupId}' ({scope}, {changes.Count} partition(s)) to {Describe(request)}? " +
-                               "Consumers will re-read or skip messages the next time the group starts.";
-            IsConfirming = true;
-            StatusMessage = "Review the changes below, then apply.";
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Could not plan the reset: {ex.Message}";
-        }
-        RaiseResetCommands();
-    }
-
-    private static string Describe(OffsetResetRequest r) => r.Target switch
-    {
-        OffsetResetTarget.Earliest => "the earliest offset",
-        OffsetResetTarget.Latest => "the latest offset",
-        OffsetResetTarget.Timestamp => $"the first message at or after {r.Timestamp:yyyy-MM-dd HH:mm:ss} UTC",
-        _ => $"offset {r.Offset}"
-    };
-
-    private async Task ApplyResetAsync()
+    private async Task ApplyRowAsync(GroupOffsetRowViewModel row)
     {
         if (Detail is null || SelectedConnection is null || !_state.Connections.TryGetValue(SelectedConnection, out var gateway)) return;
 
         var groupId = Detail.GroupId;
-        var changes = PendingChanges.Select(p => p.Change).ToList();
+        if (row.NewOffset is not { } target || target < row.Earliest || target > row.End)
+        {
+            StatusMessage = $"Enter an offset between {row.Earliest} and {row.End} for {row.Topic} #{row.Partition}.";
+            return;
+        }
+
         try
         {
-            StatusMessage = $"Updating offsets of '{groupId}'...";
-            await gateway.ApplyOffsetResetAsync(groupId, changes, CancellationToken.None).ConfigureAwait(true);
-            CancelReset();
+            StatusMessage = $"Updating {row.Topic} #{row.Partition} of '{groupId}'...";
+            await gateway.ApplyOffsetResetAsync(groupId,
+                new[] { new OffsetChange { Topic = row.Topic, Partition = row.Partition, CurrentOffset = row.Offset.CommittedOffset, NewOffset = target } },
+                CancellationToken.None).ConfigureAwait(true);
             await LoadDetailAsync(groupId).ConfigureAwait(true);
-            StatusMessage = $"Updated {changes.Count} partition offset(s) of '{groupId}'.";
+            StatusMessage = $"{row.Topic} #{row.Partition} of '{groupId}' now at offset {target}.";
         }
         catch (Exception ex)
         {
-            // Most likely the group became active since the preview - show it and refresh its state.
-            StatusMessage = $"Offsets were not changed: {ex.Message}";
-            CancelReset();
+            // Most likely the group became active since it was loaded - show why and refresh its state.
             await LoadDetailAsync(groupId).ConfigureAwait(true);
-            StatusMessage = $"Offsets were not changed: {ex.Message}";
+            StatusMessage = $"Offset was not changed: {ex.Message}";
         }
-    }
-
-    private void CancelReset()
-    {
-        PendingChanges.Clear();
-        ConfirmationText = null;
-        IsConfirming = false;
-        RaiseResetCommands();
     }
 }
