@@ -155,6 +155,25 @@ public static class ConsumerGroupTests
             Assert.Equal(2L, vm.Detail.TotalLag);
         });
 
+        runner.Add("ViewModels: Consumer Groups", "the list shows lag per group and can show only groups with lag", async () =>
+        {
+            var (state, broker) = await Seeded();
+            broker.Commit("orders", "caught-up", 9);   // next offset 10 = end
+            broker.Commit("orders", "far-behind", -1 + 0); // nothing read: lag 10
+            broker.SetNextOffset("orders", "far-behind", 0);
+            var vm = new ConsumerGroupsViewModel(state);
+
+            await WaitUntil(() => vm.Groups.Count == 3 && vm.Groups.All(g => g.Lag is not null));
+            Assert.Equal(6L, vm.Groups.Single(g => g.GroupId == "billing").Lag ?? -1);
+            Assert.Equal(0L, vm.Groups.Single(g => g.GroupId == "caught-up").Lag ?? -1);
+
+            vm.OnlyWithLag = true;
+
+            Assert.Equal(2, vm.Groups.Count);
+            Assert.Equal("far-behind", vm.Groups[0].GroupId); // most behind first
+            Assert.Equal("billing", vm.Groups[1].GroupId);
+        });
+
         runner.Add("ViewModels: Consumer Groups", "a partition without lag is not editable", async () =>
         {
             var (state, broker) = await Seeded();

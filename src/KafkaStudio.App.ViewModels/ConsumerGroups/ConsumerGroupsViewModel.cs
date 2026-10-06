@@ -56,6 +56,39 @@ public sealed class GroupOffsetRowViewModel : ObservableObject
     }
 }
 
+/// <summary>A consumer group in the list, with its total lag once that has been looked up.</summary>
+public sealed class GroupRowViewModel : ObservableObject
+{
+    public GroupRowViewModel(ConsumerGroupSummary summary) => Summary = summary;
+
+    public ConsumerGroupSummary Summary { get; }
+    public string GroupId => Summary.GroupId;
+    public string State => Summary.State;
+    public int MemberCount => Summary.MemberCount;
+
+    private long? _lag;
+    /// <summary>Total lag over all the group's partitions; null until looked up (or if the lookup failed).</summary>
+    public long? Lag
+    {
+        get => _lag;
+        set
+        {
+            if (!SetProperty(ref _lag, value)) return;
+            OnPropertyChanged(nameof(HasLag));
+            OnPropertyChanged(nameof(LagText));
+        }
+    }
+
+    public bool HasLag => Lag is > 0;
+
+    public string LagText => Lag switch
+    {
+        null => "lag …",
+        0 => "no lag",
+        var n => $"lag {n:N0}"
+    };
+}
+
 /// <summary>
 /// Lists a cluster's consumer groups, shows one group's members, committed offsets, end offsets and
 /// lag, and moves its committed offsets (to earliest, latest, a timestamp or an explicit offset).
@@ -69,10 +102,10 @@ public sealed class ConsumerGroupsViewModel : ObservableObject
     private readonly AppState _state;
     private CancellationTokenSource? _groupsCts;
     private CancellationTokenSource? _detailCts;
-    private readonly List<ConsumerGroupSummary> _allGroups = new();
+    private readonly List<GroupRowViewModel> _allGroups = new();
 
     public ObservableCollection<string> ConnectionNames { get; } = new();
-    public ObservableCollection<ConsumerGroupSummary> Groups { get; } = new();
+    public ObservableCollection<GroupRowViewModel> Groups { get; } = new();
     public ObservableCollection<GroupOffsetRowViewModel> Offsets { get; } = new();
     public ObservableCollection<ConsumerGroupMember> Members { get; } = new();
 
@@ -100,12 +133,23 @@ public sealed class ConsumerGroupsViewModel : ObservableObject
         set { if (SetProperty(ref _groupFilter, value)) ApplyGroupFilter(); }
     }
 
-    private ConsumerGroupSummary? _selectedGroup;
-    public ConsumerGroupSummary? SelectedGroup
+    private bool _onlyWithLag;
+    /// <summary>Shows only groups that are behind (and lists the most behind first).</summary>
+    public bool OnlyWithLag
+    {
+        get => _onlyWithLag;
+        set { if (SetProperty(ref _onlyWithLag, value)) ApplyGroupFilter(); }
+    }
+
+    private bool _rebuildingGroups;
+
+    private GroupRowViewModel? _selectedGroup;
+    public GroupRowViewModel? SelectedGroup
     {
         get => _selectedGroup;
         set
         {
+            if (_rebuildingGroups) return; // list rebuild pushes transient nulls through the binding
             if (!SetProperty(ref _selectedGroup, value)) return;
             _detailCts?.Cancel();
             ClearDetail();
@@ -176,15 +220,67 @@ public sealed class ConsumerGroupsViewModel : ObservableObject
 
     private void ApplyGroupFilter()
     {
-        var selectedId = SelectedGroup?.GroupId;
+        var selected = SelectedGroup;
         var term = GroupFilter?.Trim();
-        Groups.Clear();
-        foreach (var g in _allGroups.Where(g => string.IsNullOrEmpty(term) || g.GroupId.Contains(term, StringComparison.OrdinalIgnoreCase)))
+        IEnumerable<GroupRowViewModel> rows = _allGroups
+            .Where(g => string.IsNullOrEmpty(term) || g.GroupId.Contains(term, StringComparison.OrdinalIgnoreCase));
+        if (OnlyWithLag) rows = rows.Where(g => g.HasLag).OrderByDescending(g => g.Lag).ThenBy(g => g.GroupId, StringComparer.Ordinal);
+
+        _rebuildingGroups = true;
+        try
         {
-            Groups.Add(g);
+            Groups.Clear();
+            foreach (var g in rows) Groups.Add(g);
         }
-        // Clear() pushes null through the list binding - restore the selection when it survives.
-        SelectedGroup = selectedId is null ? null : Groups.FirstOrDefault(g => g.GroupId == selectedId);
+        finally
+        {
+            _rebuildingGroups = false;
+        }
+
+        // Same row still listed: keep it (and its open detail) selected without reloading anything.
+        if (selected is not null && Groups.Contains(selected))
+        {
+            _selectedGroup = selected;
+            OnPropertyChanged(nameof(SelectedGroup));
+        }
+        else
+        {
+            SelectedGroup = null;
+        }
+    }
+
+    /// <summary>
+    /// The group listing carries no offsets, so each group's total lag is looked up with a describe call
+    /// (a few at a time). Rows update as results arrive, and the "only groups with lag" view follows.
+    /// </summary>
+    private async Task LoadLagsAsync(KafkaStudio.Core.Abstractions.IKafkaGateway gateway, IReadOnlyList<GroupRowViewModel> rows, CancellationToken token)
+    {
+        using var gate = new SemaphoreSlim(4);
+        async Task One(GroupRowViewModel row)
+        {
+            await gate.WaitAsync(token).ConfigureAwait(false);
+            try
+            {
+                var detail = await gateway.DescribeConsumerGroupAsync(row.GroupId, token).ConfigureAwait(false);
+                _state.PostToUi(() => { if (!token.IsCancellationRequested) row.Lag = detail.TotalLag; });
+            }
+            catch (OperationCanceledException) { }
+            catch
+            {
+                // This group's offsets could not be read - leave its lag unknown rather than failing the list.
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+
+        await Task.WhenAll(rows.Select(One)).ConfigureAwait(true);
+        if (token.IsCancellationRequested) return;
+
+        ApplyGroupFilter();
+        var behind = _allGroups.Count(g => g.HasLag);
+        StatusMessage = $"{_allGroups.Count} consumer group(s), {behind} with lag.";
     }
 
     private async Task RefreshGroupsAsync()
@@ -207,13 +303,15 @@ public sealed class ConsumerGroupsViewModel : ObservableObject
             if (cts.IsCancellationRequested) return;
 
             _allGroups.Clear();
-            _allGroups.AddRange(groups.OrderBy(g => g.GroupId, StringComparer.Ordinal));
+            _allGroups.AddRange(groups.OrderBy(g => g.GroupId, StringComparer.Ordinal).Select(g => new GroupRowViewModel(g)));
             var selectedId = SelectedGroup?.GroupId;
+            SelectedGroup = null;
             ApplyGroupFilter();
-            StatusMessage = _allGroups.Count == 0 ? "No consumer groups found." : $"{_allGroups.Count} consumer group(s).";
+            StatusMessage = _allGroups.Count == 0 ? "No consumer groups found." : $"{_allGroups.Count} consumer group(s), checking lag...";
+            if (_allGroups.Count > 0) _ = LoadLagsAsync(gateway, _allGroups.ToList(), cts.Token);
 
             // Keep the open group's detail current (its state/lag changed too).
-            if (selectedId is not null && SelectedGroup is null && _allGroups.Any(g => g.GroupId == selectedId))
+            if (selectedId is not null)
             {
                 SelectedGroup = Groups.FirstOrDefault(g => g.GroupId == selectedId);
             }
@@ -244,6 +342,11 @@ public sealed class ConsumerGroupsViewModel : ObservableObject
             if (cts.IsCancellationRequested) return;
 
             Detail = detail;
+            if (_allGroups.FirstOrDefault(g => g.GroupId == detail.GroupId) is { } listed)
+            {
+                listed.Lag = detail.TotalLag;
+                if (OnlyWithLag) ApplyGroupFilter();
+            }
             Offsets.Clear();
             foreach (var o in detail.Offsets) Offsets.Add(new GroupOffsetRowViewModel(o, () => IsGroupActive, ApplyRowAsync));
             Members.Clear();
