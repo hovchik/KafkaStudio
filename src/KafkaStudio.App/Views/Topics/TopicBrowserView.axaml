@@ -378,6 +378,19 @@
       <Border Grid.Column="4" Classes="pane">
         <DockPanel>
           <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Text="Message" Margin="0,0,0,6" />
+          <StackPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+            <Button Classes="small" Content="Delete messages before this one…" HorizontalAlignment="Left"
+                    ToolTip.Tip="Kafka deletes by offset: removes every message in this partition older than the selected one"
+                    Command="{Binding DeleteUpToSelectedCommand}"
+                    IsVisible="{Binding !IsDeleteConfirmPending}" />
+            <StackPanel IsVisible="{Binding IsDeleteConfirmPending}">
+              <TextBlock Text="{Binding DeleteConfirmText}" TextWrapping="Wrap" Foreground="Tomato" Margin="0,0,0,4" />
+              <StackPanel Orientation="Horizontal">
+                <Button Classes="small" Content="Delete" Margin="0,0,4,0" Command="{Binding ConfirmDeleteCommand}" />
+                <Button Classes="small" Content="Cancel" Command="{Binding CancelDeleteCommand}" />
+              </StackPanel>
+            </StackPanel>
+          </StackPanel>
           <shared:MessageDetailView Message="{Binding SelectedMessage}" Actions="{Binding Actions}" />
         </DockPanel>
       </Border>
