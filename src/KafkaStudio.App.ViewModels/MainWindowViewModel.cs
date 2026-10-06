@@ -1,3 +1,4 @@
+using KafkaStudio.App.ViewModels.Brokers;
 using KafkaStudio.App.ViewModels.Connections;
 using KafkaStudio.App.ViewModels.Consumer;
 using KafkaStudio.App.ViewModels.ConsumerGroups;
@@ -39,6 +40,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public RethrowRulesViewModel Rethrow { get; }
     public DataSearchViewModel DataSearch { get; }
     public QaLabViewModel QaLab { get; }
+    public BrokersViewModel Brokers { get; }
 
     public IReadOnlyList<NavigationItem> NavigationItems { get; }
 
@@ -95,6 +97,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Rethrow = new RethrowRulesViewModel(state);
         DataSearch = new DataSearchViewModel(state);
         QaLab = new QaLabViewModel(state, () => Scripts.Source, () => Scripts.FilePath);
+        Brokers = new BrokersViewModel(state);
 
         NavigationItems = new List<NavigationItem>
         {
@@ -106,6 +109,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             new("rethrow", "Rethrow Rules", "⇄", "Ctrl+6", Rethrow),
             new("search", "Find Data", "⌕", "Ctrl+7", DataSearch),
             new("qa", "QA Lab", "✓", "Ctrl+8", QaLab),
+            new("brokers", "Brokers", "▦", "Ctrl+9", Brokers),
             new("groups", "Consumer Groups", "☰", "Ctrl+0", ConsumerGroups)
         };
 

@@ -594,6 +594,8 @@ public static class RegressionTests
         public Task ConnectAsync(CancellationToken cancellationToken = default) => inner.ConnectAsync(cancellationToken);
         public Task<IReadOnlyList<string>> ListTopicsAsync(CancellationToken cancellationToken = default) => inner.ListTopicsAsync(cancellationToken);
         public Task<TopicMetadata> DescribeTopicAsync(string topic, CancellationToken cancellationToken = default) => inner.DescribeTopicAsync(topic, cancellationToken);
+        public Task<ClusterInfo> DescribeClusterAsync(CancellationToken cancellationToken = default) => inner.DescribeClusterAsync(cancellationToken);
+        public Task<IReadOnlyList<BrokerConfigEntry>> GetBrokerConfigAsync(int brokerId, CancellationToken cancellationToken = default) => inner.GetBrokerConfigAsync(brokerId, cancellationToken);
         public Task CreateTopicAsync(string topic, int partitions, short replicationFactor, CancellationToken cancellationToken = default) =>
             inner.CreateTopicAsync(topic, partitions, replicationFactor, cancellationToken);
         public Task<ProduceReceipt> ProduceAsync(ProduceRequest request, CancellationToken cancellationToken = default) => inner.ProduceAsync(request, cancellationToken);

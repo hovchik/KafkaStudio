@@ -174,6 +174,84 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
             };
         }, cancellationToken);
 
+    public async Task<ClusterInfo> DescribeClusterAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var result = await RequireAdmin()
+                .DescribeClusterAsync(new DescribeClusterOptions { RequestTimeout = MetadataTimeout })
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+            var controllerId = result.Controller?.Id;
+            return new ClusterInfo
+            {
+                ClusterId = result.ClusterId,
+                ControllerId = controllerId,
+                Brokers = result.Nodes
+                    .Select(n => new BrokerInfo
+                    {
+                        Id = n.Id,
+                        Host = n.Host,
+                        Port = n.Port,
+                        Rack = string.IsNullOrEmpty(n.Rack) ? null : n.Rack,
+                        IsController = n.Id == controllerId
+                    })
+                    .OrderBy(b => b.Id)
+                    .ToList()
+            };
+        }
+        catch (KafkaException)
+        {
+            // Older brokers don't support DescribeCluster - fall back to plain metadata (no controller/rack).
+        }
+
+        return await Task.Run(() =>
+        {
+            try
+            {
+                var metadata = RequireAdmin().GetMetadata(MetadataTimeout);
+                return new ClusterInfo
+                {
+                    Brokers = metadata.Brokers
+                        .Select(b => new BrokerInfo { Id = b.BrokerId, Host = b.Host, Port = b.Port })
+                        .OrderBy(b => b.Id)
+                        .ToList()
+                };
+            }
+            catch (KafkaException ex)
+            {
+                throw WrapTransportError(ex);
+            }
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<BrokerConfigEntry>> GetBrokerConfigAsync(int brokerId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var results = await RequireAdmin().DescribeConfigsAsync(
+                new[] { new ConfigResource { Type = ResourceType.Broker, Name = brokerId.ToString() } },
+                new DescribeConfigsOptions { RequestTimeout = MetadataTimeout })
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+            return results
+                .SelectMany(r => r.Entries)
+                .Select(e => new BrokerConfigEntry
+                {
+                    Name = e.Key,
+                    Value = e.Value.IsSensitive ? null : e.Value.Value,
+                    IsDefault = e.Value.IsDefault,
+                    IsSensitive = e.Value.IsSensitive,
+                    Source = e.Value.Source.ToString()
+                })
+                .OrderBy(e => e.Name, StringComparer.Ordinal)
+                .ToList();
+        }
+        catch (KafkaException ex)
+        {
+            throw WrapTransportError(ex);
+        }
+    }
+
     public async Task CreateTopicAsync(string topic, int partitions, short replicationFactor,
         CancellationToken cancellationToken = default)
     {
