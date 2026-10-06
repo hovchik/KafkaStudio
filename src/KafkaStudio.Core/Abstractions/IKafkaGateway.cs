@@ -21,6 +21,13 @@ public interface IKafkaGateway : IAsyncDisposable
 
     Task<TopicMetadata> DescribeTopicAsync(string topic, CancellationToken cancellationToken = default);
 
+    /// <summary>The cluster's id, active controller and brokers (id, host, port, rack).</summary>
+    Task<ClusterInfo> DescribeClusterAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>The configuration of one broker, sorted by name. Sensitive values come back masked.</summary>
+    Task<IReadOnlyList<BrokerConfigEntry>> GetBrokerConfigAsync(int brokerId,
+        CancellationToken cancellationToken = default);
+
     Task CreateTopicAsync(string topic, int partitions, short replicationFactor,
         CancellationToken cancellationToken = default);
 

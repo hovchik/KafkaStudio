@@ -50,6 +50,28 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
         return Task.FromResult(metadata);
     }
 
+    public Task<ClusterInfo> DescribeClusterAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(new ClusterInfo
+        {
+            ClusterId = "demo-cluster",
+            ControllerId = 0,
+            Brokers = new[] { new BrokerInfo { Id = 0, Host = "localhost", Port = 9092, IsController = true } }
+        });
+
+    public Task<IReadOnlyList<BrokerConfigEntry>> GetBrokerConfigAsync(int brokerId,
+        CancellationToken cancellationToken = default)
+    {
+        if (brokerId != 0) return Task.FromException<IReadOnlyList<BrokerConfigEntry>>(
+            new KeyNotFoundException($"broker {brokerId} not found"));
+        IReadOnlyList<BrokerConfigEntry> entries = new[]
+        {
+            new BrokerConfigEntry { Name = "auto.create.topics.enable", Value = "true", IsDefault = true, Source = "DefaultConfig" },
+            new BrokerConfigEntry { Name = "log.retention.hours", Value = "168", IsDefault = true, Source = "DefaultConfig" },
+            new BrokerConfigEntry { Name = "num.partitions", Value = "1", IsDefault = true, Source = "DefaultConfig" }
+        };
+        return Task.FromResult(entries);
+    }
+
     public Task CreateTopicAsync(string topic, int partitions, short replicationFactor,
         CancellationToken cancellationToken = default)
     {
