@@ -12,7 +12,7 @@
   <Grid RowDefinitions="Auto,*">
 
     <Border Grid.Row="0" Classes="toolbar">
-      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*">
         <ComboBox Grid.Column="0" Width="170" PlaceholderText="Connection…"
                   ItemsSource="{Binding ConnectionNames}" SelectedItem="{Binding SelectedConnection}"
                   ToolTip.Tip="Connection" />
@@ -20,7 +20,9 @@
         <Border Grid.Column="2" Classes="sep" />
         <TextBox Grid.Column="3" Width="200" Text="{Binding GroupFilter}" Watermark="Filter groups"
                  ToolTip.Tip="Filter the group list (contains)" />
-        <TextBlock Grid.Column="4" Classes="muted" Text="{Binding StatusMessage}" Margin="10,0,0,0"
+        <ToggleButton Grid.Column="4" Content="⚠ Lag only" IsChecked="{Binding OnlyWithLag}"
+                      ToolTip.Tip="Show only groups with lag above 0; the most behind come first" />
+        <TextBlock Grid.Column="5" Classes="muted" Text="{Binding StatusMessage}" Margin="10,0,0,0"
                    TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding StatusMessage}" />
       </Grid>
     </Border>
@@ -35,11 +37,11 @@
           </TextBlock>
           <ListBox ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroup}" Classes="rows">
             <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="msg:ConsumerGroupSummary">
+              <DataTemplate x:DataType="vm:GroupRowViewModel">
                 <StackPanel Spacing="1">
                   <TextBlock Text="{Binding GroupId}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding GroupId}" />
                   <TextBlock Classes="muted" FontSize="12">
-                    <Run Text="{Binding State}" /><Run Text=" · " /><Run Text="{Binding MemberCount}" /><Run Text=" member(s)" />
+                    <Run Text="{Binding State}" /><Run Text=" · " /><Run Text="{Binding MemberCount}" /><Run Text=" member(s) · " /><Run Text="{Binding LagText}" FontWeight="SemiBold" />
                   </TextBlock>
                 </StackPanel>
               </DataTemplate>
