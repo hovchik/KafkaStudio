@@ -70,57 +70,6 @@
               </Border>
             </StackPanel>
 
-            <!-- Reset offsets -->
-            <Border DockPanel.Dock="Bottom" Classes="toolbar" Margin="0,6,0,0">
-              <StackPanel Spacing="6">
-                <TextBlock Classes="paneTitle" Text="Reset offsets" />
-                <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
-                  <TextBlock Grid.Column="0" Text="Move to" Classes="muted" />
-                  <ComboBox Grid.Column="1" Width="130" ItemsSource="{Binding ResetTargets}" SelectedItem="{Binding ResetTarget}" />
-                  <TextBox Grid.Column="2" Width="190" Text="{Binding ResetTimestamp}" Watermark="2026-10-06 08:00 (UTC)"
-                           IsVisible="{Binding IsTimestampTarget}"
-                           ToolTip.Tip="First message at or after this time. UTC unless you add an offset such as +02:00" />
-                  <NumericUpDown Grid.Column="3" Width="150" Value="{Binding ResetOffset}" Minimum="0" FormatString="0"
-                                 IsVisible="{Binding IsOffsetTarget}" Watermark="offset"
-                                 ToolTip.Tip="Clamped to what each partition still holds" />
-                  <TextBlock Grid.Column="4" Text="Topic" Classes="muted" />
-                  <ComboBox Grid.Column="5" Width="170" ItemsSource="{Binding Topics}" SelectedItem="{Binding ResetTopic}"
-                            PlaceholderText="all topics" IsEnabled="{Binding !OnlySelectedPartition}" />
-                  <CheckBox Grid.Column="6" Content="Selected partition only" IsChecked="{Binding OnlySelectedPartition}"
-                            IsEnabled="{Binding HasSelectedOffset}"
-                            ToolTip.Tip="Select a row in the table above to limit the reset to that partition" />
-                  <Button Grid.Column="7" Content="Preview reset…" Classes="primary" Margin="0"
-                          Command="{Binding PreviewResetCommand}"
-                          ToolTip.Tip="Shows the old and new offsets first - nothing changes until you apply" />
-                </Grid>
-
-                <!-- Confirmation -->
-                <Border Classes="empty" IsVisible="{Binding IsConfirming}">
-                  <StackPanel Spacing="6">
-                    <TextBlock Text="{Binding ConfirmationText}" TextWrapping="Wrap" Foreground="White" FontWeight="SemiBold" />
-                    <ScrollViewer MaxHeight="150">
-                      <ItemsControl ItemsSource="{Binding PendingChanges}">
-                        <ItemsControl.ItemTemplate>
-                          <DataTemplate x:DataType="vm:OffsetChangeRowViewModel">
-                            <Grid ColumnDefinitions="*,110,30,110" Margin="0,1">
-                              <TextBlock Grid.Column="0" Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
-                              <TextBlock Grid.Column="1" Text="{Binding From}" Classes="mono" TextAlignment="Right" />
-                              <TextBlock Grid.Column="2" Text="→" TextAlignment="Center" Classes="muted" />
-                              <TextBlock Grid.Column="3" Text="{Binding To}" Classes="mono" FontWeight="Bold" />
-                            </Grid>
-                          </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                      </ItemsControl>
-                    </ScrollViewer>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                      <Button Content="Apply" Classes="primary danger" Command="{Binding ApplyResetCommand}" />
-                      <Button Content="Cancel" Command="{Binding CancelResetCommand}" />
-                    </StackPanel>
-                  </StackPanel>
-                </Border>
-              </StackPanel>
-            </Border>
-
             <Expander DockPanel.Dock="Bottom" Header="Members" Margin="0,6,0,0" HorizontalAlignment="Stretch">
               <Panel>
                 <TextBlock Classes="hint" Text="No live members." IsVisible="{Binding !Members.Count}" />
@@ -141,24 +90,32 @@
 
             <!-- Offsets table -->
             <DockPanel>
-              <Grid DockPanel.Dock="Top" ColumnDefinitions="*,70,110,110,110,110" Margin="10,0,10,4">
+              <Grid DockPanel.Dock="Top" ColumnDefinitions="*,70,100,100,100,90,150,70" Margin="10,0,10,4">
                 <TextBlock Grid.Column="0" Classes="label" Text="Topic" />
                 <TextBlock Grid.Column="1" Classes="label" Text="Partition" TextAlignment="Right" />
                 <TextBlock Grid.Column="2" Classes="label" Text="Committed" TextAlignment="Right" ToolTip.Tip="Next offset the group will read" />
                 <TextBlock Grid.Column="3" Classes="label" Text="Earliest" TextAlignment="Right" />
                 <TextBlock Grid.Column="4" Classes="label" Text="End" TextAlignment="Right" ToolTip.Tip="Offset the next produced message gets" />
                 <TextBlock Grid.Column="5" Classes="label" Text="Lag" TextAlignment="Right" />
+                <TextBlock Grid.Column="6" Classes="label" Text="Move to" Margin="12,0,0,0"
+                           ToolTip.Tip="While a partition has lag, edit the offset to commit (prefilled with End = skip the backlog)" />
               </Grid>
-              <ListBox ItemsSource="{Binding Offsets}" SelectedItem="{Binding SelectedOffset}" Classes="rows">
+              <ListBox ItemsSource="{Binding Offsets}" Classes="rows">
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:GroupOffsetRowViewModel">
-                    <Grid ColumnDefinitions="*,70,110,110,110,110">
+                    <Grid ColumnDefinitions="*,70,100,100,100,90,150,70">
                       <TextBlock Grid.Column="0" Text="{Binding Topic}" TextTrimming="CharacterEllipsis" />
                       <TextBlock Grid.Column="1" Text="{Binding Partition}" Classes="mono" TextAlignment="Right" />
                       <TextBlock Grid.Column="2" Text="{Binding Committed}" Classes="mono" TextAlignment="Right" />
                       <TextBlock Grid.Column="3" Text="{Binding Earliest}" Classes="mono" TextAlignment="Right" />
                       <TextBlock Grid.Column="4" Text="{Binding End}" Classes="mono" TextAlignment="Right" />
                       <TextBlock Grid.Column="5" Text="{Binding Lag}" Classes="mono" TextAlignment="Right" FontWeight="Bold" />
+                      <NumericUpDown Grid.Column="6" Margin="12,0,0,0" Value="{Binding NewOffset}" Minimum="0" FormatString="0"
+                                     IsVisible="{Binding HasLag}" IsEnabled="{Binding CanEdit}"
+                                     ToolTip.Tip="Offset to commit for this partition" />
+                      <Button Grid.Column="7" Classes="small" Content="Apply" Margin="6,0,0,0"
+                              IsVisible="{Binding HasLag}" Command="{Binding ApplyCommand}"
+                              ToolTip.Tip="Commit this offset for the group now" />
                     </Grid>
                   </DataTemplate>
                 </ListBox.ItemTemplate>

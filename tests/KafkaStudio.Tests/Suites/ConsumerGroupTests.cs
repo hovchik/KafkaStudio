@@ -132,10 +132,10 @@ public static class ConsumerGroupTests
             Assert.Equal(6L, vm.Offsets[0].Lag);
             Assert.True(vm.IsGroupActive);
             Assert.NotNull(vm.ActiveGroupWarning);
-            Assert.False(vm.PreviewResetCommand.CanExecute(null), "preview must be disabled for an active group");
+            Assert.False(vm.Offsets.Single().CanEdit, "an active group's offsets must not be editable");
         });
 
-        runner.Add("ViewModels: Consumer Groups", "a reset needs a preview, then applying it moves the offsets", async () =>
+        runner.Add("ViewModels: Consumer Groups", "a partition with lag is editable, prefilled with End, and applies directly", async () =>
         {
             var (state, _) = await Seeded();
             var vm = new ConsumerGroupsViewModel(state);
@@ -143,23 +143,32 @@ public static class ConsumerGroupTests
             vm.SelectedGroup = vm.Groups[0];
             await WaitUntil(() => vm.HasDetail);
 
-            vm.ResetTarget = OffsetResetTarget.Offset;
-            vm.ResetOffset = 8;
-            await vm.PreviewResetCommand.ExecuteAsync();
+            var row = vm.Offsets.Single();
+            Assert.True(row.HasLag);
+            Assert.True(row.CanEdit);
+            Assert.Equal(10L, row.NewOffset ?? -1);
 
-            Assert.True(vm.IsConfirming);
-            Assert.Equal(1, vm.PendingChanges.Count);
-            Assert.Equal(8L, vm.PendingChanges[0].To);
-            Assert.Equal(4L, vm.Detail!.Offsets.Single().CommittedOffset); // nothing applied yet
+            row.NewOffset = 8;
+            await row.ApplyCommand.ExecuteAsync();
 
-            await vm.ApplyResetCommand.ExecuteAsync();
-
-            Assert.False(vm.IsConfirming);
             Assert.Equal(8L, vm.Detail!.Offsets.Single().CommittedOffset);
             Assert.Equal(2L, vm.Detail.TotalLag);
         });
 
-        runner.Add("ViewModels: Consumer Groups", "invalid timestamp input is reported instead of resetting", async () =>
+        runner.Add("ViewModels: Consumer Groups", "a partition without lag is not editable", async () =>
+        {
+            var (state, broker) = await Seeded();
+            broker.Commit("orders", "billing", 9); // fully caught up
+            var vm = new ConsumerGroupsViewModel(state);
+            await WaitUntil(() => vm.Groups.Count == 1);
+            vm.SelectedGroup = vm.Groups[0];
+            await WaitUntil(() => vm.HasDetail);
+
+            Assert.False(vm.Offsets.Single().HasLag);
+            Assert.False(vm.Offsets.Single().CanEdit);
+        });
+
+        runner.Add("ViewModels: Consumer Groups", "an out-of-range offset is rejected and nothing changes", async () =>
         {
             var (state, _) = await Seeded();
             var vm = new ConsumerGroupsViewModel(state);
@@ -167,12 +176,12 @@ public static class ConsumerGroupTests
             vm.SelectedGroup = vm.Groups[0];
             await WaitUntil(() => vm.HasDetail);
 
-            vm.ResetTarget = OffsetResetTarget.Timestamp;
-            vm.ResetTimestamp = "yesterday-ish";
-            await vm.PreviewResetCommand.ExecuteAsync();
+            var row = vm.Offsets.Single();
+            row.NewOffset = 500;
+            await row.ApplyCommand.ExecuteAsync();
 
-            Assert.False(vm.IsConfirming);
-            Assert.Contains("timestamp", vm.StatusMessage ?? "");
+            Assert.Equal(4L, vm.Detail!.Offsets.Single().CommittedOffset);
+            Assert.Contains("between", vm.StatusMessage ?? "");
         });
     }
 }
