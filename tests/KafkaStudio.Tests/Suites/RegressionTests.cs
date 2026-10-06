@@ -579,6 +579,10 @@ public static class RegressionTests
         }
 #pragma warning restore CS1998
         public Task AcknowledgeAsync(KafkaMessage message, CancellationToken cancellationToken = default) => inner.AcknowledgeAsync(message, cancellationToken);
+        public Task<IReadOnlyList<ConsumerGroupSummary>> ListConsumerGroupsAsync(CancellationToken cancellationToken = default) => inner.ListConsumerGroupsAsync(cancellationToken);
+        public Task<ConsumerGroupDetail> DescribeConsumerGroupAsync(string groupId, CancellationToken cancellationToken = default) => inner.DescribeConsumerGroupAsync(groupId, cancellationToken);
+        public Task<IReadOnlyList<OffsetChange>> PlanOffsetResetAsync(OffsetResetRequest request, CancellationToken cancellationToken = default) => inner.PlanOffsetResetAsync(request, cancellationToken);
+        public Task ApplyOffsetResetAsync(string groupId, IReadOnlyList<OffsetChange> changes, CancellationToken cancellationToken = default) => inner.ApplyOffsetResetAsync(groupId, changes, cancellationToken);
         public ValueTask DisposeAsync() => inner.DisposeAsync();
     }
 }

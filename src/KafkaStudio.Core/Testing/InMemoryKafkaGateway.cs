@@ -174,5 +174,109 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
         return history.Count;
     }
 
+    public Task<IReadOnlyList<ConsumerGroupSummary>> ListConsumerGroupsAsync(CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<ConsumerGroupSummary> groups = _broker.ListGroups().Select(g =>
+        {
+            var members = _broker.GetActiveMemberCount(g);
+            return new ConsumerGroupSummary
+            {
+                GroupId = g,
+                State = members > 0 ? "Stable" : ConsumerGroupStates.Empty,
+                MemberCount = members
+            };
+        }).ToList();
+        return Task.FromResult(groups);
+    }
+
+    public Task<ConsumerGroupDetail> DescribeConsumerGroupAsync(string groupId, CancellationToken cancellationToken = default)
+    {
+        if (!_broker.ListGroups().Contains(groupId))
+        {
+            return Task.FromException<ConsumerGroupDetail>(new KeyNotFoundException($"consumer group '{groupId}' not found"));
+        }
+
+        var memberCount = _broker.GetActiveMemberCount(groupId);
+        var offsets = _broker.GetGroupOffsets(groupId).Select(o =>
+        {
+            var (earliest, latest) = _broker.GetOffsets(o.topic);
+            return new ConsumerGroupOffset
+            {
+                Topic = o.topic,
+                Partition = 0,
+                CommittedOffset = o.nextOffset > 0 ? o.nextOffset : null,
+                EarliestOffset = earliest,
+                EndOffset = latest
+            };
+        }).ToList();
+
+        return Task.FromResult(new ConsumerGroupDetail
+        {
+            GroupId = groupId,
+            State = memberCount > 0 ? "Stable" : ConsumerGroupStates.Empty,
+            PartitionAssignor = memberCount > 0 ? "range" : null,
+            Members = Enumerable.Range(1, memberCount).Select(i => new ConsumerGroupMember
+            {
+                MemberId = $"{groupId}-member-{i}",
+                ClientId = $"client-{i}",
+                Host = "/127.0.0.1",
+                Assignment = offsets.Select(o => $"{o.Topic}[{o.Partition}]").ToList()
+            }).ToList(),
+            Offsets = offsets
+        });
+    }
+
+    public async Task<IReadOnlyList<OffsetChange>> PlanOffsetResetAsync(OffsetResetRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var detail = await DescribeConsumerGroupAsync(request.GroupId, cancellationToken).ConfigureAwait(false);
+        var changes = new List<OffsetChange>();
+        foreach (var o in detail.Offsets)
+        {
+            if (request.Topic is not null && o.Topic != request.Topic) continue;
+            if (request.Partition is { } p && o.Partition != p) continue;
+
+            long target = request.Target switch
+            {
+                OffsetResetTarget.Earliest => o.EarliestOffset,
+                OffsetResetTarget.Latest => o.EndOffset,
+                OffsetResetTarget.Timestamp => FindOffsetAtOrAfter(o.Topic, request.Timestamp
+                    ?? throw new ArgumentException("a timestamp is required"), o.EndOffset),
+                _ => Math.Clamp(request.Offset ?? throw new ArgumentException("an offset is required"),
+                    o.EarliestOffset, o.EndOffset)
+            };
+            changes.Add(new OffsetChange { Topic = o.Topic, Partition = o.Partition, CurrentOffset = o.CommittedOffset, NewOffset = target });
+        }
+
+        if (changes.Count == 0)
+        {
+            throw new InvalidOperationException("no committed partitions of this group match the reset scope");
+        }
+        return changes;
+    }
+
+    public Task ApplyOffsetResetAsync(string groupId, IReadOnlyList<OffsetChange> changes,
+        CancellationToken cancellationToken = default)
+    {
+        var members = _broker.GetActiveMemberCount(groupId);
+        if (members > 0)
+        {
+            return Task.FromException(new InvalidOperationException(
+                $"consumer group '{groupId}' is active ({members} member(s)); stop its consumers before changing offsets"));
+        }
+
+        foreach (var change in changes) _broker.SetNextOffset(change.Topic, groupId, change.NewOffset);
+        return Task.CompletedTask;
+    }
+
+    private long FindOffsetAtOrAfter(string topic, DateTimeOffset timestamp, long endOffset)
+    {
+        foreach (var (ts, offset) in _broker.GetTimestamps(topic))
+        {
+            if (ts >= timestamp) return offset;
+        }
+        return endOffset;
+    }
+
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
