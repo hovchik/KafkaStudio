@@ -119,15 +119,15 @@ public static class ViewModelTests
             var vm = new TasksViewModel(state);
 
             vm.NewTaskSource = """
-                Task: Heartbeat
+                Task: Pinger
                 schedule every 10 minutes
                 Given use connection "local"
-                When produce message to topic "heartbeats" value "ping"
+                When produce message to topic "pings" value "ping"
                 """;
             vm.RegisterTaskCommand.Execute(null);
 
             Assert.Equal(1, vm.Jobs.Count);
-            Assert.Equal("Heartbeat", vm.Jobs[0].Name);
+            Assert.Equal("Pinger", vm.Jobs[0].Name);
             Assert.Contains("every", vm.Jobs[0].Schedule);
         });
 
@@ -138,10 +138,10 @@ public static class ViewModelTests
             var vm = new TasksViewModel(state);
 
             vm.NewTaskSource = """
-                Task: Heartbeat
+                Task: Pinger
                 schedule run once
                 Given use connection "local"
-                When produce message to topic "heartbeats" value "ping"
+                When produce message to topic "pings" value "ping"
                 """;
             vm.RegisterTaskCommand.Execute(null);
             System.Threading.Thread.Sleep(2500); // longer than the scheduler's 1s tick

@@ -54,13 +54,12 @@ public static class SampleScriptsTests
             Assert.True(result.Success, string.Join("; ", result.Steps.Select(s => $"{s.Status}:{s.Message}")));
         });
 
-        runner.Add("Samples", "scheduled-task.kafscript defines two schedulable Task blocks", () =>
+        runner.Add("Samples", "scheduled-task.kafscript defines a schedulable Task block and no producer", () =>
         {
             var script = ScriptLibrary.LoadFile(Path.Combine(SamplesDirectory, "scheduled-task.kafscript"));
-            Assert.Equal(2, script.Document.Blocks.Count);
+            Assert.Equal(1, script.Document.Blocks.Count);
             Assert.True(script.Document.Blocks.All(b => b.Kind == BlockKind.Task));
             Assert.NotNull(script.Document.Blocks[0].Schedule);
-            Assert.NotNull(script.Document.Blocks[1].Schedule);
         });
 
         runner.Add("Samples", "cross-topic-timing-check.kafscript parses with a watch + expect pair", () =>
