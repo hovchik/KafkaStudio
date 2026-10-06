@@ -19,7 +19,7 @@ public static class SchedulerTests
             var doc = Parser.Parse("""
                 Task: One shot
                 schedule run once
-                When produce message to topic "heartbeats" value "ping"
+                When produce message to topic "pings" value "ping"
                 """);
 
             await using var scheduler = new AutomationScheduler();
@@ -42,13 +42,13 @@ public static class SchedulerTests
             var connections = new Dictionary<string, IKafkaGateway> { ["local"] = TestKafka.NewGateway(broker) };
 
             var doc = Parser.Parse("""
-                Task: Heartbeat
+                Task: Pinger
                 schedule every 1 seconds
-                When produce message to topic "heartbeats" value "ping"
+                When produce message to topic "pings" value "ping"
                 """);
 
             await using var scheduler = new AutomationScheduler();
-            var job = scheduler.Register("heartbeat", doc.Blocks[0], connections);
+            var job = scheduler.Register("pinger", doc.Blocks[0], connections);
             scheduler.Start();
 
             await WaitUntilAsync(() => job.RunCount >= 2, TimeSpan.FromSeconds(5));

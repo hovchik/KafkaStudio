@@ -76,9 +76,9 @@ public static class LexerParserTests
         runner.Add("Lexer & Parser", "parses a Task block with an 'every' schedule", () =>
         {
             const string source = """
-                Task: Heartbeat producer
+                Task: Pinger
                 schedule every 10 minutes
-                When produce message to topic "heartbeats" value "ping"
+                When produce message to topic "pings" value "ping"
                 """;
 
             var doc = Parser.Parse(source);

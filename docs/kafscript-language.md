@@ -374,7 +374,7 @@ See `/samples` for these as complete, runnable files:
   another within N seconds.
 - `samples/rethrow.kafscript` - relay a message from one topic to another.
 - `samples/scan-and-acknowledge.kafscript` - bulk-read a backlog and acknowledge everything.
-- `samples/scheduled-task.kafscript` - two `Task` blocks on different schedules.
+- `samples/scheduled-task.kafscript` - a scheduled `Task` block (runs only via Run now).
 - `samples/qa/` - a QA pack: contracts, negative checks, a Scenario Outline and test-data seeding
   (see [`qa-testing.md`](qa-testing.md)).
 
