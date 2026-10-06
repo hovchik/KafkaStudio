@@ -19,6 +19,8 @@
     <KeyBinding Gesture="Ctrl+D6" Command="{Binding NavigateCommand}" CommandParameter="rethrow" />
     <KeyBinding Gesture="Ctrl+D7" Command="{Binding NavigateCommand}" CommandParameter="search" />
     <KeyBinding Gesture="Ctrl+D8" Command="{Binding NavigateCommand}" CommandParameter="qa" />
+    <KeyBinding Gesture="Ctrl+D9" Command="{Binding NavigateCommand}" CommandParameter="brokers" />
+    <KeyBinding Gesture="Ctrl+D0" Command="{Binding NavigateCommand}" CommandParameter="groups" />
     <KeyBinding Gesture="Ctrl+K" Command="{Binding OpenConnectionsCommand}" />
   </Window.KeyBindings>
 

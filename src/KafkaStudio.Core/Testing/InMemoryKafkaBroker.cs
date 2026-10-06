@@ -20,6 +20,7 @@ public sealed class InMemoryKafkaBroker
         public readonly object Gate = new();
         public readonly List<Channel<KafkaMessage>> Subscribers = new();
         public readonly ConcurrentDictionary<string, long> CommittedOffsets = new();
+        public long StartOffset;
     }
 
     private readonly ConcurrentDictionary<string, TopicLog> _topics = new();
@@ -38,7 +39,7 @@ public sealed class InMemoryKafkaBroker
         var log = GetOrCreate(topic);
         lock (log.Gate)
         {
-            return (0L, log.Messages.Count);
+            return (log.StartOffset, log.Messages.Count);
         }
     }
 
@@ -96,7 +97,7 @@ public sealed class InMemoryKafkaBroker
         lock (log.Gate)
         {
             log.Subscribers.Add(channel);
-            history = log.Messages.ToList();
+            history = log.Messages.Skip((int)log.StartOffset).ToList();
         }
 
         void Unsubscribe()
@@ -111,6 +112,17 @@ public sealed class InMemoryKafkaBroker
         return (history, channel.Reader, Unsubscribe);
     }
 
+    /// <summary>Advances the log start offset to <paramref name="beforeOffset"/> (clamped to the log), hiding older records.</summary>
+    public long DeleteRecordsBefore(string topic, long beforeOffset)
+    {
+        var log = GetOrCreate(topic);
+        lock (log.Gate)
+        {
+            log.StartOffset = Math.Max(log.StartOffset, Math.Min(beforeOffset, log.Messages.Count));
+            return log.StartOffset;
+        }
+    }
+
     public long GetCommittedOffset(string topic, string consumerGroup)
     {
         var log = GetOrCreate(topic);
@@ -122,5 +134,49 @@ public sealed class InMemoryKafkaBroker
         var log = GetOrCreate(topic);
         log.CommittedOffsets.AddOrUpdate(consumerGroup, offset,
             (_, existing) => Math.Max(existing, offset));
+    }
+
+    // ---- consumer groups ----
+
+    private readonly ConcurrentDictionary<string, int> _activeMembers = new();
+
+    /// <summary>Every group that has committed an offset (or been given simulated members).</summary>
+    public IReadOnlyList<string> ListGroups() =>
+        _topics.Values.SelectMany(t => t.CommittedOffsets.Keys)
+            .Concat(_activeMembers.Keys)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(g => g, StringComparer.Ordinal)
+            .ToArray();
+
+    /// <summary>The (topic, next offset to read) pairs a group has committed. -1 means nothing committed.</summary>
+    public IReadOnlyList<(string topic, long nextOffset)> GetGroupOffsets(string group) =>
+        _topics.Where(t => t.Value.CommittedOffsets.ContainsKey(group))
+            .Select(t => (t.Key, t.Value.CommittedOffsets[group] + 1))
+            .OrderBy(t => t.Key, StringComparer.Ordinal)
+            .ToArray();
+
+    /// <summary>Overwrites (including moving backwards, unlike <see cref="Commit"/>) the group's next offset to read.</summary>
+    public void SetNextOffset(string topic, string consumerGroup, long nextOffset)
+    {
+        var log = GetOrCreate(topic);
+        log.CommittedOffsets[consumerGroup] = Math.Max(-1, nextOffset - 1);
+    }
+
+    /// <summary>Pretends a group has live members, so tests and the demo can exercise the "group is active" paths.</summary>
+    public void SimulateActiveMembers(string group, int count)
+    {
+        if (count <= 0) _activeMembers.TryRemove(group, out _);
+        else _activeMembers[group] = count;
+    }
+
+    public int GetActiveMemberCount(string group) => _activeMembers.TryGetValue(group, out var n) ? n : 0;
+
+    public IReadOnlyList<(DateTimeOffset timestamp, long offset)> GetTimestamps(string topic)
+    {
+        var log = GetOrCreate(topic);
+        lock (log.Gate)
+        {
+            return log.Messages.Select(m => (m.Timestamp, m.Offset)).ToArray();
+        }
     }
 }

@@ -86,6 +86,32 @@ public static class RegressionTests
             Assert.Equal(10, scan.Limit ?? -1);
         });
 
+        runner.Add("Regression: gateway", "DeleteRecords hides everything before the offset and keeps offsets stable", async () =>
+        {
+            var broker = new InMemoryKafkaBroker();
+            for (var i = 0; i < 5; i++) broker.Append("t", $"k{i}", $"v{i}", null, null, DateTimeOffset.UnixEpoch.AddSeconds(i));
+            var gateway = TestKafka.NewGateway(broker);
+
+            var start = await gateway.DeleteRecordsBeforeAsync("t", 0, 3);
+            Assert.Equal(3L, start);
+
+            var meta = await gateway.DescribeTopicAsync("t");
+            Assert.Equal(3L, meta.Partitions[0].EarliestOffset);
+            Assert.Equal(5L, meta.Partitions[0].LatestOffset);
+
+            var seen = new List<long>();
+            await foreach (var m in gateway.ConsumeAsync(new ConsumeOptions
+            {
+                Topic = "t", ConsumerGroup = "g", StartPosition = ConsumeStartPosition.Earliest, StopAtPartitionEnd = true
+            }))
+            {
+                seen.Add(m.Offset);
+            }
+            Assert.Equal("3,4", string.Join(",", seen));
+
+            await Assert.ThrowsAsync<KeyNotFoundException>(() => gateway.DeleteRecordsBeforeAsync("nope", 0, 1));
+        });
+
         runner.Add("Regression: lexer", "CRLF doc strings carry no carriage returns", () =>
         {
             var source = "Scenario: s\r\nWhen produce message to topic \"t\" value \"\"\"\r\n{\r\n  \"a\": 1\r\n}\r\n\"\"\"\r\n";
@@ -568,6 +594,8 @@ public static class RegressionTests
         public Task ConnectAsync(CancellationToken cancellationToken = default) => inner.ConnectAsync(cancellationToken);
         public Task<IReadOnlyList<string>> ListTopicsAsync(CancellationToken cancellationToken = default) => inner.ListTopicsAsync(cancellationToken);
         public Task<TopicMetadata> DescribeTopicAsync(string topic, CancellationToken cancellationToken = default) => inner.DescribeTopicAsync(topic, cancellationToken);
+        public Task<ClusterInfo> DescribeClusterAsync(CancellationToken cancellationToken = default) => inner.DescribeClusterAsync(cancellationToken);
+        public Task<IReadOnlyList<BrokerConfigEntry>> GetBrokerConfigAsync(int brokerId, CancellationToken cancellationToken = default) => inner.GetBrokerConfigAsync(brokerId, cancellationToken);
         public Task CreateTopicAsync(string topic, int partitions, short replicationFactor, CancellationToken cancellationToken = default) =>
             inner.CreateTopicAsync(topic, partitions, replicationFactor, cancellationToken);
         public Task<ProduceReceipt> ProduceAsync(ProduceRequest request, CancellationToken cancellationToken = default) => inner.ProduceAsync(request, cancellationToken);
@@ -578,7 +606,12 @@ public static class RegressionTests
             yield break;
         }
 #pragma warning restore CS1998
+        public Task<long> DeleteRecordsBeforeAsync(string topic, int partition, long beforeOffset, CancellationToken cancellationToken = default) => inner.DeleteRecordsBeforeAsync(topic, partition, beforeOffset, cancellationToken);
         public Task AcknowledgeAsync(KafkaMessage message, CancellationToken cancellationToken = default) => inner.AcknowledgeAsync(message, cancellationToken);
+        public Task<IReadOnlyList<ConsumerGroupSummary>> ListConsumerGroupsAsync(CancellationToken cancellationToken = default) => inner.ListConsumerGroupsAsync(cancellationToken);
+        public Task<ConsumerGroupDetail> DescribeConsumerGroupAsync(string groupId, CancellationToken cancellationToken = default) => inner.DescribeConsumerGroupAsync(groupId, cancellationToken);
+        public Task<IReadOnlyList<OffsetChange>> PlanOffsetResetAsync(OffsetResetRequest request, CancellationToken cancellationToken = default) => inner.PlanOffsetResetAsync(request, cancellationToken);
+        public Task ApplyOffsetResetAsync(string groupId, IReadOnlyList<OffsetChange> changes, CancellationToken cancellationToken = default) => inner.ApplyOffsetResetAsync(groupId, changes, cancellationToken);
         public ValueTask DisposeAsync() => inner.DisposeAsync();
     }
 }

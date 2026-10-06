@@ -24,6 +24,23 @@ public static class ViewModelTests
             await main.DisposeAsync();
         });
 
+        runner.Add("ViewModels: Brokers", "lists the demo cluster's broker, marks the controller and loads its config", async () =>
+        {
+            var state = new AppState();
+            var main = new MainWindowViewModel(state);
+            state.AddDemoConnection("local");
+
+            await main.Brokers.RefreshAsync();
+
+            Assert.Equal(1, main.Brokers.Brokers.Count);
+            Assert.True(main.Brokers.Brokers[0].IsController);
+            Assert.True(main.Brokers.ClusterSummary!.Contains("controller 0"));
+            await Task.Delay(50);
+            Assert.True(main.Brokers.Config.Count > 0, "broker config was not loaded");
+
+            await main.DisposeAsync();
+        });
+
         runner.Add("ViewModels: Connections", "exported connections import back, passwords only when asked", async () =>
         {
             var state = new AppState();

@@ -211,7 +211,71 @@ public sealed class TopicBrowserViewModel : ObservableObject
         get => _selectedMessage;
         set
         {
-            if (SetProperty(ref _selectedMessage, value)) AddSelectedToComparisonCommand?.RaiseCanExecuteChanged();
+            if (SetProperty(ref _selectedMessage, value))
+            {
+                AddSelectedToComparisonCommand?.RaiseCanExecuteChanged();
+                DeleteUpToSelectedCommand?.RaiseCanExecuteChanged();
+                CancelDeleteCommand?.Execute(null);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ delete records ----
+
+    private bool _isDeleteConfirmPending;
+    /// <summary>True while the inline "are you sure?" panel for deleting records is shown.</summary>
+    public bool IsDeleteConfirmPending { get => _isDeleteConfirmPending; private set { if (SetProperty(ref _isDeleteConfirmPending, value)) ConfirmDeleteCommand?.RaiseCanExecuteChanged(); } }
+
+    private string _deleteConfirmText = "";
+    public string DeleteConfirmText { get => _deleteConfirmText; private set => SetProperty(ref _deleteConfirmText, value); }
+
+    private KafkaMessage? _deleteTarget;
+
+    /// <summary>Step 1: asks for confirmation to delete everything before the selected message in its partition.</summary>
+    public RelayCommand DeleteUpToSelectedCommand { get; private set; } = null!;
+    /// <summary>Step 2: performs the deletion (Kafka DeleteRecords).</summary>
+    public AsyncRelayCommand ConfirmDeleteCommand { get; private set; } = null!;
+    public RelayCommand CancelDeleteCommand { get; private set; } = null!;
+
+    private void InitDeleteCommands()
+    {
+        DeleteUpToSelectedCommand = new RelayCommand(() =>
+        {
+            if (SelectedMessage is not { } m) return;
+            _deleteTarget = m;
+            DeleteConfirmText = $"Permanently delete every message in '{m.Topic}' partition {m.Partition} with offset below {m.Offset}? " +
+                "Kafka can't remove a single message - the selected one is kept. This can't be undone.";
+            IsDeleteConfirmPending = true;
+        }, () => SelectedMessage is not null && SelectedConnection is not null);
+        CancelDeleteCommand = new RelayCommand(() =>
+        {
+            _deleteTarget = null;
+            IsDeleteConfirmPending = false;
+        });
+        ConfirmDeleteCommand = new AsyncRelayCommand(ConfirmDeleteAsync, () => IsDeleteConfirmPending);
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        var target = _deleteTarget;
+        IsDeleteConfirmPending = false;
+        _deleteTarget = null;
+        if (target is null || SelectedConnection is null ||
+            !_state.Connections.TryGetValue(SelectedConnection, out var gateway))
+        {
+            return;
+        }
+
+        StatusMessage = $"Deleting messages before offset {target.Offset} in '{target.Topic}' [{target.Partition}]...";
+        try
+        {
+            var newStart = await gateway.DeleteRecordsBeforeAsync(target.Topic, target.Partition, target.Offset).ConfigureAwait(true);
+            StatusMessage = $"Deleted messages before offset {target.Offset} in '{target.Topic}' [{target.Partition}] (log now starts at {newStart}).";
+            if (SelectedTopic == target.Topic) await LoadMessagesAsync(null).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Delete failed: {ex.Message}";
         }
     }
 
@@ -381,6 +445,7 @@ public sealed class TopicBrowserViewModel : ObservableObject
         _state = state;
         _state.ConnectionsChanged += RefreshConnectionNames;
         Actions = new MessageActions(state, () => SelectedConnection, s => StatusMessage = s);
+        InitDeleteCommands();
 
         RefreshTopicsCommand = new AsyncRelayCommand(RefreshTopicsAsync, () => SelectedConnection is not null, allowConcurrentExecutions: true);
         ScanCommand = new AsyncRelayCommand(ScanAsync, () => SelectedConnection is not null && SelectedTopic is not null, allowConcurrentExecutions: true);

@@ -21,6 +21,13 @@ public interface IKafkaGateway : IAsyncDisposable
 
     Task<TopicMetadata> DescribeTopicAsync(string topic, CancellationToken cancellationToken = default);
 
+    /// <summary>The cluster's id, active controller and brokers (id, host, port, rack).</summary>
+    Task<ClusterInfo> DescribeClusterAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>The configuration of one broker, sorted by name. Sensitive values come back masked.</summary>
+    Task<IReadOnlyList<BrokerConfigEntry>> GetBrokerConfigAsync(int brokerId,
+        CancellationToken cancellationToken = default);
+
     Task CreateTopicAsync(string topic, int partitions, short replicationFactor,
         CancellationToken cancellationToken = default);
 
@@ -34,6 +41,34 @@ public interface IKafkaGateway : IAsyncDisposable
     IAsyncEnumerable<KafkaMessage> ConsumeAsync(ConsumeOptions options,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Deletes every record in <paramref name="partition"/> of <paramref name="topic"/> whose offset is
+    /// lower than <paramref name="beforeOffset"/> (Kafka's DeleteRecords). Kafka cannot remove a single
+    /// record from the middle of a log - only advance the log start offset. Returns the new log start offset.
+    /// </summary>
+    Task<long> DeleteRecordsBeforeAsync(string topic, int partition, long beforeOffset,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Commits the offset for a message that was consumed with AutoAcknowledge = false.</summary>
     Task AcknowledgeAsync(KafkaMessage message, CancellationToken cancellationToken = default);
+
+    /// <summary>Lists the cluster's consumer groups with their state and member count.</summary>
+    Task<IReadOnlyList<ConsumerGroupSummary>> ListConsumerGroupsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Members, committed offsets, partition end offsets and lag for one consumer group.</summary>
+    Task<ConsumerGroupDetail> DescribeConsumerGroupAsync(string groupId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Works out (without changing anything) which offset each affected partition would move to, so the
+    /// caller can show it for confirmation. Throws if nothing matches the request.
+    /// </summary>
+    Task<IReadOnlyList<OffsetChange>> PlanOffsetResetAsync(OffsetResetRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Commits the given offsets for the group. Kafka only allows this while the group has no live
+    /// members, so this throws <see cref="InvalidOperationException"/> for an active group.
+    /// </summary>
+    Task ApplyOffsetResetAsync(string groupId, IReadOnlyList<OffsetChange> changes,
+        CancellationToken cancellationToken = default);
 }
