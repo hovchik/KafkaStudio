@@ -20,8 +20,8 @@
         <Border Grid.Column="2" Classes="sep" />
         <TextBox Grid.Column="3" Width="200" Text="{Binding GroupFilter}" Watermark="Filter groups"
                  ToolTip.Tip="Filter the group list (contains)" />
-        <CheckBox Grid.Column="4" Content="Only groups with lag" IsChecked="{Binding OnlyWithLag}"
-                  ToolTip.Tip="Hide groups that are caught up; the most behind come first" />
+        <ToggleButton Grid.Column="4" Content="⚠ Lag only" IsChecked="{Binding OnlyWithLag}"
+                      ToolTip.Tip="Show only groups with lag above 0; the most behind come first" />
         <TextBlock Grid.Column="5" Classes="muted" Text="{Binding StatusMessage}" Margin="10,0,0,0"
                    TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding StatusMessage}" />
       </Grid>
