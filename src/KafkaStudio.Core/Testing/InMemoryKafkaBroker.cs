@@ -20,7 +20,6 @@ public sealed class InMemoryKafkaBroker
         public readonly object Gate = new();
         public readonly List<Channel<KafkaMessage>> Subscribers = new();
         public readonly ConcurrentDictionary<string, long> CommittedOffsets = new();
-        public long StartOffset;
     }
 
     private readonly ConcurrentDictionary<string, TopicLog> _topics = new();
@@ -39,7 +38,7 @@ public sealed class InMemoryKafkaBroker
         var log = GetOrCreate(topic);
         lock (log.Gate)
         {
-            return (log.StartOffset, log.Messages.Count);
+            return (0L, log.Messages.Count);
         }
     }
 
@@ -97,7 +96,7 @@ public sealed class InMemoryKafkaBroker
         lock (log.Gate)
         {
             log.Subscribers.Add(channel);
-            history = log.Messages.Skip((int)log.StartOffset).ToList();
+            history = log.Messages.ToList();
         }
 
         void Unsubscribe()
@@ -112,16 +111,12 @@ public sealed class InMemoryKafkaBroker
         return (history, channel.Reader, Unsubscribe);
     }
 
-    /// <summary>Advances the log start offset to <paramref name="beforeOffset"/> (clamped to the log), hiding older records.</summary>
-    public long DeleteRecordsBefore(string topic, long beforeOffset)
-    {
-        var log = GetOrCreate(topic);
-        lock (log.Gate)
-        {
-            log.StartOffset = Math.Max(log.StartOffset, Math.Min(beforeOffset, log.Messages.Count));
-            return log.StartOffset;
-        }
-    }
+    private readonly ConcurrentDictionary<string, bool> _compacted = new();
+
+    /// <summary>Marks a topic as having <c>cleanup.policy=compact</c> (the demo/test broker has no real compaction).</summary>
+    public void SetCompacted(string topic, bool compacted) => _compacted[topic] = compacted;
+
+    public bool IsCompacted(string topic) => _compacted.TryGetValue(topic, out var c) && c;
 
     public long GetCommittedOffset(string topic, string consumerGroup)
     {

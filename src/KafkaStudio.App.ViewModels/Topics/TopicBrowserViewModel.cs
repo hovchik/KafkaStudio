@@ -214,63 +214,121 @@ public sealed class TopicBrowserViewModel : ObservableObject
             if (SetProperty(ref _selectedMessage, value))
             {
                 AddSelectedToComparisonCommand?.RaiseCanExecuteChanged();
-                DeleteUpToSelectedCommand?.RaiseCanExecuteChanged();
+                DeleteSelectedCommand?.RaiseCanExecuteChanged();
                 CancelDeleteCommand?.Execute(null);
             }
         }
     }
 
-    // ------------------------------------------------------------------ delete records ----
+    // ------------------------------------------------------------------ delete message ----
+    // Kafka can't remove one record from a log. The only per-message delete is a tombstone (null value)
+    // for the record's key on a compacted topic, which makes compaction drop that key's records.
 
     private bool _isDeleteConfirmPending;
-    /// <summary>True while the inline "are you sure?" panel for deleting records is shown.</summary>
-    public bool IsDeleteConfirmPending { get => _isDeleteConfirmPending; private set { if (SetProperty(ref _isDeleteConfirmPending, value)) ConfirmDeleteCommand?.RaiseCanExecuteChanged(); } }
+    /// <summary>True while the inline "are you sure?" panel for deleting the selected message is shown.</summary>
+    public bool IsDeleteConfirmPending
+    {
+        get => _isDeleteConfirmPending;
+        private set
+        {
+            if (SetProperty(ref _isDeleteConfirmPending, value)) ConfirmDeleteCommand?.RaiseCanExecuteChanged();
+        }
+    }
 
-    private string _deleteConfirmText = "";
-    public string DeleteConfirmText { get => _deleteConfirmText; private set => SetProperty(ref _deleteConfirmText, value); }
+    private string? _deletePanelText;
+    /// <summary>Confirmation question, or the reason this message can't be deleted. Null hides the panel.</summary>
+    public string? DeletePanelText
+    {
+        get => _deletePanelText;
+        private set { if (SetProperty(ref _deletePanelText, value)) OnPropertyChanged(nameof(HasDeletePanel)); }
+    }
+
+    public bool HasDeletePanel => DeletePanelText is not null;
 
     private KafkaMessage? _deleteTarget;
 
-    /// <summary>Step 1: asks for confirmation to delete everything before the selected message in its partition.</summary>
-    public RelayCommand DeleteUpToSelectedCommand { get; private set; } = null!;
-    /// <summary>Step 2: performs the deletion (Kafka DeleteRecords).</summary>
+    /// <summary>Step 1: checks that the selected message can be deleted and asks for confirmation (or explains why not).</summary>
+    public AsyncRelayCommand DeleteSelectedCommand { get; private set; } = null!;
+    /// <summary>Step 2: produces the tombstone for the selected message's key.</summary>
     public AsyncRelayCommand ConfirmDeleteCommand { get; private set; } = null!;
     public RelayCommand CancelDeleteCommand { get; private set; } = null!;
 
     private void InitDeleteCommands()
     {
-        DeleteUpToSelectedCommand = new RelayCommand(() =>
-        {
-            if (SelectedMessage is not { } m) return;
-            _deleteTarget = m;
-            DeleteConfirmText = $"Permanently delete every message in '{m.Topic}' partition {m.Partition} with offset below {m.Offset}? " +
-                "Kafka can't remove a single message - the selected one is kept. This can't be undone.";
-            IsDeleteConfirmPending = true;
-        }, () => SelectedMessage is not null && SelectedConnection is not null);
+        DeleteSelectedCommand = new AsyncRelayCommand(PrepareDeleteAsync,
+            () => SelectedMessage is not null && SelectedConnection is not null);
         CancelDeleteCommand = new RelayCommand(() =>
         {
             _deleteTarget = null;
             IsDeleteConfirmPending = false;
+            DeletePanelText = null;
         });
         ConfirmDeleteCommand = new AsyncRelayCommand(ConfirmDeleteAsync, () => IsDeleteConfirmPending);
+    }
+
+    private async Task PrepareDeleteAsync()
+    {
+        CancelDeleteCommand.Execute(null);
+        if (SelectedMessage is not { } m || SelectedConnection is null ||
+            !_state.Connections.TryGetValue(SelectedConnection, out var gateway))
+        {
+            return;
+        }
+
+        if (m.IsTombstone)
+        {
+            DeletePanelText = "This message is already a tombstone (delete marker); there is nothing to delete.";
+            return;
+        }
+        if (string.IsNullOrEmpty(m.Key))
+        {
+            DeletePanelText = "This message has no key. Kafka can only delete a message by key (with a tombstone on a compacted topic), so it can't be deleted.";
+            return;
+        }
+
+        try
+        {
+            if (!await gateway.IsTopicCompactedAsync(m.Topic).ConfigureAwait(true))
+            {
+                DeletePanelText = $"Kafka can't delete a single message from '{m.Topic}'. " +
+                    "Deleting works only on compacted topics (cleanup.policy=compact), where a tombstone for the key removes it.";
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            DeletePanelText = $"Couldn't check whether '{m.Topic}' is compacted: {ex.Message}";
+            return;
+        }
+
+        _deleteTarget = m;
+        DeletePanelText = $"Delete the message with key \"{m.Key}\" from '{m.Topic}'? This sends a tombstone for that key; " +
+            "once Kafka compacts the topic, every message with this key before the tombstone is removed, not just this one. This can't be undone.";
+        IsDeleteConfirmPending = true;
     }
 
     private async Task ConfirmDeleteAsync()
     {
         var target = _deleteTarget;
-        IsDeleteConfirmPending = false;
-        _deleteTarget = null;
+        CancelDeleteCommand.Execute(null);
         if (target is null || SelectedConnection is null ||
             !_state.Connections.TryGetValue(SelectedConnection, out var gateway))
         {
             return;
         }
 
-        StatusMessage = $"Deleting messages before offset {target.Offset} in '{target.Topic}' [{target.Partition}]...";
+        StatusMessage = $"Sending tombstone for key \"{target.Key}\" to '{target.Topic}'...";
         try
         {
-            var newStart = await gateway.DeleteRecordsBeforeAsync(target.Topic, target.Partition, target.Offset).ConfigureAwait(true);
-            StatusMessage = $"Deleted messages before offset {target.Offset} in '{target.Topic}' [{target.Partition}] (log now starts at {newStart}).";
+            var receipt = await gateway.ProduceAsync(new ProduceRequest
+            {
+                Topic = target.Topic,
+                Key = target.Key,
+                Value = null,
+                Partition = target.Partition
+            }).ConfigureAwait(true);
+            StatusMessage = $"Tombstone for key \"{target.Key}\" written to '{target.Topic}' [{receipt.Partition}] at offset {receipt.Offset}. " +
+                "The message disappears once Kafka compacts the topic.";
             if (SelectedTopic == target.Topic) await LoadMessagesAsync(null).ConfigureAwait(true);
         }
         catch (Exception ex)

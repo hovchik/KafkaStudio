@@ -42,12 +42,10 @@ public interface IKafkaGateway : IAsyncDisposable
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Deletes every record in <paramref name="partition"/> of <paramref name="topic"/> whose offset is
-    /// lower than <paramref name="beforeOffset"/> (Kafka's DeleteRecords). Kafka cannot remove a single
-    /// record from the middle of a log - only advance the log start offset. Returns the new log start offset.
+    /// True when the topic's <c>cleanup.policy</c> includes "compact". Only on such topics does producing a
+    /// tombstone (null value) for a key actually remove that key's earlier messages (once compaction runs).
     /// </summary>
-    Task<long> DeleteRecordsBeforeAsync(string topic, int partition, long beforeOffset,
-        CancellationToken cancellationToken = default);
+    Task<bool> IsTopicCompactedAsync(string topic, CancellationToken cancellationToken = default);
 
     /// <summary>Commits the offset for a message that was consumed with AutoAcknowledge = false.</summary>
     Task AcknowledgeAsync(KafkaMessage message, CancellationToken cancellationToken = default);

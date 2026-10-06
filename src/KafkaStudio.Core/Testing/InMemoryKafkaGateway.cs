@@ -114,24 +114,20 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
             // on nothing can be missed.
             options.OnReady?.Invoke();
 
-            // Deleted records are not in 'history', so history[i] has offset logStart + i.
-            var logStart = history.Count > 0 ? history[0].Offset : _broker.GetOffsets(options.Topic).earliest;
-            var logEnd = logStart + history.Count;
             long startOffset = options.StartPosition switch
             {
-                ConsumeStartPosition.Earliest => logStart,
-                ConsumeStartPosition.Latest => logEnd,
+                ConsumeStartPosition.Earliest => 0,
+                ConsumeStartPosition.Latest => history.Count,
                 ConsumeStartPosition.Committed => _broker.GetCommittedOffset(options.Topic, options.ConsumerGroup) + 1,
-                ConsumeStartPosition.FromTimestamp => logStart + FindFirstIndexAtOrAfter(history, options.FromTimestamp),
-                ConsumeStartPosition.Tail => Math.Max(logStart, logEnd - Math.Max(0, options.TailCount)),
-                _ => logEnd
+                ConsumeStartPosition.FromTimestamp => FindFirstIndexAtOrAfter(history, options.FromTimestamp),
+                ConsumeStartPosition.Tail => Math.Max(0, history.Count - Math.Max(0, options.TailCount)),
+                _ => history.Count
             };
-            startOffset = Math.Max(startOffset, logStart);
 
             var emitted = 0L;
             long nextExpectedOffset = startOffset;
 
-            for (var i = (int)(startOffset - logStart); i < history.Count; i++)
+            for (var i = (int)Math.Max(0, startOffset); i < history.Count; i++)
             {
                 if (options.MaxMessages is { } cap && emitted >= cap) yield break;
                 cancellationToken.ThrowIfCancellationRequested();
@@ -177,19 +173,10 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
         }
     }
 
-    public Task<long> DeleteRecordsBeforeAsync(string topic, int partition, long beforeOffset,
-        CancellationToken cancellationToken = default)
-    {
-        if (!_broker.TopicExists(topic))
-        {
-            return Task.FromException<long>(new KeyNotFoundException($"topic '{topic}' not found"));
-        }
-        if (partition != 0)
-        {
-            return Task.FromException<long>(new ArgumentOutOfRangeException(nameof(partition), $"topic '{topic}' has no partition {partition}"));
-        }
-        return Task.FromResult(_broker.DeleteRecordsBefore(topic, beforeOffset));
-    }
+    public Task<bool> IsTopicCompactedAsync(string topic, CancellationToken cancellationToken = default) =>
+        _broker.TopicExists(topic)
+            ? Task.FromResult(_broker.IsCompacted(topic))
+            : Task.FromException<bool>(new KeyNotFoundException($"topic '{topic}' not found"));
 
     public Task AcknowledgeAsync(KafkaMessage message, CancellationToken cancellationToken = default)
     {
