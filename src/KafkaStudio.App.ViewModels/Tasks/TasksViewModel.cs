@@ -57,9 +57,7 @@ public sealed class TaskRowViewModel : ObservableObject
 
     public void RefreshTimes()
     {
-        NextRun = !IsEnabled ? "paused"
-            : Job.NextRunAt is { } next ? $"next {Format(next)}"
-            : Job.Block.Schedule is null ? "manual only" : "done";
+        NextRun = "manual only";
         LastRun = Job.LastRunAt is { } last ? $"last {Format(last)}" : "";
     }
 
@@ -134,7 +132,8 @@ public sealed class TasksViewModel : ObservableObject
         _state.Scheduler.RunStarted += job => _state.PostToUi(() => OnRunStarted(job));
         _state.Scheduler.RunCompleted += (job, result) => _state.PostToUi(() => OnRunCompleted(job, result));
         _state.Scheduler.RunFailed += (job, ex) => _state.PostToUi(() => OnRunFailed(job, ex));
-        _state.Scheduler.Start();
+        // The scheduler's timer loop is intentionally never started: the app must not produce (or run
+        // anything that produces) on its own. Tasks run only when the user presses "Run now".
 
         RegisterTaskCommand = new RelayCommand(RegisterTask);
         RunNowCommand = new AsyncRelayCommand<TaskRowViewModel>(RunNowAsync, row => row is { IsRunning: false }, allowConcurrentExecutions: true);
@@ -349,9 +348,8 @@ public sealed class TasksViewModel : ObservableObject
     }
 
     private const string DefaultSample = """
-        Task: Heartbeat producer
-        schedule every 5 minutes
+        Task: Example task
         Given use connection "local"
-        When produce message to topic "heartbeats" key "{{$uuid}}" value "ping at {{$now}}"
+        When produce message to topic "example" key "{{$uuid}}" value "hello at {{$now}}"
         """;
 }
