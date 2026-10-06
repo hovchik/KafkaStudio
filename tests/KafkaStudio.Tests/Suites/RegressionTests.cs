@@ -86,30 +86,17 @@ public static class RegressionTests
             Assert.Equal(10, scan.Limit ?? -1);
         });
 
-        runner.Add("Regression: gateway", "DeleteRecords hides everything before the offset and keeps offsets stable", async () =>
+        runner.Add("Regression: gateway", "compacted topics are reported so a tombstone can delete a message", async () =>
         {
             var broker = new InMemoryKafkaBroker();
-            for (var i = 0; i < 5; i++) broker.Append("t", $"k{i}", $"v{i}", null, null, DateTimeOffset.UnixEpoch.AddSeconds(i));
+            broker.EnsureTopic("plain");
+            broker.EnsureTopic("compacted");
+            broker.SetCompacted("compacted", true);
             var gateway = TestKafka.NewGateway(broker);
 
-            var start = await gateway.DeleteRecordsBeforeAsync("t", 0, 3);
-            Assert.Equal(3L, start);
-
-            var meta = await gateway.DescribeTopicAsync("t");
-            Assert.Equal(3L, meta.Partitions[0].EarliestOffset);
-            Assert.Equal(5L, meta.Partitions[0].LatestOffset);
-
-            var seen = new List<long>();
-            await foreach (var m in gateway.ConsumeAsync(new ConsumeOptions
-            {
-                Topic = "t", ConsumerGroup = "g", StartPosition = ConsumeStartPosition.Earliest, StopAtPartitionEnd = true
-            }))
-            {
-                seen.Add(m.Offset);
-            }
-            Assert.Equal("3,4", string.Join(",", seen));
-
-            await Assert.ThrowsAsync<KeyNotFoundException>(() => gateway.DeleteRecordsBeforeAsync("nope", 0, 1));
+            Assert.False(await gateway.IsTopicCompactedAsync("plain"));
+            Assert.True(await gateway.IsTopicCompactedAsync("compacted"));
+            await Assert.ThrowsAsync<KeyNotFoundException>(() => gateway.IsTopicCompactedAsync("nope"));
         });
 
         runner.Add("Regression: lexer", "CRLF doc strings carry no carriage returns", () =>
@@ -606,7 +593,7 @@ public static class RegressionTests
             yield break;
         }
 #pragma warning restore CS1998
-        public Task<long> DeleteRecordsBeforeAsync(string topic, int partition, long beforeOffset, CancellationToken cancellationToken = default) => inner.DeleteRecordsBeforeAsync(topic, partition, beforeOffset, cancellationToken);
+        public Task<bool> IsTopicCompactedAsync(string topic, CancellationToken cancellationToken = default) => inner.IsTopicCompactedAsync(topic, cancellationToken);
         public Task AcknowledgeAsync(KafkaMessage message, CancellationToken cancellationToken = default) => inner.AcknowledgeAsync(message, cancellationToken);
         public Task<IReadOnlyList<ConsumerGroupSummary>> ListConsumerGroupsAsync(CancellationToken cancellationToken = default) => inner.ListConsumerGroupsAsync(cancellationToken);
         public Task<ConsumerGroupDetail> DescribeConsumerGroupAsync(string groupId, CancellationToken cancellationToken = default) => inner.DescribeConsumerGroupAsync(groupId, cancellationToken);

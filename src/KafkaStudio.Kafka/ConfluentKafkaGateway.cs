@@ -315,21 +315,23 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
         };
     }
 
-    public async Task<long> DeleteRecordsBeforeAsync(string topic, int partition, long beforeOffset,
-        CancellationToken cancellationToken = default)
+    public async Task<bool> IsTopicCompactedAsync(string topic, CancellationToken cancellationToken = default)
     {
         try
         {
-            var results = await RequireAdmin().DeleteRecordsAsync(new[]
-            {
-                new TopicPartitionOffset(topic, new Partition(partition), new Offset(beforeOffset))
-            }).WaitAsync(cancellationToken).ConfigureAwait(false);
-            return results.Count > 0 ? results[0].Offset.Value : beforeOffset;
+            var results = await RequireAdmin().DescribeConfigsAsync(
+                new[] { new ConfigResource { Type = ResourceType.Topic, Name = topic } },
+                new DescribeConfigsOptions { RequestTimeout = MetadataTimeout })
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+            return results
+                .SelectMany(r => r.Entries)
+                .Any(e => e.Key == "cleanup.policy" &&
+                          (e.Value.Value ?? "").Split(',', StringSplitOptions.TrimEntries).Contains("compact"));
         }
-        catch (DeleteRecordsException ex)
+        catch (DescribeConfigsException ex)
         {
             var reason = ex.Results.FirstOrDefault(r => r.Error.IsError)?.Error.Reason ?? ex.Message;
-            throw new InvalidOperationException($"could not delete records from '{topic}' [{partition}]: {reason}", ex);
+            throw new InvalidOperationException($"could not read config of topic '{topic}': {reason}", ex);
         }
         catch (KafkaException ex)
         {
