@@ -1,0 +1,172 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.ConsumerGroups"
+             xmlns:msg="using:KafkaStudio.Core.Messaging"
+             x:Class="KafkaStudio.App.Views.ConsumerGroups.ConsumerGroupsView"
+             x:DataType="vm:ConsumerGroupsViewModel">
+
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="F5" Command="{Binding RefreshCommand}" />
+  </UserControl.KeyBindings>
+
+  <Grid RowDefinitions="Auto,*">
+
+    <Border Grid.Row="0" Classes="toolbar">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*">
+        <ComboBox Grid.Column="0" Width="170" PlaceholderText="Connection…"
+                  ItemsSource="{Binding ConnectionNames}" SelectedItem="{Binding SelectedConnection}"
+                  ToolTip.Tip="Connection" />
+        <Button Grid.Column="1" Content="⟳" Command="{Binding RefreshCommand}" ToolTip.Tip="Reload consumer groups (F5)" />
+        <Border Grid.Column="2" Classes="sep" />
+        <TextBox Grid.Column="3" Width="200" Text="{Binding GroupFilter}" Watermark="Filter groups"
+                 ToolTip.Tip="Filter the group list (contains)" />
+        <TextBlock Grid.Column="4" Classes="muted" Text="{Binding StatusMessage}" Margin="10,0,0,0"
+                   TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding StatusMessage}" />
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="1" Margin="0,6,0,0" ColumnDefinitions="300,6,*">
+
+      <!-- Groups -->
+      <Border Grid.Column="0" Classes="pane">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Margin="0,0,0,6">
+            <Run Text="Consumer groups" /><Run Text=" " /><Run Text="{Binding Groups.Count}" Foreground="{DynamicResource MutedTextBrush}" />
+          </TextBlock>
+          <ListBox ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroup}" Classes="rows">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="msg:ConsumerGroupSummary">
+                <StackPanel Spacing="1">
+                  <TextBlock Text="{Binding GroupId}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding GroupId}" />
+                  <TextBlock Classes="muted" FontSize="12">
+                    <Run Text="{Binding State}" /><Run Text=" · " /><Run Text="{Binding MemberCount}" /><Run Text=" member(s)" />
+                  </TextBlock>
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Border>
+
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
+
+      <!-- Selected group -->
+      <Border Grid.Column="2" Classes="pane">
+        <Panel>
+          <TextBlock Classes="hint" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
+                     Text="Select a consumer group to see its offsets and lag."
+                     IsVisible="{Binding !HasDetail}" />
+
+          <DockPanel IsVisible="{Binding HasDetail}">
+            <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,6">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Classes="paneTitle" Text="{Binding SelectedGroup.GroupId}" TextTrimming="CharacterEllipsis" />
+                <Button Grid.Column="1" Classes="small" Content="Refresh" Command="{Binding RefreshDetailCommand}"
+                        ToolTip.Tip="Reload this group's offsets and state" />
+              </Grid>
+              <TextBlock Classes="muted" Text="{Binding DetailSummary}" />
+              <Border Classes="badge warn" IsVisible="{Binding IsGroupActive}" HorizontalAlignment="Stretch">
+                <TextBlock Text="{Binding ActiveGroupWarning}" TextWrapping="Wrap" />
+              </Border>
+            </StackPanel>
+
+            <!-- Reset offsets -->
+            <Border DockPanel.Dock="Bottom" Classes="toolbar" Margin="0,6,0,0">
+              <StackPanel Spacing="6">
+                <TextBlock Classes="paneTitle" Text="Reset offsets" />
+                <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                  <TextBlock Grid.Column="0" Text="Move to" Classes="muted" />
+                  <ComboBox Grid.Column="1" Width="130" ItemsSource="{Binding ResetTargets}" SelectedItem="{Binding ResetTarget}" />
+                  <TextBox Grid.Column="2" Width="190" Text="{Binding ResetTimestamp}" Watermark="2026-10-06 08:00 (UTC)"
+                           IsVisible="{Binding IsTimestampTarget}"
+                           ToolTip.Tip="First message at or after this time. UTC unless you add an offset such as +02:00" />
+                  <NumericUpDown Grid.Column="3" Width="150" Value="{Binding ResetOffset}" Minimum="0" FormatString="0"
+                                 IsVisible="{Binding IsOffsetTarget}" Watermark="offset"
+                                 ToolTip.Tip="Clamped to what each partition still holds" />
+                  <TextBlock Grid.Column="4" Text="Topic" Classes="muted" />
+                  <ComboBox Grid.Column="5" Width="170" ItemsSource="{Binding Topics}" SelectedItem="{Binding ResetTopic}"
+                            PlaceholderText="all topics" IsEnabled="{Binding !OnlySelectedPartition}" />
+                  <CheckBox Grid.Column="6" Content="Selected partition only" IsChecked="{Binding OnlySelectedPartition}"
+                            IsEnabled="{Binding HasSelectedOffset}"
+                            ToolTip.Tip="Select a row in the table above to limit the reset to that partition" />
+                  <Button Grid.Column="7" Content="Preview reset…" Classes="primary" Margin="0"
+                          Command="{Binding PreviewResetCommand}"
+                          ToolTip.Tip="Shows the old and new offsets first - nothing changes until you apply" />
+                </Grid>
+
+                <!-- Confirmation -->
+                <Border Classes="empty" IsVisible="{Binding IsConfirming}">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="{Binding ConfirmationText}" TextWrapping="Wrap" Foreground="White" FontWeight="SemiBold" />
+                    <ScrollViewer MaxHeight="150">
+                      <ItemsControl ItemsSource="{Binding PendingChanges}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:OffsetChangeRowViewModel">
+                            <Grid ColumnDefinitions="*,110,30,110" Margin="0,1">
+                              <TextBlock Grid.Column="0" Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                              <TextBlock Grid.Column="1" Text="{Binding From}" Classes="mono" TextAlignment="Right" />
+                              <TextBlock Grid.Column="2" Text="→" TextAlignment="Center" Classes="muted" />
+                              <TextBlock Grid.Column="3" Text="{Binding To}" Classes="mono" FontWeight="Bold" />
+                            </Grid>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </ScrollViewer>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <Button Content="Apply" Classes="primary danger" Command="{Binding ApplyResetCommand}" />
+                      <Button Content="Cancel" Command="{Binding CancelResetCommand}" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </Border>
+
+            <Expander DockPanel.Dock="Bottom" Header="Members" Margin="0,6,0,0" HorizontalAlignment="Stretch">
+              <Panel>
+                <TextBlock Classes="hint" Text="No live members." IsVisible="{Binding !Members.Count}" />
+                <ItemsControl ItemsSource="{Binding Members}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="msg:ConsumerGroupMember">
+                      <StackPanel Margin="0,2">
+                        <TextBlock Classes="mono" Text="{Binding MemberId}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Classes="muted" FontSize="12">
+                          <Run Text="{Binding ClientId}" /><Run Text=" · " /><Run Text="{Binding Host}" />
+                        </TextBlock>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </Panel>
+            </Expander>
+
+            <!-- Offsets table -->
+            <DockPanel>
+              <Grid DockPanel.Dock="Top" ColumnDefinitions="*,70,110,110,110,110" Margin="10,0,10,4">
+                <TextBlock Grid.Column="0" Classes="label" Text="Topic" />
+                <TextBlock Grid.Column="1" Classes="label" Text="Partition" TextAlignment="Right" />
+                <TextBlock Grid.Column="2" Classes="label" Text="Committed" TextAlignment="Right" ToolTip.Tip="Next offset the group will read" />
+                <TextBlock Grid.Column="3" Classes="label" Text="Earliest" TextAlignment="Right" />
+                <TextBlock Grid.Column="4" Classes="label" Text="End" TextAlignment="Right" ToolTip.Tip="Offset the next produced message gets" />
+                <TextBlock Grid.Column="5" Classes="label" Text="Lag" TextAlignment="Right" />
+              </Grid>
+              <ListBox ItemsSource="{Binding Offsets}" SelectedItem="{Binding SelectedOffset}" Classes="rows">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:GroupOffsetRowViewModel">
+                    <Grid ColumnDefinitions="*,70,110,110,110,110">
+                      <TextBlock Grid.Column="0" Text="{Binding Topic}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Grid.Column="1" Text="{Binding Partition}" Classes="mono" TextAlignment="Right" />
+                      <TextBlock Grid.Column="2" Text="{Binding Committed}" Classes="mono" TextAlignment="Right" />
+                      <TextBlock Grid.Column="3" Text="{Binding Earliest}" Classes="mono" TextAlignment="Right" />
+                      <TextBlock Grid.Column="4" Text="{Binding End}" Classes="mono" TextAlignment="Right" />
+                      <TextBlock Grid.Column="5" Text="{Binding Lag}" Classes="mono" TextAlignment="Right" FontWeight="Bold" />
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
+          </DockPanel>
+        </Panel>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

@@ -1,6 +1,7 @@
 using KafkaStudio.App.ViewModels.Brokers;
 using KafkaStudio.App.ViewModels.Connections;
 using KafkaStudio.App.ViewModels.Consumer;
+using KafkaStudio.App.ViewModels.ConsumerGroups;
 using KafkaStudio.App.ViewModels.DataSearch;
 using KafkaStudio.App.ViewModels.Mvvm;
 using KafkaStudio.App.ViewModels.Producer;
@@ -33,6 +34,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public TopicBrowserViewModel Topics { get; }
     public ProducerViewModel Producer { get; }
     public ConsumerViewModel Consumer { get; }
+    public ConsumerGroupsViewModel ConsumerGroups { get; }
     public ScriptEditorViewModel Scripts { get; }
     public TasksViewModel Tasks { get; }
     public RethrowRulesViewModel Rethrow { get; }
@@ -89,6 +91,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Topics = new TopicBrowserViewModel(state);
         Producer = new ProducerViewModel(state);
         Consumer = new ConsumerViewModel(state);
+        ConsumerGroups = new ConsumerGroupsViewModel(state);
         Scripts = new ScriptEditorViewModel(state);
         Tasks = new TasksViewModel(state);
         Rethrow = new RethrowRulesViewModel(state);
@@ -106,7 +109,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             new("rethrow", "Rethrow Rules", "⇄", "Ctrl+6", Rethrow),
             new("search", "Find Data", "⌕", "Ctrl+7", DataSearch),
             new("qa", "QA Lab", "✓", "Ctrl+8", QaLab),
-            new("brokers", "Brokers", "▦", "Ctrl+9", Brokers)
+            new("brokers", "Brokers", "▦", "Ctrl+9", Brokers),
+            new("groups", "Consumer Groups", "☰", "Ctrl+0", ConsumerGroups)
         };
 
         _selectedItem = NavigationItems[0];
