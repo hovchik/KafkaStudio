@@ -605,6 +605,185 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
         }, cancellationToken);
     }
 
+    // ------------------------------------------------------------------ consumer groups ----
+
+    public async Task<IReadOnlyList<ConsumerGroupSummary>> ListConsumerGroupsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var listed = await RequireAdmin().ListConsumerGroupsAsync(new ListConsumerGroupsOptions { RequestTimeout = MetadataTimeout })
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+            var ids = listed.Valid.Select(g => g.GroupId).OrderBy(g => g, StringComparer.Ordinal).ToList();
+            if (ids.Count == 0) return Array.Empty<ConsumerGroupSummary>();
+
+            // The listing has no member counts - one describe call covers every group.
+            var described = await RequireAdmin().DescribeConsumerGroupsAsync(ids, new DescribeConsumerGroupsOptions { RequestTimeout = MetadataTimeout })
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+            var byId = described.ConsumerGroupDescriptions.ToDictionary(d => d.GroupId, StringComparer.Ordinal);
+
+            return ids.Select(id => byId.TryGetValue(id, out var d) && !d.Error.IsError
+                ? new ConsumerGroupSummary { GroupId = id, State = d.State.ToString(), MemberCount = d.Members.Count }
+                : new ConsumerGroupSummary
+                {
+                    GroupId = id,
+                    State = listed.Valid.First(g => g.GroupId == id).State.ToString()
+                }).ToList();
+        }
+        catch (KafkaException ex)
+        {
+            throw WrapTransportError(ex);
+        }
+    }
+
+    public async Task<ConsumerGroupDetail> DescribeConsumerGroupAsync(string groupId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var admin = RequireAdmin();
+            var described = await admin.DescribeConsumerGroupsAsync(new[] { groupId }, new DescribeConsumerGroupsOptions { RequestTimeout = MetadataTimeout })
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+            var description = described.ConsumerGroupDescriptions.FirstOrDefault()
+                ?? throw new KeyNotFoundException($"consumer group '{groupId}' not found");
+            if (description.Error.IsError) throw new KafkaException(description.Error);
+
+            var offsetResults = await admin.ListConsumerGroupOffsetsAsync(
+                    new[] { new ConsumerGroupTopicPartitions(groupId, null) },
+                    new ListConsumerGroupOffsetsOptions { RequestTimeout = MetadataTimeout })
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+            var committed = offsetResults.SelectMany(r => r.Partitions).ToList();
+            var failed = committed.FirstOrDefault(c => c.Error.IsError);
+            if (failed is not null) throw new KafkaException(failed.Error);
+
+            // A group can be assigned partitions it never committed on - show those too (lag counts from earliest).
+            var partitions = committed.Select(c => (c.TopicPartition, Committed: c.Offset.Value >= 0 ? (long?)c.Offset.Value : null))
+                .Concat(description.Members.SelectMany(m => m.Assignment.TopicPartitions)
+                    .Where(tp => committed.All(c => c.TopicPartition != tp))
+                    .Select(tp => (TopicPartition: tp, Committed: (long?)null)))
+                .OrderBy(p => p.TopicPartition.Topic, StringComparer.Ordinal).ThenBy(p => p.TopicPartition.Partition.Value)
+                .ToList();
+
+            var offsets = await Task.Run(() =>
+            {
+                using var probe = BuildConsumer($"kafka-studio-groups-{Guid.NewGuid():N}");
+                return partitions.Select(p =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var w = QueryWatermarks(probe, p.TopicPartition);
+                    return new ConsumerGroupOffset
+                    {
+                        Topic = p.TopicPartition.Topic,
+                        Partition = p.TopicPartition.Partition.Value,
+                        CommittedOffset = p.Committed,
+                        EarliestOffset = w.Low.Value,
+                        EndOffset = w.High.Value
+                    };
+                }).ToList();
+            }, cancellationToken).ConfigureAwait(false);
+
+            return new ConsumerGroupDetail
+            {
+                GroupId = groupId,
+                State = description.State.ToString(),
+                PartitionAssignor = string.IsNullOrEmpty(description.PartitionAssignor) ? null : description.PartitionAssignor,
+                Members = description.Members.Select(m => new ConsumerGroupMember
+                {
+                    MemberId = m.ConsumerId,
+                    ClientId = m.ClientId,
+                    Host = m.Host,
+                    Assignment = m.Assignment.TopicPartitions.Select(tp => $"{tp.Topic}[{tp.Partition.Value}]").ToList()
+                }).ToList(),
+                Offsets = offsets
+            };
+        }
+        catch (DescribeConsumerGroupsException ex)
+        {
+            throw new InvalidOperationException($"could not describe consumer group '{groupId}': {ex.Results.ConsumerGroupDescriptions.FirstOrDefault()?.Error.Reason ?? ex.Message}", ex);
+        }
+        catch (KafkaException ex)
+        {
+            throw WrapTransportError(ex);
+        }
+    }
+
+    public async Task<IReadOnlyList<OffsetChange>> PlanOffsetResetAsync(OffsetResetRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var detail = await DescribeConsumerGroupAsync(request.GroupId, cancellationToken).ConfigureAwait(false);
+        var scope = detail.Offsets
+            .Where(o => (request.Topic is null || o.Topic == request.Topic) &&
+                        (request.Partition is null || o.Partition == request.Partition))
+            .ToList();
+        if (scope.Count == 0)
+        {
+            throw new InvalidOperationException("no committed partitions of this group match the reset scope");
+        }
+
+        return await Task.Run(() =>
+        {
+            Dictionary<TopicPartition, long>? byTime = null;
+            if (request.Target == OffsetResetTarget.Timestamp)
+            {
+                var when = request.Timestamp ?? throw new ArgumentException("a timestamp is required");
+                var ts = new Timestamp(when.UtcDateTime, TimestampType.CreateTime);
+                using var probe = BuildConsumer($"kafka-studio-groups-{Guid.NewGuid():N}");
+                byTime = probe.OffsetsForTimes(
+                        scope.Select(o => new TopicPartitionTimestamp(new TopicPartition(o.Topic, new Partition(o.Partition)), ts)),
+                        MetadataTimeout)
+                    .ToDictionary(r => r.TopicPartition, r => r.Offset.Value);
+            }
+
+            return (IReadOnlyList<OffsetChange>)scope.Select(o =>
+            {
+                long target = request.Target switch
+                {
+                    OffsetResetTarget.Earliest => o.EarliestOffset,
+                    OffsetResetTarget.Latest => o.EndOffset,
+                    OffsetResetTarget.Timestamp =>
+                        // No message at/after the timestamp -> the partition's end.
+                        byTime![new TopicPartition(o.Topic, new Partition(o.Partition))] is var found and >= 0 ? found : o.EndOffset,
+                    _ => Math.Clamp(request.Offset ?? throw new ArgumentException("an offset is required"),
+                        o.EarliestOffset, o.EndOffset)
+                };
+                return new OffsetChange { Topic = o.Topic, Partition = o.Partition, CurrentOffset = o.CommittedOffset, NewOffset = target };
+            }).ToList();
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task ApplyOffsetResetAsync(string groupId, IReadOnlyList<OffsetChange> changes,
+        CancellationToken cancellationToken = default)
+    {
+        // Check up front so the user gets a plain explanation instead of a broker error code.
+        var current = await DescribeConsumerGroupAsync(groupId, cancellationToken).ConfigureAwait(false);
+        if (current.IsActive)
+        {
+            throw new InvalidOperationException(
+                $"consumer group '{groupId}' is active (state {current.State}, {current.Members.Count} member(s)); " +
+                "stop all of its consumers before changing offsets");
+        }
+
+        try
+        {
+            await RequireAdmin().AlterConsumerGroupOffsetsAsync(
+                new[]
+                {
+                    new ConsumerGroupTopicPartitionOffsets(groupId, changes
+                        .Select(c => new TopicPartitionOffset(new TopicPartition(c.Topic, new Partition(c.Partition)), new Offset(c.NewOffset)))
+                        .ToList())
+                },
+                new AlterConsumerGroupOffsetsOptions { RequestTimeout = MetadataTimeout })
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (AlterConsumerGroupOffsetsException ex)
+        {
+            var reason = ex.Results.SelectMany(r => r.Partitions).FirstOrDefault(p => p.Error.IsError)?.Error.Reason ?? ex.Message;
+            throw new InvalidOperationException($"could not update offsets for consumer group '{groupId}': {reason}", ex);
+        }
+        catch (KafkaException ex)
+        {
+            throw WrapTransportError(ex);
+        }
+    }
+
     private IProducer<byte[]?, byte[]?> RequireProducer() =>
         _producer ?? throw new InvalidOperationException("not connected - call ConnectAsync first");
 

@@ -1,0 +1,178 @@
+using KafkaStudio.App.ViewModels.ConsumerGroups;
+using KafkaStudio.App.ViewModels.Shared;
+using KafkaStudio.Core.Messaging;
+using KafkaStudio.Core.Testing;
+using KafkaStudio.Tests.Harness;
+
+namespace KafkaStudio.Tests.Suites;
+
+/// <summary>Consumer group listing, lag and offset resets - the gateway contract (in-memory) and the Consumer Groups screen.</summary>
+public static class ConsumerGroupTests
+{
+    private static async Task<(AppState state, InMemoryKafkaBroker broker)> Seeded()
+    {
+        var state = new AppState();
+        state.AddDemoConnection("local");
+        var gateway = state.Connections["local"];
+        for (var i = 0; i < 10; i++)
+        {
+            await gateway.ProduceAsync(new ProduceRequest { Topic = "orders", Key = $"ORD-{i}", Value = $"{{\"n\":{i}}}" });
+        }
+        // The group has read (and committed) the first 4 messages.
+        state.DemoBroker.Commit("orders", "billing", 3);
+        return (state, state.DemoBroker);
+    }
+
+    private static async Task WaitUntil(Func<bool> condition)
+    {
+        for (var i = 0; i < 200 && !condition(); i++) await Task.Delay(10);
+        Assert.True(condition(), "timed out waiting for the screen to load");
+    }
+
+    public static void Register(TestRunner runner)
+    {
+        runner.Add("Consumer groups", "lists groups with committed offset, end offset and lag", async () =>
+        {
+            var (state, _) = await Seeded();
+            var gateway = state.Connections["local"];
+
+            var groups = await gateway.ListConsumerGroupsAsync();
+            Assert.Equal(1, groups.Count);
+            Assert.Equal("billing", groups[0].GroupId);
+            Assert.Equal("Empty", groups[0].State);
+
+            var detail = await gateway.DescribeConsumerGroupAsync("billing");
+            var row = detail.Offsets.Single();
+            Assert.Equal(4L, row.CommittedOffset);
+            Assert.Equal(10L, row.EndOffset);
+            Assert.Equal(6L, row.Lag);
+            Assert.Equal(6L, detail.TotalLag);
+        });
+
+        runner.Add("Consumer groups", "reset to earliest, latest and an explicit offset", async () =>
+        {
+            var (state, _) = await Seeded();
+            var gateway = state.Connections["local"];
+
+            async Task<long?> ResetTo(OffsetResetTarget target, long? offset = null)
+            {
+                var plan = await gateway.PlanOffsetResetAsync(new OffsetResetRequest { GroupId = "billing", Target = target, Offset = offset });
+                await gateway.ApplyOffsetResetAsync("billing", plan);
+                return (await gateway.DescribeConsumerGroupAsync("billing")).Offsets.Single().CommittedOffset;
+            }
+
+            Assert.Equal(10L, await ResetTo(OffsetResetTarget.Latest));
+            Assert.Equal(7L, await ResetTo(OffsetResetTarget.Offset, 7));
+            Assert.Equal(10L, await ResetTo(OffsetResetTarget.Offset, 999)); // clamped to the end
+            Assert.Null(await ResetTo(OffsetResetTarget.Earliest));          // offset 0 reads as "nothing committed"
+            Assert.Equal(10L, (await gateway.DescribeConsumerGroupAsync("billing")).TotalLag);
+        });
+
+        runner.Add("Consumer groups", "planning a reset changes nothing", async () =>
+        {
+            var (state, _) = await Seeded();
+            var gateway = state.Connections["local"];
+
+            var plan = await gateway.PlanOffsetResetAsync(new OffsetResetRequest { GroupId = "billing", Target = OffsetResetTarget.Latest });
+
+            Assert.Equal(4L, plan.Single().CurrentOffset);
+            Assert.Equal(10L, plan.Single().NewOffset);
+            Assert.Equal(4L, (await gateway.DescribeConsumerGroupAsync("billing")).Offsets.Single().CommittedOffset);
+        });
+
+        runner.Add("Consumer groups", "reset to a timestamp lands on the first message at or after it", async () =>
+        {
+            var (state, broker) = await Seeded();
+            var gateway = state.Connections["local"];
+            var timestamps = broker.GetTimestamps("orders");
+            var target = timestamps[6].timestamp;
+
+            var plan = await gateway.PlanOffsetResetAsync(new OffsetResetRequest
+            {
+                GroupId = "billing", Target = OffsetResetTarget.Timestamp, Timestamp = target
+            });
+
+            // Messages produced in the same instant share a timestamp, so the first one at/after it wins.
+            var expected = timestamps.First(t => t.timestamp >= target).offset;
+            Assert.Equal(expected, plan.Single().NewOffset);
+
+            var future = await gateway.PlanOffsetResetAsync(new OffsetResetRequest
+            {
+                GroupId = "billing", Target = OffsetResetTarget.Timestamp, Timestamp = DateTimeOffset.UtcNow.AddYears(1)
+            });
+            Assert.Equal(10L, future.Single().NewOffset);
+        });
+
+        runner.Add("Consumer groups", "an active group is flagged and its offsets cannot be changed", async () =>
+        {
+            var (state, broker) = await Seeded();
+            var gateway = state.Connections["local"];
+            broker.SimulateActiveMembers("billing", 2);
+
+            var detail = await gateway.DescribeConsumerGroupAsync("billing");
+            Assert.True(detail.IsActive);
+            Assert.Equal(2, detail.Members.Count);
+
+            var plan = await gateway.PlanOffsetResetAsync(new OffsetResetRequest { GroupId = "billing", Target = OffsetResetTarget.Latest });
+            await Assert.ThrowsAsync<InvalidOperationException>(() => gateway.ApplyOffsetResetAsync("billing", plan));
+            Assert.Equal(4L, (await gateway.DescribeConsumerGroupAsync("billing")).Offsets.Single().CommittedOffset);
+        });
+
+        runner.Add("ViewModels: Consumer Groups", "shows lag for the selected group and warns when it is active", async () =>
+        {
+            var (state, broker) = await Seeded();
+            broker.SimulateActiveMembers("billing", 1);
+            var vm = new ConsumerGroupsViewModel(state);
+
+            await WaitUntil(() => vm.Groups.Count == 1);
+            vm.SelectedGroup = vm.Groups[0];
+            await WaitUntil(() => vm.HasDetail);
+
+            Assert.Equal(1, vm.Offsets.Count);
+            Assert.Equal(6L, vm.Offsets[0].Lag);
+            Assert.True(vm.IsGroupActive);
+            Assert.NotNull(vm.ActiveGroupWarning);
+            Assert.False(vm.PreviewResetCommand.CanExecute(null), "preview must be disabled for an active group");
+        });
+
+        runner.Add("ViewModels: Consumer Groups", "a reset needs a preview, then applying it moves the offsets", async () =>
+        {
+            var (state, _) = await Seeded();
+            var vm = new ConsumerGroupsViewModel(state);
+            await WaitUntil(() => vm.Groups.Count == 1);
+            vm.SelectedGroup = vm.Groups[0];
+            await WaitUntil(() => vm.HasDetail);
+
+            vm.ResetTarget = OffsetResetTarget.Offset;
+            vm.ResetOffset = 8;
+            await vm.PreviewResetCommand.ExecuteAsync();
+
+            Assert.True(vm.IsConfirming);
+            Assert.Equal(1, vm.PendingChanges.Count);
+            Assert.Equal(8L, vm.PendingChanges[0].To);
+            Assert.Equal(4L, vm.Detail!.Offsets.Single().CommittedOffset); // nothing applied yet
+
+            await vm.ApplyResetCommand.ExecuteAsync();
+
+            Assert.False(vm.IsConfirming);
+            Assert.Equal(8L, vm.Detail!.Offsets.Single().CommittedOffset);
+            Assert.Equal(2L, vm.Detail.TotalLag);
+        });
+
+        runner.Add("ViewModels: Consumer Groups", "invalid timestamp input is reported instead of resetting", async () =>
+        {
+            var (state, _) = await Seeded();
+            var vm = new ConsumerGroupsViewModel(state);
+            await WaitUntil(() => vm.Groups.Count == 1);
+            vm.SelectedGroup = vm.Groups[0];
+            await WaitUntil(() => vm.HasDetail);
+
+            vm.ResetTarget = OffsetResetTarget.Timestamp;
+            vm.ResetTimestamp = "yesterday-ish";
+            await vm.PreviewResetCommand.ExecuteAsync();
+
+            Assert.False(vm.IsConfirming);
+            Assert.Contains("timestamp", vm.StatusMessage ?? "");
+        });
+    }
+}
