@@ -53,9 +53,9 @@
           <ListBox Classes="rows" ItemsSource="{Binding Config}">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="msg:BrokerConfigEntry">
-                <Grid ColumnDefinitions="2*,2*,Auto" ColumnSpacing="10">
-                  <TextBlock Grid.Column="0" Classes="mono" Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
-                  <TextBlock Grid.Column="1" Classes="mono" Foreground="White" Text="{Binding Value}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Value}" />
+                <Grid ColumnDefinitions="2*,2*,Auto">
+                  <TextBlock Grid.Column="0" Margin="0,0,10,0" Classes="mono" Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
+                  <TextBlock Grid.Column="1" Margin="0,0,10,0" Classes="mono" Foreground="White" Text="{Binding Value}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Value}" />
                   <TextBlock Grid.Column="2" Classes="muted" Text="{Binding Source}" />
                 </Grid>
               </DataTemplate>
