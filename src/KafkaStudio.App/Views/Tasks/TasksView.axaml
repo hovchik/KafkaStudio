@@ -30,7 +30,7 @@
           <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0" Spacing="2">
             <TextBlock Classes="error" Text="{Binding ParseError}"
                        IsVisible="{Binding ParseError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-            <TextBlock Classes="hint" Text="schedule run once · schedule every 5 minutes · schedule at 9:30 (local time). Registered tasks are saved and restored on restart." />
+            <TextBlock Classes="hint" Text="schedule run once · schedule every 5 minutes · schedule at 9:30 (local time). Tasks never run automatically: schedules are informational and a task only runs when you press Run now." />
           </StackPanel>
           <TextBox Text="{Binding NewTaskSource}"
                    AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"

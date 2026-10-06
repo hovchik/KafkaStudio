@@ -130,6 +130,25 @@ public static class ViewModelTests
             Assert.Equal("Heartbeat", vm.Jobs[0].Name);
             Assert.Contains("every", vm.Jobs[0].Schedule);
         });
+
+        runner.Add("ViewModels: Tasks", "scheduled tasks never run on their own - only via Run now", () =>
+        {
+            var state = new AppState();
+            state.AddDemoConnection("local");
+            var vm = new TasksViewModel(state);
+
+            vm.NewTaskSource = """
+                Task: Heartbeat
+                schedule run once
+                Given use connection "local"
+                When produce message to topic "heartbeats" value "ping"
+                """;
+            vm.RegisterTaskCommand.Execute(null);
+            System.Threading.Thread.Sleep(2500); // longer than the scheduler's 1s tick
+
+            Assert.Equal(0, vm.Jobs[0].Job.RunCount);
+            Assert.Equal("manual only", vm.Jobs[0].NextRun);
+        });
     }
 }
 
