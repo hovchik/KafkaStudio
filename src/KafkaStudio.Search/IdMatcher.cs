@@ -14,15 +14,24 @@ public sealed class IdMatcher
 {
     private readonly Dictionary<string, string> _ids;
     private readonly FieldSelector _field;
+    private readonly StringComparison _comparison;
+
+    /// <summary>Ids that contain a token delimiter ("urn:order:42", "2024-01-01T10:00:00Z", "a/b/c") can never
+    /// equal a token, so inside a value they are looked for with a substring search instead.</summary>
+    private readonly List<string> _delimitedIds = new();
 
     public IdMatcher(IEnumerable<string> ids, FieldSelector field, bool caseSensitive = true)
     {
         _field = field;
+        _comparison = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
         _ids = new Dictionary<string, string>(caseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase);
         foreach (var id in ids)
         {
             var trimmed = id.Trim();
-            if (trimmed.Length > 0) _ids.TryAdd(trimmed, trimmed);
+            if (trimmed.Length > 0 && _ids.TryAdd(trimmed, trimmed) && trimmed.IndexOfAny(TextSimilarity.TokenDelimiters) >= 0)
+            {
+                _delimitedIds.Add(trimmed);
+            }
         }
     }
 
@@ -53,7 +62,16 @@ public sealed class IdMatcher
                 Check(value);
                 if (value.Length <= JsonFlattener.MaxDocumentLength)
                 {
-                    foreach (var token in TextSimilarity.Tokenize(value)) Check(token);
+                    foreach (var token in TextSimilarity.Tokenize(value))
+                    {
+                        Check(token);
+                        // "shipped ORD-1." - a sentence-ending dot is not part of the id.
+                        if (token.EndsWith('.')) Check(token.TrimEnd('.'));
+                    }
+                    foreach (var id in _delimitedIds)
+                    {
+                        if (value.Contains(id, _comparison)) (found ??= new HashSet<string>(StringComparer.Ordinal)).Add(id);
+                    }
                 }
             }
         }

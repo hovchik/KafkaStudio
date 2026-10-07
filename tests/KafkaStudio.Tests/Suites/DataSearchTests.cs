@@ -135,6 +135,23 @@ public static class DataSearchTests
             Assert.Equal("key equals", MessageQuery.Parse("\"key equals\"").Term);
         });
 
+        runner.Add("Search: query language", "a lone field word or a $-word is a plain search, '~=' is explained", () =>
+        {
+            foreach (var text in new[] { "json", "header", "$19.99", "$19.99 off", "key" })
+            {
+                Assert.True(MessageQuery.TryParse(text, null, out var q, out var error), $"{text}: {error}");
+                Assert.False(q!.IsStructured, text);
+                Assert.Equal(text, q.Term);
+            }
+            Assert.True(Q("$19.99", Msg("price $19.99 today")));
+            Assert.True(MessageQuery.Parse("$.price = 19.99").IsStructured);
+            Assert.True(MessageQuery.Parse("$.price exists").IsStructured);
+
+            Assert.False(MessageQuery.TryParse("key ~= abc", null, out _, out var tilde));
+            Assert.Contains("unknown operator '~='", tilde!);
+            Assert.Contains("did you mean 'matches'", tilde!);
+        });
+
         runner.Add("Search: query language", "Describe round-trips through Parse", () =>
         {
             foreach (var text in new[]
@@ -178,6 +195,30 @@ public static class DataSearchTests
             Assert.True(VolatileFields.IsVolatile("$.x", "1767960000000"));
             Assert.False(VolatileFields.IsVolatile("$.format", "json"), "'format' must not look like '...At'");
             Assert.False(VolatileFields.IsVolatile("$.status", "PAID"));
+        });
+
+        runner.Add("Search: similarity", "volatile names need 'time'/'date' as a whole word; id-like fields keep their values", () =>
+        {
+            foreach (var path in new[] { "$.updateCount", "$.candidate", "$.timeout", "$.lifetime", "$.runtime", "$.validate", "$.updated" })
+            {
+                Assert.False(VolatileFields.IsVolatileName(path), $"{path} must not be volatile");
+            }
+            foreach (var path in new[] { "$.createdAt", "$.timestamp", "$.event_time", "$.orderDate", "$.ts", "$.lastUpdateTime", "$.meta.datetime" })
+            {
+                Assert.True(VolatileFields.IsVolatileName(path), $"{path} must be volatile");
+            }
+
+            const string uuid = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
+            Assert.True(VolatileFields.IsVolatile("$.orderId", uuid), "value shape still counts for diff hints");
+            Assert.False(VolatileFields.IsVolatileForGrouping("$.orderId", uuid));
+            Assert.False(VolatileFields.IsVolatileForGrouping("$.accountNumber", "1700000000"));
+            Assert.True(VolatileFields.IsVolatileForGrouping("$.anything", uuid));
+            Assert.True(VolatileFields.IsVolatileForGrouping("$.traceId", uuid), "a volatile name wins over an id-like suffix");
+
+            // "10-05" keeps the leading-zero rule per part; "A-05" still folds to "a5".
+            Assert.Equal("105", TextSimilarity.Normalize("10-05"));
+            Assert.Equal("a5", TextSimilarity.Normalize("A-05"));
+            Assert.Equal("105", TextSimilarity.Normalize("10 05"));
         });
 
         runner.Add("Search: similarity", "flattening keeps paths and folds arrays into shapes", () =>
@@ -293,6 +334,22 @@ public static class DataSearchTests
             var fieldRows = byField.Ids.ToDictionary(i => i.Id);
             Assert.Equal(2, fieldRows["ORD-1"].Count, "only messages whose $.orderId equals it");
             Assert.Equal(1, fieldRows["ord-3"].Count);
+
+            // Case-insensitively, "ORD-1" and "ord-1" are one id and one row.
+            var folded = await BulkExistenceChecker.RunAsync(gateway, AllTopics,
+                new[] { "ORD-1", "ord-1" }, FieldSelector.Any, SearchRange.All, caseSensitive: false);
+            Assert.Equal(1, folded.Ids.Count);
+            Assert.Equal(3, folded.Ids[0].Count);
+        });
+
+        runner.Add("Search: bulk check", "ids containing delimiters are found inside payloads", () =>
+        {
+            var matcher = new IdMatcher(new[] { "urn:order:42", "2024-01-01T10:00:00Z", "a/b/c", "ORD-7" }, FieldSelector.Any);
+            var m = Msg("""{"ref":"urn:order:42","at":"2024-01-01T10:00:00Z","path":"x/a/b/c/y","note":"see ORD-7."}""");
+            Assert.Equal("2024-01-01T10:00:00Z|ORD-7|a/b/c|urn:order:42", string.Join("|", matcher.Match(m).OrderBy(i => i, StringComparer.Ordinal)));
+            Assert.Equal(0, matcher.Match(Msg("""{"ref":"urn:order:4"}""")).Count);
+            var loose = new IdMatcher(new[] { "URN:ORDER:42" }, FieldSelector.Any, caseSensitive: false);
+            Assert.Equal("URN:ORDER:42", loose.Match(m).Single(), "reported as originally given");
         });
 
         runner.Add("Search: trace", "follows an id through the pipeline in time order", async () =>
@@ -333,6 +390,40 @@ public static class DataSearchTests
             Assert.Equal(TimeSpan.FromSeconds(2.5), result.AverageLatency);
             Assert.Contains("1 matched, 1 different, 1 only in A, 1 only in B", result.Summary);
             Assert.Contains("ORD-2,different,1,1", result.ToCsv());
+
+            // Compare fields follow the request's case rule (and are trimmed): "EUR" vs "eur" is not a difference.
+            var broker = new InMemoryKafkaBroker();
+            broker.Append("x", "1", """{"cur":" EUR "}""", null, null, T0);
+            broker.Append("y", "1", """{"cur":"eur"}""", null, null, T0.AddSeconds(1));
+            var folded = await TopicReconciler.RunAsync(TestKafka.NewGateway(broker), new ReconcileRequest
+            {
+                TopicA = "x", JoinA = FieldSelector.Key, TopicB = "y", JoinB = FieldSelector.Key,
+                CompareFields = new[] { FieldSelector.Json("$.cur") }, CaseSensitive = false
+            });
+            Assert.Equal(1, folded.Matched);
+            Assert.Equal(0, folded.Mismatched);
+
+            Assert.Throws<ArgumentException>(() => TopicReconciler.RunAsync(gateway, new ReconcileRequest
+            {
+                TopicA = "orders", JoinA = FieldSelector.Key, TopicB = "orders", JoinB = FieldSelector.Key
+            }).GetAwaiter().GetResult(), "a topic can't be reconciled with itself");
+        });
+
+        runner.Add("Search: scanning", "duplicate topics count once and a 'last' range needs a duration", async () =>
+        {
+            var (_, gateway) = Pipeline();
+            var result = await MessageSearch.RunAsync(gateway, new SearchRequest
+            {
+                Topics = new[] { "orders", "orders", "payments" },
+                Query = MessageQuery.Parse("ORD")
+            });
+            Assert.Equal(2, result.Scan.TopicsTotal);
+            Assert.Equal(2, result.Scan.TopicsScanned);
+
+            var noDuration = new SearchRange { Kind = SearchRangeKind.LastDuration };
+            Assert.Throws<ArgumentException>(() => noDuration.ToConsumeOptions("t", "g", T0));
+            Assert.Throws<ArgumentException>(() => noDuration.Includes(Msg("v"), T0));
+            Assert.Equal("last (no duration)", noDuration.Describe());
         });
 
         runner.Add("Search: similar", "finds near-duplicates (content) and schema variants (shape)", async () =>
@@ -405,6 +496,33 @@ public static class DataSearchTests
             Assert.Equal(2, byField.ExtraCopies);
         });
 
+        runner.Add("Search: duplicates", "ids are not volatile, null and empty keys differ, FirstSeen covers every copy", () =>
+        {
+            var orders = new DuplicateDetector(DuplicateGroupBy.ValueIgnoringVolatile);
+            orders.AddRange(new[]
+            {
+                Msg("""{"orderId":"3f2504e0-4f89-11d3-9a0c-0305e82c3301","amount":10,"createdAt":"2026-01-01T00:00:00Z"}""", offset: 0),
+                Msg("""{"orderId":"9b2e6f1a-1c2d-4e3f-8a9b-0c1d2e3f4a5b","amount":10,"createdAt":"2026-01-01T00:00:00Z"}""", offset: 1),
+                Msg("""{"orderId":"9b2e6f1a-1c2d-4e3f-8a9b-0c1d2e3f4a5b","amount":10,"createdAt":"2026-01-01T00:00:07Z"}""", offset: 2)
+            });
+            var group = orders.GetDuplicates().Single();
+            Assert.Equal(2, group.Count, "different orderIds are different orders; a different createdAt is a retry");
+            Assert.Equal("1, 2", string.Join(", ", group.Messages.Select(m => m.Offset)));
+
+            var keyed = new DuplicateDetector(DuplicateGroupBy.KeyAndValue);
+            keyed.AddRange(new[] { Msg("v", key: null, offset: 0), Msg("v", key: "", offset: 1), Msg("v", key: null, offset: 2) });
+            Assert.Equal(1, keyed.GetDuplicates().Count, "null and empty keys are different groups");
+            Assert.Equal(2, keyed.GetDuplicates()[0].Count);
+
+            // The oldest copy arrives after the first MaxMessagesPerGroup copies have already been kept.
+            var late = new DuplicateDetector(DuplicateGroupBy.Value);
+            late.AddRange(Enumerable.Range(0, DuplicateDetector.MaxMessagesPerGroup + 1)
+                .Select(i => Msg("same", offset: i, at: i == DuplicateDetector.MaxMessagesPerGroup ? T0.AddMinutes(-5) : T0.AddSeconds(i))));
+            var lateGroup = late.GetDuplicates().Single();
+            Assert.Equal(T0.AddMinutes(-5), lateGroup.FirstSeen);
+            Assert.Equal(T0.AddSeconds(DuplicateDetector.MaxMessagesPerGroup - 1), lateGroup.LastSeen);
+        });
+
         runner.Add("Search: field stats", "counts presence, nulls, distinct and top values", () =>
         {
             var stats = new FieldStatisticsCollector();
@@ -465,6 +583,7 @@ public static class DataSearchTests
                 WithinSeconds = 2
             }, out var script, out var error), error ?? "");
             Assert.Contains("Scenario: Payment for ORD-2 exists", script);
+            Assert.Contains("matches \"(?i)^ord-2\\\\z\"", script, "anchored with \\z, not $ (which also matches before a trailing newline)");
 
             var document = Parser.Parse(script);
             var runnerScript = new ScriptRunner(new Dictionary<string, IKafkaGateway> { ["local"] = gateway });
@@ -534,6 +653,15 @@ public static class DataSearchTests
         {
             Assert.Equal("a,\"b,c\",\"d\"\"e\"\r\n", Csv.Write(new[] { "a", "b,c", "d\"e" }, Array.Empty<string[]>()));
             Assert.Contains("t,0,0,", Csv.FromMessages(new[] { Msg("v", key: "k") }));
+            // Formula-looking cells are defused; numbers are not.
+            Assert.Equal("\"'=1+1\"", Csv.Escape("=1+1"));
+            Assert.Equal("\"'@SUM(A1)\"", Csv.Escape("@SUM(A1)"));
+            Assert.Equal("\"'-cmd|calc\"", Csv.Escape("-cmd|calc"));
+            Assert.Equal("\"'+abc\"", Csv.Escape("+abc"));
+            Assert.Equal("\"'=\"\"x\"\"\"", Csv.Escape("=\"x\""));
+            Assert.Equal("-5", Csv.Escape("-5"));
+            Assert.Equal("+1.5e3", Csv.Escape("+1.5e3"));
+            Assert.Equal("ORD-1", Csv.Escape("ORD-1"));
         });
     }
 

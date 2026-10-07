@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using KafkaStudio.Core.Messaging;
 
@@ -17,10 +18,17 @@ public static class Csv
     public static string Escape(string? field)
     {
         field ??= "";
+        // Spreadsheets evaluate a cell starting with =, @, + or - as a formula; a leading apostrophe defuses
+        // that. Plain numbers like -5 are left alone.
+        if (IsFormulaLike(field)) return "\"'" + field.Replace("\"", "\"\"") + "\"";
         return field.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0 || field.StartsWith(' ') || field.EndsWith(' ')
             ? "\"" + field.Replace("\"", "\"\"") + "\""
             : field;
     }
+
+    private static bool IsFormulaLike(string field) =>
+        field.Length > 0 && (field[0] is '=' or '@' ||
+                             (field[0] is '+' or '-' && !double.TryParse(field, NumberStyles.Float, CultureInfo.InvariantCulture, out _)));
 
     private static void AppendRow(StringBuilder sb, IReadOnlyList<string> row)
     {

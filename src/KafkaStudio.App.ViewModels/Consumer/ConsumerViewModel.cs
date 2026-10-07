@@ -46,6 +46,8 @@ public sealed class ConsumerViewModel : ObservableObject
         {
             if (SetProperty(ref _selectedConnection, value))
             {
+                // A running watch belongs to the previous connection - don't leave it streaming.
+                if (IsWatching) Stop();
                 _ = RefreshTopicNamesAsync();
                 StartCommand.RaiseCanExecuteChanged();
             }
@@ -172,7 +174,9 @@ public sealed class ConsumerViewModel : ObservableObject
 
     private async Task RefreshTopicNamesAsync()
     {
-        _topicNamesCts?.Cancel();
+        var old = _topicNamesCts;
+        old?.Cancel();
+        old?.Dispose();
         var cts = new CancellationTokenSource();
         _topicNamesCts = cts;
 
@@ -200,6 +204,9 @@ public sealed class ConsumerViewModel : ObservableObject
         if (SelectedConnection is null || !_state.Connections.TryGetValue(SelectedConnection, out var gateway)) return;
 
         var topic = Topic.Trim();
+        var old = _watchCts;
+        old?.Cancel();
+        old?.Dispose();
         var cts = new CancellationTokenSource();
         _watchCts = cts;
         var generation = Interlocked.Increment(ref _watchGeneration);
@@ -229,6 +236,9 @@ public sealed class ConsumerViewModel : ObservableObject
             {
                 await foreach (var message in gateway.ConsumeAsync(options, token).ConfigureAwait(false))
                 {
+                    // Stop() / a newer Start() may already have taken over before this loop observes
+                    // cancellation: a late message must not land in the new watch (or after "Stopped").
+                    if (generation != Volatile.Read(ref _watchGeneration)) break;
                     _incoming.Enqueue(message);
                     ScheduleFlush();
                 }
@@ -267,6 +277,7 @@ public sealed class ConsumerViewModel : ObservableObject
 
         var batch = new List<KafkaMessage>();
         while (_incoming.TryDequeue(out var message)) batch.Add(message);
+        if (!IsWatching) batch.Clear(); // queued by a watch that was stopped since - discard.
         List<KafkaMessage> trimmed = new();
         if (batch.Count > 0)
         {
@@ -345,8 +356,12 @@ public sealed class ConsumerViewModel : ObservableObject
 
     private void Stop()
     {
-        _watchCts?.Cancel();
+        var cts = _watchCts;
+        _watchCts = null;
+        cts?.Cancel();
+        cts?.Dispose();
         Interlocked.Increment(ref _watchGeneration);
+        while (_incoming.TryDequeue(out _)) { }
         IsWatching = false;
         IsPaused = false;
         StatusMessage = "Stopped.";

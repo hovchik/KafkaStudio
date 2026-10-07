@@ -17,6 +17,7 @@ RethrowEngineTests.Register(runner);
 ViewModelTests.Register(runner);
 SampleScriptsTests.Register(runner);
 RegressionTests.Register(runner);
+AuditFixTests.Register(runner);
 DataSearchTests.Register(runner);
 DataSearchViewModelTests.Register(runner);
 QaLanguageTests.Register(runner);

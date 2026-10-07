@@ -258,7 +258,9 @@ public sealed class SearchScopeViewModel : ObservableObject
 
     public async Task RefreshTopicsAsync()
     {
-        _topicsCts?.Cancel();
+        var old = _topicsCts;
+        old?.Cancel();
+        old?.Dispose();
         var cts = new CancellationTokenSource();
         _topicsCts = cts;
 

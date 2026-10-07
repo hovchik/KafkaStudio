@@ -44,7 +44,9 @@ public sealed class AppState : IAsyncDisposable
     /// <summary>Optional clipboard access, provided by the hosting app (null in tests).</summary>
     public Func<string, Task>? SetClipboardText { get; set; }
 
-    public Dictionary<string, ConnectionProfile> ConnectionProfiles { get; } = new();
+    /// <summary>Saved profiles by connection name. Concurrent because <see cref="ReconnectAsync"/> reads
+    /// it from a pool thread (import / startup loops) while the UI adds and removes profiles.</summary>
+    public ConcurrentDictionary<string, ConnectionProfile> ConnectionProfiles { get; } = new();
 
     /// <summary>Live gateways by connection name. Concurrent because scheduled tasks and rethrow rules
     /// read it from background threads while the UI adds/removes connections.</summary>
@@ -160,7 +162,7 @@ public sealed class AppState : IAsyncDisposable
 
     public async Task RemoveConnectionAsync(string name)
     {
-        ConnectionProfiles.Remove(name);
+        ConnectionProfiles.TryRemove(name, out _);
         ConnectionErrors.TryRemove(name, out _);
         PersistProfiles();
         if (Connections.TryRemove(name, out var gateway))

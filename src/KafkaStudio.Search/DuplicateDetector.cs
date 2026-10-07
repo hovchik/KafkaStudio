@@ -27,8 +27,9 @@ public sealed record DuplicateGroup
     /// <summary>The first <see cref="DuplicateDetector.MaxMessagesPerGroup"/> messages, oldest first.</summary>
     public required IReadOnlyList<KafkaMessage> Messages { get; init; }
 
-    public DateTimeOffset FirstSeen => Messages[0].Timestamp;
-    public DateTimeOffset LastSeen { get; init; }
+    /// <summary>Earliest/latest timestamp over every message of the group (not only the kept ones).</summary>
+    public required DateTimeOffset FirstSeen { get; init; }
+    public required DateTimeOffset LastSeen { get; init; }
     public TimeSpan Span => LastSeen - FirstSeen;
     public string SpanText => TraceHop.FormatSpan(Span);
     public string PositionsText => string.Join(", ", Messages.Take(6).Select(m => $"#{m.Partition}@{m.Offset}")) + (Count > 6 ? ", …" : "");
@@ -47,6 +48,7 @@ public sealed class DuplicateDetector
         public required string Display;
         public int Count;
         public readonly List<KafkaMessage> Messages = new();
+        public DateTimeOffset FirstSeen = DateTimeOffset.MaxValue;
         public DateTimeOffset LastSeen = DateTimeOffset.MinValue;
     }
 
@@ -88,6 +90,7 @@ public sealed class DuplicateDetector
             }
             group.Count++;
             if (group.Messages.Count < MaxMessagesPerGroup) group.Messages.Add(message);
+            if (message.Timestamp < group.FirstSeen) group.FirstSeen = message.Timestamp;
             if (message.Timestamp > group.LastSeen) group.LastSeen = message.Timestamp;
         }
     }
@@ -111,6 +114,7 @@ public sealed class DuplicateDetector
                     GroupKey = g.Display,
                     Count = g.Count,
                     Messages = g.Messages.OrderBy(m => m.Timestamp).ThenBy(m => m.Partition).ThenBy(m => m.Offset).ToList(),
+                    FirstSeen = g.FirstSeen,
                     LastSeen = g.LastSeen
                 })
                 .ToList();
@@ -137,7 +141,9 @@ public sealed class DuplicateDetector
             case DuplicateGroupBy.KeyAndValue:
             {
                 var hash = HashValue(message);
-                return hash is null ? (null, null) : ($"kv:{message.Key}\u0000{hash}", $"{message.Key ?? "(no key)"} · {Preview(message)}");
+                // A null key is encoded distinctly from an empty one so the two don't collide.
+                var keyPart = message.Key is null ? "n" : "k" + message.Key;
+                return hash is null ? (null, null) : ($"kv:{keyPart}\u0000{hash}", $"{message.Key ?? "(no key)"} · {Preview(message)}");
             }
             case DuplicateGroupBy.ValueIgnoringVolatile:
             {
@@ -170,7 +176,7 @@ public sealed class DuplicateDetector
         }
         var sb = new StringBuilder();
         sb.Append(message.Key).Append('\u0001');
-        foreach (var leaf in leaves.Where(l => !VolatileFields.IsVolatile(l.Path, l.Value)).OrderBy(l => l.Path, StringComparer.Ordinal))
+        foreach (var leaf in leaves.Where(l => !VolatileFields.IsVolatileForGrouping(l.Path, l.Value)).OrderBy(l => l.Path, StringComparer.Ordinal))
         {
             sb.Append(leaf.Path).Append('=').Append(leaf.Value).Append('\u0001');
         }

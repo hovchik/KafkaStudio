@@ -40,11 +40,18 @@ public static class NumericInput
     {
         if (!TryGetRules(box, out var allowDecimal, out var allowNegative)) return;
         e.Handled = true;
-        if (TopLevel.GetTopLevel(box)?.Clipboard is not { } clipboard) return;
-        var text = await clipboard.GetTextAsync();
-        if (string.IsNullOrEmpty(text)) return;
-        var filtered = Filter(text.Trim(), allowDecimal, allowNegative);
-        if (filtered.Length > 0) box.SelectedText = filtered;
+        try
+        {
+            if (TopLevel.GetTopLevel(box)?.Clipboard is not { } clipboard) return;
+            var text = await clipboard.GetTextAsync();
+            if (string.IsNullOrEmpty(text)) return;
+            var filtered = Filter(text.Trim(), allowDecimal, allowNegative);
+            if (filtered.Length > 0) box.SelectedText = filtered;
+        }
+        catch
+        {
+            // async void: an unreadable clipboard must not crash the app - the paste just doesn't happen.
+        }
     }
 
     private static bool TryGetRules(TextBox box, out bool allowDecimal, out bool allowNegative)

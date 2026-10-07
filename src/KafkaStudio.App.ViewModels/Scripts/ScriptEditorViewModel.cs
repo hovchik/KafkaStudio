@@ -351,6 +351,11 @@ public sealed class ScriptEditorViewModel : ObservableObject
                 : $"{passed} scenario(s)/task(s) passed, {failed} failed.";
             LastRunPassed = !cancelled && failed == 0;
         }
+        catch (Exception ex)
+        {
+            RunSummary = $"Run failed: {ex.Message}";
+            LastRunPassed = false;
+        }
         finally
         {
             IsRunning = false;
