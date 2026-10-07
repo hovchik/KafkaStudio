@@ -36,6 +36,15 @@ public sealed record ConsumeOptions
 
     public DateTimeOffset? FromTimestamp { get; init; }
 
+    /// <summary>
+    /// Where a partition starts when <see cref="StartPosition"/> is <see cref="ConsumeStartPosition.Committed"/>
+    /// but the group has never committed on that partition. The default (<see cref="ConsumeStartPosition.Earliest"/>)
+    /// is what "scan from committed" wants: nothing handled yet means everything is pending. A standing
+    /// relay that resubscribes after a failure wants <see cref="ConsumeStartPosition.Latest"/> instead,
+    /// otherwise every partition it hasn't relayed from yet would replay its whole history.
+    /// </summary>
+    public ConsumeStartPosition UncommittedStart { get; init; } = ConsumeStartPosition.Earliest;
+
     /// <summary>Messages per partition to rewind from the end when <see cref="StartPosition"/> is
     /// <see cref="ConsumeStartPosition.Tail"/>.</summary>
     public int TailCount { get; init; } = 50;

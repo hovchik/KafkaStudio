@@ -57,6 +57,25 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
         public object Lock { get; } = new();
         public bool Closed { get; private set; }
 
+        /// <summary>
+        /// Offsets (already +1) the enumerator has handed to its caller and that still need committing
+        /// (AutoAcknowledge). The pump thread drains this on every poll and once more before it exits,
+        /// so an offset is only ever committed for a message the caller actually received - never for
+        /// records the pump merely read ahead into the channel before the caller stopped.
+        /// </summary>
+        public ConcurrentQueue<TopicPartitionOffset> PendingCommits { get; } = new();
+
+        /// <summary>True once the consumer has an assignment that covers <paramref name="tp"/>.</summary>
+        public bool Covers(TopicPartition tp)
+        {
+            lock (Lock)
+            {
+                if (Closed) return false;
+                try { return Consumer.Assignment.Contains(tp); }
+                catch { return false; }
+            }
+        }
+
         /// <summary>Closes (leaves the group, flushes commits) and disposes exactly once.</summary>
         public void CloseOnce()
         {
@@ -71,8 +90,30 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
     }
 
     // Live consumers keyed by consumer group id so AcknowledgeAsync can route an explicit commit back
-    // to the exact consumer instance that read the message.
-    private readonly ConcurrentDictionary<string, ConsumerEntry> _activeConsumers = new();
+    // to the exact consumer instance that read the message. A group can have several live
+    // subscriptions at once (a script that pins one group and watches two topics), so each key holds
+    // every entry and the commit goes to the one whose assignment covers the message's partition.
+    private readonly ConcurrentDictionary<string, List<ConsumerEntry>> _activeConsumers = new();
+
+    private void Register(string group, ConsumerEntry entry) =>
+        _activeConsumers.AddOrUpdate(group,
+            _ => new List<ConsumerEntry> { entry },
+            (_, list) => { lock (list) list.Add(entry); return list; });
+
+    private void Unregister(string group, ConsumerEntry entry)
+    {
+        if (!_activeConsumers.TryGetValue(group, out var list)) return;
+        lock (list) list.Remove(entry);
+        // Leave an empty list behind rather than racing a concurrent Register on the same key.
+    }
+
+    private ConsumerEntry? FindLiveConsumer(string group, TopicPartition tp)
+    {
+        if (!_activeConsumers.TryGetValue(group, out var list)) return null;
+        ConsumerEntry[] snapshot;
+        lock (list) snapshot = list.ToArray();
+        return snapshot.FirstOrDefault(e => e.Covers(tp));
+    }
     private readonly ConcurrentDictionary<Task, byte> _pumps = new();
 
     public ConfluentKafkaGateway(ConnectionProfile profile)
@@ -107,22 +148,46 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
             throw new ArgumentException("bootstrap servers are required (e.g. 'localhost:9092')");
         }
 
-        lock (_clientsGate)
+        ConfigMapper.ValidateSecurity(Profile);
+
+        // Build the new clients first: if the config is rejected (bad advanced property, missing SASL
+        // provider...) the previous connection stays usable instead of being left half-disposed.
+        var producer = new ProducerBuilder<byte[]?, byte[]?>(ConfigMapper.ToProducerConfig(Profile))
+            .SetLogHandler(OnLibrdkafkaLog)
+            .Build();
+        IAdminClient admin;
+        try
         {
-            // Reconnecting replaces the clients instead of leaking the previous ones.
-            _producer?.Dispose();
-            _admin?.Dispose();
-
-            _producer = new ProducerBuilder<byte[]?, byte[]?>(ConfigMapper.ToProducerConfig(Profile))
-                .SetLogHandler(OnLibrdkafkaLog)
-                .Build();
-
-            _admin = new AdminClientBuilder(ConfigMapper.ToAdminConfig(Profile))
+            admin = new AdminClientBuilder(ConfigMapper.ToAdminConfig(Profile))
                 .SetLogHandler(OnLibrdkafkaLog)
                 .Build();
         }
+        catch
+        {
+            producer.Dispose();
+            throw;
+        }
 
-        return Task.CompletedTask;
+        IProducer<byte[]?, byte[]?>? oldProducer;
+        IAdminClient? oldAdmin;
+        lock (_clientsGate)
+        {
+            // Reconnecting replaces the clients instead of leaking the previous ones.
+            oldProducer = _producer;
+            oldAdmin = _admin;
+            _producer = producer;
+            _admin = admin;
+        }
+
+        if (oldProducer is null && oldAdmin is null) return Task.CompletedTask;
+
+        // Flushing/disposing talks to the old broker and can block; keep it off the caller's thread.
+        return Task.Run(() =>
+        {
+            try { oldProducer?.Flush(TimeSpan.FromSeconds(5)); } catch { /* best effort */ }
+            try { oldProducer?.Dispose(); } catch { /* best effort */ }
+            try { oldAdmin?.Dispose(); } catch { /* best effort */ }
+        }, cancellationToken);
     }
 
     public Task<IReadOnlyList<string>> ListTopicsAsync(CancellationToken cancellationToken = default) =>
@@ -199,9 +264,15 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
                     .ToList()
             };
         }
-        catch (KafkaException)
+        catch (KafkaException ex) when (ex.Error.Code is ErrorCode.UnsupportedVersion or ErrorCode.Local_UnsupportedFeature)
         {
             // Older brokers don't support DescribeCluster - fall back to plain metadata (no controller/rack).
+            // Any other failure (unreachable broker, auth) is reported as-is instead of spending another
+            // metadata timeout to produce the same error.
+        }
+        catch (KafkaException ex)
+        {
+            throw WrapTransportError(ex);
         }
 
         return await Task.Run(() =>
@@ -299,9 +370,9 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
                 ? await producer.ProduceAsync(new TopicPartition(request.Topic, new Partition(partition)), message, cancellationToken).ConfigureAwait(false)
                 : await producer.ProduceAsync(request.Topic, message, cancellationToken).ConfigureAwait(false);
         }
-        catch (ProduceException<byte[]?, byte[]?> ex)
+        catch (ProduceException<byte[]?, byte[]?> ex) when (ex.Error.IsLocalError)
         {
-            throw ex.Error.IsLocalError ? WrapTransportError(new KafkaException(ex.Error, ex)) : ex;
+            throw WrapTransportError(new KafkaException(ex.Error, ex));
         }
 
         return new ProduceReceipt
@@ -349,7 +420,7 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
         var token = pumpCts.Token;
 
         var entry = new ConsumerEntry { Consumer = BuildConsumer(options.ConsumerGroup) };
-        _activeConsumers[options.ConsumerGroup] = entry;
+        Register(options.ConsumerGroup, entry);
 
         var channel = Channel.CreateBounded<KafkaMessage>(new BoundedChannelOptions(ChannelCapacity)
         {
@@ -373,6 +444,11 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
                 {
                     yield return message;
                     emitted++;
+                    if (options.AutoAcknowledge)
+                    {
+                        // Only now has the caller really seen the message; the pump commits it.
+                        entry.PendingCommits.Enqueue(new TopicPartitionOffset(message.Topic, new Partition(message.Partition), new Offset(message.Offset + 1)));
+                    }
                     if (options.MaxMessages is { } cap && emitted >= cap)
                     {
                         done = true;
@@ -384,8 +460,7 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
         finally
         {
             pumpCts.Cancel();
-            ((ICollection<KeyValuePair<string, ConsumerEntry>>)_activeConsumers)
-                .Remove(new KeyValuePair<string, ConsumerEntry>(options.ConsumerGroup, entry));
+            Unregister(options.ConsumerGroup, entry);
             try { await pump.ConfigureAwait(false); } catch { /* the pump reports its own errors via the channel */ }
             _pumps.TryRemove(pump, out _);
 
@@ -451,8 +526,20 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
 
             if (remaining is { Count: 0 }) return; // nothing to read - e.g. an empty topic
 
+            var written = 0;
             while (!token.IsCancellationRequested)
             {
+                FlushPendingCommits(entry);
+
+                if (options.MaxMessages is { } cap && written >= cap)
+                {
+                    // The caller only wants `cap` messages: stop reading ahead so nothing beyond the
+                    // cap is pulled from the broker (and, with AutoAcknowledge, nothing beyond it is
+                    // ever committed). Keep polling only to flush the caller's pending commits.
+                    token.WaitHandle.WaitOne(100);
+                    continue;
+                }
+
                 ConsumeResult<byte[]?, byte[]?>? result;
                 lock (entry.Lock)
                 {
@@ -485,18 +572,11 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
 
                 var message = ToKafkaMessage(result, options.ConsumerGroup);
 
-                if (options.AutoAcknowledge)
-                {
-                    lock (entry.Lock)
-                    {
-                        consumer.Commit(new[] { new TopicPartitionOffset(result.TopicPartition, new Offset(result.Offset.Value + 1)) });
-                    }
-                }
-
                 if (!writer.TryWrite(message))
                 {
                     writer.WriteAsync(message, token).AsTask().GetAwaiter().GetResult();
                 }
+                written++;
 
                 if (remaining is not null && plan is not null &&
                     result.Offset.Value + 1 >= plan.EndExclusive.GetValueOrDefault(result.TopicPartition, long.MaxValue))
@@ -524,8 +604,35 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
         }
         finally
         {
+            // Commit what the caller acknowledged right before it stopped (e.g. the last message of a
+            // capped read), so nothing it received is re-delivered on the next run.
+            if (failure is null)
+            {
+                try { FlushPendingCommits(entry); }
+                catch (Exception ex) { failure = ex is KafkaException kex ? WrapTransportError(kex) : ex; }
+            }
             SignalReady(); // never leave a waiter hanging on a subscription that failed before becoming live
             writer.TryComplete(failure);
+        }
+    }
+
+    /// <summary>Commits everything the enumerator has queued (highest offset per partition wins).</summary>
+    private static void FlushPendingCommits(ConsumerEntry entry)
+    {
+        if (entry.PendingCommits.IsEmpty) return;
+        var latest = new Dictionary<TopicPartition, long>();
+        while (entry.PendingCommits.TryDequeue(out var tpo))
+        {
+            if (!latest.TryGetValue(tpo.TopicPartition, out var current) || tpo.Offset.Value > current)
+            {
+                latest[tpo.TopicPartition] = tpo.Offset.Value;
+            }
+        }
+        if (latest.Count == 0) return;
+        lock (entry.Lock)
+        {
+            if (entry.Closed) return;
+            entry.Consumer.Commit(latest.Select(kv => new TopicPartitionOffset(kv.Key, new Offset(kv.Value))).ToList());
         }
     }
 
@@ -582,9 +689,12 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
                 var committed = consumer.Committed(partitions, MetadataTimeout);
                 start = committed.ToDictionary(
                     c => c.TopicPartition,
-                    // Nothing committed yet -> from the beginning (same as the in-memory gateway);
-                    // committed offset already deleted by retention -> earliest still available.
-                    c => c.Offset.Value < 0 ? watermarks[c.TopicPartition].Low.Value : Clamp(c.TopicPartition, c.Offset.Value));
+                    // Nothing committed yet -> UncommittedStart (beginning by default, same as the
+                    // in-memory gateway); committed offset already deleted by retention -> earliest
+                    // still available.
+                    c => c.Offset.Value < 0
+                        ? (options.UncommittedStart == ConsumeStartPosition.Latest ? watermarks[c.TopicPartition].High.Value : watermarks[c.TopicPartition].Low.Value)
+                        : Clamp(c.TopicPartition, c.Offset.Value));
                 break;
 
             default: // Latest (and FromTimestamp without a timestamp)
@@ -681,7 +791,7 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
         {
             try
             {
-                if (_activeConsumers.TryGetValue(message.ConsumerGroup, out var entry))
+                if (FindLiveConsumer(message.ConsumerGroup, offsets[0].TopicPartition) is { } entry)
                 {
                     lock (entry.Lock)
                     {
@@ -718,10 +828,22 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
             var ids = listed.Valid.Select(g => g.GroupId).OrderBy(g => g, StringComparer.Ordinal).ToList();
             if (ids.Count == 0) return Array.Empty<ConsumerGroupSummary>();
 
-            // The listing has no member counts - one describe call covers every group.
-            var described = await RequireAdmin().DescribeConsumerGroupsAsync(ids, new DescribeConsumerGroupsOptions { RequestTimeout = MetadataTimeout })
-                .WaitAsync(cancellationToken).ConfigureAwait(false);
-            var byId = described.ConsumerGroupDescriptions.ToDictionary(d => d.GroupId, StringComparer.Ordinal);
+            // The listing has no member counts - one describe call covers every group. Confluent throws
+            // when *any* group's description carries an error; the groups that did describe fine are
+            // still in the exception, so one broken group doesn't blank the whole list.
+            List<ConsumerGroupDescription> descriptions;
+            try
+            {
+                var described = await RequireAdmin().DescribeConsumerGroupsAsync(ids, new DescribeConsumerGroupsOptions { RequestTimeout = MetadataTimeout })
+                    .WaitAsync(cancellationToken).ConfigureAwait(false);
+                descriptions = described.ConsumerGroupDescriptions;
+            }
+            catch (DescribeConsumerGroupsException ex)
+            {
+                descriptions = ex.Results.ConsumerGroupDescriptions;
+            }
+            var byId = descriptions.GroupBy(d => d.GroupId, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
 
             return ids.Select(id => byId.TryGetValue(id, out var d) && !d.Error.IsError
                 ? new ConsumerGroupSummary { GroupId = id, State = d.State.ToString(), MemberCount = d.Members.Count }
@@ -755,6 +877,13 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
             var committed = offsetResults.SelectMany(r => r.Partitions).ToList();
             var failed = committed.FirstOrDefault(c => c.Error.IsError);
             if (failed is not null) throw new KafkaException(failed.Error);
+
+            // Kafka answers a describe of a group it has never heard of with an error-free "Dead" group
+            // that has no members and no offsets - report that as "not found" rather than an empty group.
+            if (description.State == ConsumerGroupState.Dead && description.Members.Count == 0 && committed.Count == 0)
+            {
+                throw new KeyNotFoundException($"consumer group '{groupId}' not found");
+            }
 
             // A group can be assigned partitions it never committed on - show those too (lag counts from earliest).
             var partitions = committed.Select(c => (c.TopicPartition, Committed: c.Offset.Value >= 0 ? (long?)c.Offset.Value : null))
@@ -904,7 +1033,12 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
         {
             // Anything still registered belongs to an enumerator that was abandoned without being
             // disposed - its pump has stopped, so it's safe to close here.
-            foreach (var entry in _activeConsumers.Values) entry.CloseOnce();
+            foreach (var list in _activeConsumers.Values)
+            {
+                ConsumerEntry[] entries;
+                lock (list) entries = list.ToArray();
+                foreach (var entry in entries) entry.CloseOnce();
+            }
             _activeConsumers.Clear();
 
             lock (_clientsGate)
@@ -916,5 +1050,6 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
                 _admin = null;
             }
         }).ConfigureAwait(false);
+        _disposeCts.Dispose();
     }
 }

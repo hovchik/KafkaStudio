@@ -34,7 +34,10 @@ public sealed class ScriptRunner
         Action<string>? onLog = null)
     {
         _connections = connections;
-        _defaultGateway = defaultGateway ?? connections.Values.FirstOrDefault();
+        // With several connections and no explicit default, a script that produces before any
+        // 'use connection' step must get the "no connection selected" error rather than sending to
+        // whichever connection happens to enumerate first.
+        _defaultGateway = defaultGateway ?? (connections.Count == 1 ? connections.Values.First() : null);
         _clock = clock ?? SystemClock.Instance;
         _onLog = onLog;
     }
@@ -75,7 +78,9 @@ public sealed class ScriptRunner
         void Record(StepResult result)
         {
             results.Add(result);
-            StepCompleted?.Invoke(result);
+            // A throwing UI/test subscriber must not make the step count as failed (and recorded twice).
+            try { StepCompleted?.Invoke(result); }
+            catch { /* subscriber bug - ignore */ }
         }
 
         try
@@ -165,6 +170,17 @@ public sealed class ScriptRunner
     {
         var rendered = Render(topic, ctx).Trim();
         if (rendered.Length == 0) throw new KafScriptException("topic name is empty");
+        return rendered;
+    }
+
+    private static string RenderConsumerGroup(string group, ScenarioContext ctx)
+    {
+        var rendered = Render(group, ctx).Trim();
+        if (rendered.Length == 0) throw new KafScriptException("consumer group name is empty");
+        if (rendered.Contains("{{", StringComparison.Ordinal))
+        {
+            throw new KafScriptException($"consumer group '{rendered}' still contains an unset placeholder");
+        }
         return rendered;
     }
 
@@ -529,7 +545,7 @@ public sealed class ScriptRunner
         var options = new ConsumeOptions
         {
             Topic = topic,
-            ConsumerGroup = a.ConsumerGroup is null ? $"kafscript-scan-{Guid.NewGuid():N}" : Render(a.ConsumerGroup, ctx),
+            ConsumerGroup = a.ConsumerGroup is null ? $"kafscript-scan-{Guid.NewGuid():N}" : RenderConsumerGroup(a.ConsumerGroup, ctx),
             StartPosition = a.Position switch
             {
                 TopicPosition.Beginning => ConsumeStartPosition.Earliest,

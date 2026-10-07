@@ -23,7 +23,9 @@ public sealed class AutomationScheduler : IAsyncDisposable
     private readonly ConcurrentDictionary<string, ScheduledJob> _jobs = new();
     private readonly ConcurrentDictionary<Task, byte> _inFlight = new();
     private readonly IClock _clock;
-    private CancellationTokenSource? _cts;
+    // Shutdown token for every run, manual ones included - it exists from construction so a "Run now"
+    // can be stopped by DisposeAsync even when the schedule loop was never started.
+    private readonly CancellationTokenSource _cts = new();
     private Task? _loopTask;
 
     public event Action<ScheduledJob>? RunStarted;
@@ -73,13 +75,9 @@ public sealed class AutomationScheduler : IAsyncDisposable
             throw new InvalidOperationException($"'{job.Block.Name}' is already running");
         }
 
-        if (_cts is { } loopCts)
-        {
-            // Also stop a manual run when the scheduler shuts down.
-            var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, loopCts.Token);
-            return Track(RunAndDisposeAsync(job, linked));
-        }
-        return Track(RunJobAsync(job, cancellationToken, manual: true));
+        // Also stop a manual run when the scheduler shuts down.
+        var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cts.Token);
+        return Track(RunAndDisposeAsync(job, linked));
     }
 
     private async Task RunAndDisposeAsync(ScheduledJob job, CancellationTokenSource linked)
@@ -93,7 +91,6 @@ public sealed class AutomationScheduler : IAsyncDisposable
     public void Start()
     {
         if (_loopTask is not null) return;
-        _cts = new CancellationTokenSource();
         _loopTask = Task.Run(() => LoopAsync(_cts.Token));
     }
 
@@ -204,7 +201,7 @@ public sealed class AutomationScheduler : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _cts?.Cancel();
+        _cts.Cancel();
         if (_loopTask is not null)
         {
             try { await _loopTask.ConfigureAwait(false); }
@@ -216,6 +213,6 @@ public sealed class AutomationScheduler : IAsyncDisposable
         try { await Task.WhenAll(_inFlight.Keys).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false); }
         catch { /* shutdown */ }
 
-        _cts?.Dispose();
+        _cts.Dispose();
     }
 }

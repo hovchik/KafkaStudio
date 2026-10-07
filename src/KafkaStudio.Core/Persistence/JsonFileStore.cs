@@ -20,10 +20,27 @@ public static class JsonFileStore
 {
     private static readonly object Gate = new();
 
+    // Files that exist but could not be read (locked by another process, permission problem). Saving
+    // over one of those would replace the user's real data with whatever the fallback was.
+    private static readonly HashSet<string> Unreadable = new(StringComparer.OrdinalIgnoreCase);
+
     public static readonly JsonSerializerOptions SerializerOptions = new()
     {
         WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() }
+        Converters = { new JsonStringEnumConverter() },
+        // The stores filter out incomplete entries themselves (a profile without bootstrap servers is
+        // skipped). Enforcing C# `required` members at deserialization time instead would reject the
+        // *whole* file for one bad entry and quarantine every connection the user has.
+        TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver
+        {
+            Modifiers =
+            {
+                typeInfo =>
+                {
+                    foreach (var property in typeInfo.Properties) property.IsRequired = false;
+                }
+            }
+        }
     };
 
     private static string? _dataDirectory;
@@ -46,8 +63,9 @@ public static class JsonFileStore
         {
             try
             {
-                if (!File.Exists(path)) return fallback;
+                if (!File.Exists(path)) { Unreadable.Remove(path); return fallback; }
                 var json = File.ReadAllText(path);
+                Unreadable.Remove(path);
                 if (string.IsNullOrWhiteSpace(json)) return fallback;
                 return JsonSerializer.Deserialize<T>(json, SerializerOptions) ?? fallback;
             }
@@ -58,6 +76,7 @@ public static class JsonFileStore
             }
             catch (Exception)
             {
+                Unreadable.Add(path);
                 return fallback;
             }
         }
@@ -71,6 +90,15 @@ public static class JsonFileStore
         var json = JsonSerializer.Serialize(value, SerializerOptions);
         lock (Gate)
         {
+            if (Unreadable.Contains(path))
+            {
+                // Whatever is in memory came from the fallback, not from the file: saving would replace
+                // the user's real data with it. Nothing short of a reload can make that safe.
+                throw new IOException(
+                    $"{fileName} could not be read when it was loaded, so saving would overwrite its contents. " +
+                    "Fix the file's permissions or close the program holding it, then restart KafkaStudio.");
+            }
+
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             var temp = path + ".tmp";
             File.WriteAllText(temp, json);

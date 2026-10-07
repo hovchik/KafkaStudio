@@ -112,14 +112,17 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
         {
             // The subscription above is registered atomically with the history snapshot, so from here
             // on nothing can be missed.
-            options.OnReady?.Invoke();
+            try { options.OnReady?.Invoke(); } catch { /* caller bug - don't kill the subscription (same as the real gateway) */ }
 
             long startOffset = options.StartPosition switch
             {
                 ConsumeStartPosition.Earliest => 0,
                 ConsumeStartPosition.Latest => history.Count,
-                ConsumeStartPosition.Committed => _broker.GetCommittedOffset(options.Topic, options.ConsumerGroup) + 1,
-                ConsumeStartPosition.FromTimestamp => FindFirstIndexAtOrAfter(history, options.FromTimestamp),
+                ConsumeStartPosition.Committed => _broker.GetCommittedOffset(options.Topic, options.ConsumerGroup) is var committed and >= 0
+                    ? committed + 1
+                    : options.UncommittedStart == ConsumeStartPosition.Latest ? history.Count : 0,
+                // No timestamp given: behave like Latest, as the real gateway does.
+                ConsumeStartPosition.FromTimestamp => options.FromTimestamp is null ? history.Count : FindFirstIndexAtOrAfter(history, options.FromTimestamp),
                 ConsumeStartPosition.Tail => Math.Max(0, history.Count - Math.Max(0, options.TailCount)),
                 _ => history.Count
             };
@@ -231,7 +234,7 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
             {
                 Topic = o.topic,
                 Partition = 0,
-                CommittedOffset = o.nextOffset > 0 ? o.nextOffset : null,
+                CommittedOffset = o.nextOffset >= 0 ? o.nextOffset : null,
                 EarliestOffset = earliest,
                 EndOffset = latest
             };

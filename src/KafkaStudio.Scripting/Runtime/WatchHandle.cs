@@ -40,8 +40,10 @@ internal sealed class WatchHandle : IAsyncDisposable
     public static async Task<WatchHandle> StartAsync(IKafkaGateway gateway, ConsumeOptions options, CancellationToken parentToken)
     {
         var cts = CancellationTokenSource.CreateLinkedTokenSource(parentToken);
-        var channel = Channel.CreateUnbounded<KafkaMessage>(
-            new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
+        // Bounded: a watch on a busy topic followed by a long 'wait for' must not buffer every message
+        // in memory. The gateway applies back-pressure when the channel is full.
+        var channel = Channel.CreateBounded<KafkaMessage>(
+            new BoundedChannelOptions(10_000) { SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait });
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var readyOptions = options with
@@ -69,6 +71,16 @@ internal sealed class WatchHandle : IAsyncDisposable
         {
             await handle.DisposeAsync().ConfigureAwait(false);
             throw;
+        }
+
+        // The pump signals readiness on its way out too, so a subscription that died before becoming
+        // live (bad connection, auth error, invalid group) is reported by the watch step itself rather
+        // than as a confusing "no messages arrived" on a later expect.
+        if (pumpTask.IsCompleted && channel.Reader.Completion.IsFaulted)
+        {
+            var error = channel.Reader.Completion.Exception!.GetBaseException();
+            await handle.DisposeAsync().ConfigureAwait(false);
+            throw new KafScriptException($"watch on topic '{options.Topic}' failed: {error.Message}");
         }
 
         return handle;
@@ -110,7 +122,9 @@ internal sealed class WatchHandle : IAsyncDisposable
         _cts.Cancel();
         try
         {
-            await _pumpTask.ConfigureAwait(false);
+            // Bounded: a gateway whose consumer close hangs on a dead broker must not hang the script's
+            // teardown (which runs outside the per-test timeout).
+            await _pumpTask.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
         catch
         {
