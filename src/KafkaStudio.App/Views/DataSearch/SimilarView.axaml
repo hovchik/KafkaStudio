@@ -6,7 +6,7 @@
              x:DataType="vm:SimilarViewModel"
              x:CompileBindings="True">
 
-  <Grid ColumnDefinitions="300,6,*">
+  <Grid ColumnDefinitions="300,8,*">
 
     <!-- Reference message and its fields -->
     <DockPanel Grid.Column="0">
@@ -16,7 +16,7 @@
                    Text="Use 'Find similar' on any message (Topics, Consume, or a result here), or pick one and press the button below."
                    IsVisible="{Binding Reference, Converter={x:Static ObjectConverters.IsNull}}" />
         <TextBlock FontSize="12" TextWrapping="Wrap" IsVisible="{Binding Reference, Converter={x:Static ObjectConverters.IsNotNull}}">
-          <Run Text="{Binding Reference.Topic, FallbackValue=''}" Foreground="{DynamicResource AccentBrush}" /><Run Text="  #" Foreground="Gray" /><Run Text="{Binding Reference.Partition, FallbackValue=''}" Foreground="Gray" /><Run Text="@" Foreground="Gray" /><Run Text="{Binding Reference.Offset, FallbackValue=''}" Foreground="Gray" />
+          <Run Text="{Binding Reference.Topic, FallbackValue=''}" Foreground="{DynamicResource AccentBrush}" /><Run Text="  #" Foreground="{DynamicResource TextMutedBrush}" /><Run Text="{Binding Reference.Partition, FallbackValue=''}" Foreground="{DynamicResource TextMutedBrush}" /><Run Text="@" Foreground="{DynamicResource TextMutedBrush}" /><Run Text="{Binding Reference.Offset, FallbackValue=''}" Foreground="{DynamicResource TextMutedBrush}" />
         </TextBlock>
         <WrapPanel>
           <Button Classes="small" Content="Use shown message" Command="{Binding UseCurrentMessageCommand}" Margin="0,0,4,4"
@@ -35,11 +35,11 @@
       <ListBox Classes="rows" ItemsSource="{Binding ReferenceFields}">
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="vm:ReferenceFieldViewModel">
-            <Grid ColumnDefinitions="Auto,*" Margin="2,0">
+            <Grid ColumnDefinitions="Auto,*">
               <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" MinWidth="0" Margin="0,0,4,0" />
               <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                <TextBlock Classes="mono" FontSize="11" Foreground="{DynamicResource AccentBrush}" TextTrimming="CharacterEllipsis" Text="{Binding Path}" />
-                <TextBlock Classes="mono" FontSize="11" Foreground="White" TextTrimming="CharacterEllipsis" Text="{Binding DisplayValue}" />
+                <TextBlock Classes="mono accent" FontSize="11" TextTrimming="CharacterEllipsis" Text="{Binding Path}" />
+                <TextBlock Classes="mono" FontSize="11" TextTrimming="CharacterEllipsis" Text="{Binding DisplayValue}" />
               </StackPanel>
               <ToolTip.Tip>
                 <TextBlock>
@@ -52,46 +52,54 @@
       </ListBox>
     </DockPanel>
 
-    <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
+    <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="8" />
 
     <!-- Similarity scan -->
-    <Grid Grid.Column="2" RowDefinitions="Auto,Auto,*,6,Auto">
-      <Border Grid.Row="0" Classes="toolbar">
+    <Grid Grid.Column="2" RowDefinitions="Auto,Auto,*,8,Auto">
+      <!-- Sub-toolbar: this view renders inside the Find Data pane. -->
+      <Border Grid.Row="0" Classes="toolbar" Background="{DynamicResource SurfaceRaisedBrush}">
         <WrapPanel>
           <ComboBox Width="270" ItemsSource="{Binding Modes}" SelectedItem="{Binding Mode}" Margin="0,0,6,2" />
           <TextBlock Text="at least" Classes="muted" Margin="0,0,6,2" />
           <Slider Width="120" Minimum="0.3" Maximum="1" Value="{Binding Threshold}" SmallChange="0.05" LargeChange="0.1"
-                  VerticalAlignment="Center" Margin="0,-8,6,-8" />
-          <TextBlock Text="{Binding ThresholdText}" Foreground="White" Width="40" Margin="0,0,6,2" />
+                  VerticalAlignment="Center" Margin="0,0,6,0" />
+          <TextBlock Text="{Binding ThresholdText}" Width="40" Margin="0,0,6,2" />
           <CheckBox Content="Ignore timestamps/ids" IsChecked="{Binding IgnoreVolatile}" Margin="0,0,6,2"
                     ToolTip.Tip="Retries that only differ in createdAt / traceId / generated ids score 100%" />
           <Button Content="Find similar" Classes="primary" Command="{Binding FindSimilarCommand}" Margin="0,0,6,2" />
-          <Button Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" Margin="0,0,0,2" />
+          <Button Classes="ghost" Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" Margin="0,0,0,2" />
         </WrapPanel>
       </Border>
 
       <StackPanel Grid.Row="1" Spacing="2" Margin="2,8,0,6">
-        <SelectableTextBlock Foreground="White" TextWrapping="Wrap" Text="{Binding Status}" />
+        <SelectableTextBlock FontSize="12.5" TextWrapping="Wrap" Text="{Binding Status}" />
         <TextBlock Classes="muted" Text="{Binding Progress}" IsVisible="{Binding IsRunning}" />
       </StackPanel>
 
-      <ListBox Grid.Row="2" Classes="rows" ItemsSource="{Binding Matches}" SelectedItem="{Binding SelectedMatch}">
-        <ListBox.ItemTemplate>
-          <DataTemplate x:DataType="search:SimilarMatch">
-            <Grid ColumnDefinitions="50,150,Auto,*" Margin="6,3">
-              <TextBlock Grid.Column="0" FontWeight="SemiBold" Foreground="{DynamicResource SuccessBrush}" Text="{Binding ScoreText}" />
-              <TextBlock Grid.Column="1" FontSize="11" Foreground="{DynamicResource AccentBrush}" TextTrimming="CharacterEllipsis" Text="{Binding Message.Topic}" />
-              <TextBlock Grid.Column="2" Classes="muted" FontSize="11" Margin="0,0,8,0">
-                <Run Text="#" /><Run Text="{Binding Message.Partition}" /><Run Text="@" /><Run Text="{Binding Message.Offset}" />
-              </TextBlock>
-              <TextBlock Grid.Column="3" Classes="mono" Foreground="White" TextTrimming="CharacterEllipsis" Text="{Binding Message.ValuePreview}"
-                         ToolTip.Tip="{Binding Explanation}" />
-            </Grid>
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
+      <Panel Grid.Row="2">
+        <StackPanel Classes="emptyState" IsVisible="{Binding !Matches.Count}">
+          <PathIcon Data="{StaticResource Icon.spark}" />
+          <TextBlock Classes="emptyTitle" Text="No similar messages yet" />
+          <TextBlock Classes="emptyHint" Text="Choose a reference message, a mode and a threshold, then Find similar." />
+        </StackPanel>
+        <ListBox Classes="rows" ItemsSource="{Binding Matches}" SelectedItem="{Binding SelectedMatch}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="search:SimilarMatch">
+              <Grid ColumnDefinitions="50,150,Auto,*">
+                <TextBlock Grid.Column="0" Classes="success" FontSize="12" FontWeight="SemiBold" Text="{Binding ScoreText}" />
+                <TextBlock Grid.Column="1" Classes="accent" FontSize="11" TextTrimming="CharacterEllipsis" Text="{Binding Message.Topic}" />
+                <TextBlock Grid.Column="2" Classes="muted mono" FontSize="11" Margin="0,0,8,0">
+                  <Run Text="#" /><Run Text="{Binding Message.Partition}" /><Run Text="@" /><Run Text="{Binding Message.Offset}" />
+                </TextBlock>
+                <TextBlock Grid.Column="3" Classes="mono" TextTrimming="CharacterEllipsis" Text="{Binding Message.ValuePreview}"
+                           ToolTip.Tip="{Binding Explanation}" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Panel>
 
-      <GridSplitter Grid.Row="3" ResizeDirection="Rows" Height="6" HorizontalAlignment="Stretch" />
+      <GridSplitter Grid.Row="3" ResizeDirection="Rows" Height="8" HorizontalAlignment="Stretch" />
 
       <DockPanel Grid.Row="4" MaxHeight="220">
         <TextBlock DockPanel.Dock="Top" Classes="label" Margin="0,0,0,4">
@@ -102,9 +110,9 @@
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="search:DiffEntry">
                 <Grid ColumnDefinitions="20,220,*,*" Margin="0,1">
-                  <TextBlock Grid.Column="0" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" Text="{Binding Symbol}" />
-                  <TextBlock Grid.Column="1" Classes="mono" Foreground="White" TextTrimming="CharacterEllipsis" Text="{Binding Path}" />
-                  <TextBlock Grid.Column="2" Classes="mono" Foreground="{DynamicResource FailureBrush}" TextTrimming="CharacterEllipsis" Text="{Binding LeftText}" />
+                  <TextBlock Grid.Column="0" Classes="accent" FontWeight="Bold" Text="{Binding Symbol}" />
+                  <TextBlock Grid.Column="1" Classes="mono" TextTrimming="CharacterEllipsis" Text="{Binding Path}" />
+                  <TextBlock Grid.Column="2" Classes="mono" Foreground="{DynamicResource DangerBrush}" TextTrimming="CharacterEllipsis" Text="{Binding LeftText}" />
                   <TextBlock Grid.Column="3" Classes="mono" Foreground="{DynamicResource SuccessBrush}" TextTrimming="CharacterEllipsis" Text="{Binding RightText}" />
                 </Grid>
               </DataTemplate>

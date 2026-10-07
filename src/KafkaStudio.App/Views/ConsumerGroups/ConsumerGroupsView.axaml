@@ -16,59 +16,80 @@
         <ComboBox Grid.Column="0" Width="170" PlaceholderText="Connection…"
                   ItemsSource="{Binding ConnectionNames}" SelectedItem="{Binding SelectedConnection}"
                   ToolTip.Tip="Connection" />
-        <Button Grid.Column="1" Content="⟳" Command="{Binding RefreshCommand}" ToolTip.Tip="Reload consumer groups (F5)" />
+        <Button Grid.Column="1" Classes="icon" Command="{Binding RefreshCommand}" ToolTip.Tip="Reload consumer groups (F5)">
+          <PathIcon Data="{StaticResource Icon.refresh}" />
+        </Button>
         <Border Grid.Column="2" Classes="sep" />
         <TextBox Grid.Column="3" Width="200" Text="{Binding GroupFilter}" Watermark="Filter groups"
                  ToolTip.Tip="Filter the group list (contains)" />
-        <ToggleButton Grid.Column="4" Content="⚠ Lag only" IsChecked="{Binding OnlyWithLag}"
-                      ToolTip.Tip="Show only groups with lag above 0; the most behind come first" />
+        <ToggleButton Grid.Column="4" IsChecked="{Binding OnlyWithLag}"
+                      ToolTip.Tip="Show only groups with lag above 0; the most behind come first">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <PathIcon Data="{StaticResource Icon.warning}" Width="12" Height="12" />
+            <TextBlock Text="Lag only" Margin="0" />
+          </StackPanel>
+        </ToggleButton>
+        <!-- Status lives in the toolbar on this screen: the panes below need the whole height. -->
         <TextBlock Grid.Column="5" Classes="muted" Text="{Binding StatusMessage}" Margin="10,0,0,0"
                    TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding StatusMessage}" />
       </Grid>
     </Border>
 
-    <Grid Grid.Row="1" Margin="0,6,0,0" ColumnDefinitions="300,6,*">
+    <Grid Grid.Row="1" Margin="0,8,0,0" ColumnDefinitions="300,8,*">
 
       <!-- Groups -->
       <Border Grid.Column="0" Classes="pane">
         <DockPanel>
-          <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Margin="0,0,0,6">
-            <Run Text="Consumer groups" /><Run Text=" " /><Run Text="{Binding Groups.Count}" Foreground="{DynamicResource MutedTextBrush}" />
+          <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Margin="0,0,0,8">
+            <Run Text="Consumer groups" /><Run Text=" " /><Run Text="{Binding Groups.Count}" Foreground="{DynamicResource TextMutedBrush}" />
           </TextBlock>
-          <ListBox ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroup}" Classes="rows">
-            <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="vm:GroupRowViewModel">
-                <StackPanel Spacing="1">
-                  <TextBlock Text="{Binding GroupId}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding GroupId}" />
-                  <TextBlock Classes="muted" FontSize="12">
-                    <Run Text="{Binding State}" /><Run Text=" · " /><Run Text="{Binding MemberCount}" /><Run Text=" member(s) · " /><Run Text="{Binding LagText}" FontWeight="SemiBold" />
-                  </TextBlock>
-                </StackPanel>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
+          <Panel>
+            <StackPanel Classes="emptyState" IsVisible="{Binding !Groups.Count}">
+              <PathIcon Data="{StaticResource Icon.groups}" />
+              <TextBlock Classes="emptyTitle" Text="No consumer groups" />
+              <TextBlock Classes="emptyHint" Text="Pick a connection to list its groups." />
+            </StackPanel>
+            <ListBox ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroup}" Classes="rows">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:GroupRowViewModel">
+                  <StackPanel Spacing="1">
+                    <TextBlock Text="{Binding GroupId}" FontSize="13" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding GroupId}" />
+                    <TextBlock Classes="muted">
+                      <Run Text="{Binding State}" /><Run Text=" · " /><Run Text="{Binding MemberCount}" /><Run Text=" member(s) · " /><Run Text="{Binding LagText}" FontWeight="SemiBold" />
+                    </TextBlock>
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Panel>
         </DockPanel>
       </Border>
 
-      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="8" />
 
       <!-- Selected group -->
       <Border Grid.Column="2" Classes="pane">
         <Panel>
-          <TextBlock Classes="hint" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
-                     Text="Select a consumer group to see its offsets and lag."
-                     IsVisible="{Binding !HasDetail}" />
+          <StackPanel Classes="emptyState" IsVisible="{Binding !HasDetail}">
+            <PathIcon Data="{StaticResource Icon.groups}" />
+            <TextBlock Classes="emptyTitle" Text="No group selected" />
+            <TextBlock Classes="emptyHint" Text="Select a consumer group to see its offsets and lag." />
+          </StackPanel>
 
           <DockPanel IsVisible="{Binding HasDetail}">
-            <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,6">
+            <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8">
               <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Grid.Column="0" Classes="paneTitle" Text="{Binding SelectedGroup.GroupId}" TextTrimming="CharacterEllipsis" />
                 <Button Grid.Column="1" Classes="small" Content="Refresh" Command="{Binding RefreshDetailCommand}"
                         ToolTip.Tip="Reload this group's offsets and state" />
               </Grid>
               <TextBlock Classes="muted" Text="{Binding DetailSummary}" />
-              <Border Classes="badge warn" IsVisible="{Binding IsGroupActive}" HorizontalAlignment="Stretch">
-                <TextBlock Text="{Binding ActiveGroupWarning}" TextWrapping="Wrap" />
+              <Border Classes="callout warn" IsVisible="{Binding IsGroupActive}" HorizontalAlignment="Stretch">
+                <Grid ColumnDefinitions="Auto,*">
+                  <PathIcon Grid.Column="0" Data="{StaticResource Icon.warning}" Width="14" Height="14"
+                            Foreground="{DynamicResource WarningBrush}" VerticalAlignment="Top" Margin="0,1,10,0" />
+                  <TextBlock Grid.Column="1" Text="{Binding ActiveGroupWarning}" TextWrapping="Wrap" FontSize="12" />
+                </Grid>
               </Border>
             </StackPanel>
 
@@ -80,7 +101,7 @@
                     <DataTemplate x:DataType="msg:ConsumerGroupMember">
                       <StackPanel Margin="0,2">
                         <TextBlock Classes="mono" Text="{Binding MemberId}" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Classes="muted" FontSize="12">
+                        <TextBlock Classes="muted">
                           <Run Text="{Binding ClientId}" /><Run Text=" · " /><Run Text="{Binding Host}" />
                         </TextBlock>
                       </StackPanel>
@@ -92,26 +113,28 @@
 
             <!-- Offsets table -->
             <DockPanel>
-              <Grid DockPanel.Dock="Top" ColumnDefinitions="*,70,100,100,100,90,150,70" Margin="10,0,10,4">
-                <TextBlock Grid.Column="0" Classes="label" Text="Topic" />
-                <TextBlock Grid.Column="1" Classes="label" Text="Partition" TextAlignment="Right" />
-                <TextBlock Grid.Column="2" Classes="label" Text="Committed" TextAlignment="Right" ToolTip.Tip="Next offset the group will read" />
-                <TextBlock Grid.Column="3" Classes="label" Text="Earliest" TextAlignment="Right" />
-                <TextBlock Grid.Column="4" Classes="label" Text="End" TextAlignment="Right" ToolTip.Tip="Offset the next produced message gets" />
-                <TextBlock Grid.Column="5" Classes="label" Text="Lag" TextAlignment="Right" />
-                <TextBlock Grid.Column="6" Classes="label" Text="Move to" Margin="12,0,0,0"
-                           ToolTip.Tip="While a partition has lag, edit the offset to commit (prefilled with End = skip the backlog)" />
-              </Grid>
+              <Border DockPanel.Dock="Top" Classes="tableHeader">
+                <Grid ColumnDefinitions="*,70,100,100,100,90,150,70">
+                  <TextBlock Grid.Column="0" Text="Topic" />
+                  <TextBlock Grid.Column="1" Text="Partition" TextAlignment="Right" />
+                  <TextBlock Grid.Column="2" Text="Committed" TextAlignment="Right" ToolTip.Tip="Next offset the group will read" />
+                  <TextBlock Grid.Column="3" Text="Earliest" TextAlignment="Right" />
+                  <TextBlock Grid.Column="4" Text="End" TextAlignment="Right" ToolTip.Tip="Offset the next produced message gets" />
+                  <TextBlock Grid.Column="5" Text="Lag" TextAlignment="Right" />
+                  <TextBlock Grid.Column="6" Text="Move to" Margin="12,0,0,0"
+                             ToolTip.Tip="While a partition has lag, edit the offset to commit (prefilled with End = skip the backlog)" />
+                </Grid>
+              </Border>
               <ListBox ItemsSource="{Binding Offsets}" Classes="rows">
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:GroupOffsetRowViewModel">
                     <Grid ColumnDefinitions="*,70,100,100,100,90,150,70">
-                      <TextBlock Grid.Column="0" Text="{Binding Topic}" TextTrimming="CharacterEllipsis" />
-                      <TextBlock Grid.Column="1" Text="{Binding Partition}" Classes="mono" TextAlignment="Right" />
-                      <TextBlock Grid.Column="2" Text="{Binding Committed}" Classes="mono" TextAlignment="Right" />
-                      <TextBlock Grid.Column="3" Text="{Binding Earliest}" Classes="mono" TextAlignment="Right" />
-                      <TextBlock Grid.Column="4" Text="{Binding End}" Classes="mono" TextAlignment="Right" />
-                      <TextBlock Grid.Column="5" Text="{Binding Lag}" Classes="mono" TextAlignment="Right" FontWeight="Bold" />
+                      <TextBlock Grid.Column="0" Text="{Binding Topic}" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="1" Text="{Binding Partition}" Classes="mono" TextAlignment="Right" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="2" Text="{Binding Committed}" Classes="mono" TextAlignment="Right" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="3" Text="{Binding Earliest}" Classes="mono" TextAlignment="Right" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="4" Text="{Binding End}" Classes="mono" TextAlignment="Right" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="5" Text="{Binding Lag}" Classes="mono" TextAlignment="Right" FontWeight="SemiBold" VerticalAlignment="Center" />
                       <NumericUpDown Grid.Column="6" Margin="12,0,0,0" Value="{Binding NewOffset}" Minimum="0" FormatString="0"
                                      IsVisible="{Binding HasLag}" IsEnabled="{Binding CanEdit}"
                                      ToolTip.Tip="Offset to commit for this partition" />

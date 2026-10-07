@@ -12,7 +12,7 @@
       <StackPanel Spacing="6">
         <Grid ColumnDefinitions="*,Auto">
           <TextBlock Grid.Column="0" Classes="paneTitle">
-            <Run Text="Connections" /><Run Text=" " /><Run Text="{Binding Connections.Count}" Foreground="{DynamicResource MutedTextBrush}" />
+            <Run Text="Connections" /><Run Text=" " /><Run Text="{Binding Connections.Count}" Foreground="{DynamicResource TextMutedBrush}" />
           </TextBlock>
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
             <Button Classes="small" Content="Import..." Command="{Binding ImportConnectionsCommand}"
@@ -22,22 +22,23 @@
           </StackPanel>
         </Grid>
         <CheckBox Content="Include passwords in export (plain text)" IsChecked="{Binding ExportIncludesPasswords}" />
-        <TextBlock Classes="hint" IsVisible="{Binding !Connections.Count}"
-                   Text="No connections yet. Add a real cluster below, or a demo (in-memory) connection to try KafkaStudio without a broker." />
+        <StackPanel Classes="emptyState" IsVisible="{Binding !Connections.Count}">
+          <PathIcon Data="{StaticResource Icon.plug}" />
+          <TextBlock Classes="emptyTitle" Text="No connections yet" />
+          <TextBlock Classes="emptyHint" Text="Add a real cluster below, or a demo (in-memory) connection to try KafkaStudio without a broker." />
+        </StackPanel>
         <ItemsControl Name="ConnectionsList" ItemsSource="{Binding Connections}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:ConnectionRowViewModel">
               <Border Classes="row">
                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto">
-                  <Ellipse Grid.Row="0" Grid.Column="0" Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center"
-                           Fill="{DynamicResource SuccessBrush}" IsVisible="{Binding IsConnected}" />
-                  <Ellipse Grid.Row="0" Grid.Column="0" Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center"
-                           Fill="{DynamicResource FailureBrush}" IsVisible="{Binding !IsConnected}" />
+                  <Ellipse Grid.Row="0" Grid.Column="0" Classes="dot ok" Margin="0,0,8,0" IsVisible="{Binding IsConnected}" />
+                  <Ellipse Grid.Row="0" Grid.Column="0" Classes="dot bad" Margin="0,0,8,0" IsVisible="{Binding !IsConnected}" />
                   <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="6">
-                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="White" FontSize="13" VerticalAlignment="Center" />
-                    <Border Classes="badge"><TextBlock Text="{Binding Kind}" /></Border>
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                    <Border Classes="badge accent"><TextBlock Text="{Binding Kind}" /></Border>
                   </StackPanel>
-                  <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding BootstrapServers}" Classes="muted" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding BootstrapServers}" Classes="muted mono" TextTrimming="CharacterEllipsis" />
                   <StackPanel Grid.Row="2" Grid.Column="1" Spacing="4" Margin="0,4,0,0">
                     <TextBlock Text="{Binding Status}" Classes="muted" TextWrapping="Wrap" MaxHeight="64"
                                Classes.error="{Binding HasError}" />
@@ -65,7 +66,7 @@
       <StackPanel Classes="form" Spacing="2">
         <Grid ColumnDefinitions="*,Auto">
           <TextBlock Grid.Column="0" Classes="paneTitle" Text="Add or edit a connection" />
-          <Button Grid.Column="1" Classes="small" Content="Clear form" Command="{Binding ResetFormCommand}" />
+          <Button Grid.Column="1" Classes="small ghost" Content="Clear form" Command="{Binding ResetFormCommand}" />
         </Grid>
 
         <TextBlock Classes="label" Text="NAME" />
@@ -100,8 +101,7 @@
             <TextBlock Classes="label" Text="CLIENT ID" />
             <TextBox Text="{Binding NewClientId}" />
             <TextBlock Classes="label" Text="EXTRA LIBRDKAFKA SETTINGS (key=value per line)" />
-            <TextBox Text="{Binding NewAdvancedProperties}" AcceptsReturn="True" MinHeight="70" TextWrapping="NoWrap"
-                     FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12"
+            <TextBox Classes="code" Text="{Binding NewAdvancedProperties}" AcceptsReturn="True" MinHeight="70" TextWrapping="NoWrap"
                      Watermark="socket.timeout.ms=30000&#x0a;ssl.certificate.location=/path/client.pem" />
           </StackPanel>
         </Expander>
@@ -111,7 +111,7 @@
                   ToolTip.Tip="Connects and lists topics to verify the settings before saving" />
           <Button Content="Add as demo (in-memory)" Command="{Binding AddDemoConnectionCommand}"
                   ToolTip.Tip="A simulated broker inside the app - try every screen and script without Kafka" />
-          <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Width="16" Height="16" MinWidth="16" Margin="8,0,0,0" VerticalAlignment="Center" />
+          <ProgressBar Classes="busy" IsVisible="{Binding IsBusy}" Margin="8,0,0,0" />
         </WrapPanel>
         <TextBlock Classes="hint" Text="{Binding StatusMessage}" Margin="0,6,0,0"
                    IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

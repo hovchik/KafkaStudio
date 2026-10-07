@@ -8,7 +8,8 @@
              x:CompileBindings="True">
 
   <DockPanel>
-    <Border DockPanel.Dock="Top" Classes="toolbar">
+    <!-- Sub-toolbar: this view renders inside the Find Data pane. -->
+    <Border DockPanel.Dock="Top" Classes="toolbar" Background="{DynamicResource SurfaceRaisedBrush}">
       <WrapPanel>
         <TextBlock Text="Topic" Classes="muted" Margin="0,0,6,2" />
         <ComboBox Width="220" ItemsSource="{Binding TopicNames}" SelectedItem="{Binding Topic}" PlaceholderText="Pick a topic…" Margin="0,0,6,2" />
@@ -16,48 +17,55 @@
         <ComboBox Width="300" ItemsSource="{Binding GroupByChoices}" SelectedItem="{Binding GroupBy}" Margin="0,0,6,2" />
         <TextBox Width="220" Text="{Binding FieldsText}" Watermark="$.orderId, $.eventType" IsVisible="{Binding NeedsFields}" Margin="0,0,6,2" />
         <Button Content="Find duplicates" Classes="primary" Command="{Binding RunCommand}" Margin="0,0,6,2" />
-        <Button Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" Margin="0,0,0,2" />
+        <Button Classes="ghost" Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" Margin="0,0,0,2" />
       </WrapPanel>
     </Border>
 
     <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="2,8,0,6">
-      <SelectableTextBlock Foreground="White" TextWrapping="Wrap" Text="{Binding Status}" />
+      <SelectableTextBlock FontSize="12.5" TextWrapping="Wrap" Text="{Binding Status}" />
       <TextBlock Classes="muted" Text="{Binding Progress}" IsVisible="{Binding IsRunning}" />
       <TextBlock Classes="hint" Text="Uses the range from the scope bar. Tip: set Range to 'All messages' to check the whole topic." />
     </StackPanel>
 
-    <Grid ColumnDefinitions="*,6,*">
-      <ListBox Grid.Column="0" Classes="rows" ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroup}">
-        <ListBox.ItemTemplate>
-          <DataTemplate x:DataType="search:DuplicateGroup">
-            <Grid ColumnDefinitions="40,*,Auto" Margin="6,3">
-              <TextBlock Grid.Column="0" FontWeight="SemiBold" Foreground="{DynamicResource FailureBrush}">
-                <Run Text="×" /><Run Text="{Binding Count}" />
-              </TextBlock>
-              <StackPanel Grid.Column="1">
-                <TextBlock Classes="mono" FontSize="11" Foreground="White" TextTrimming="CharacterEllipsis" Text="{Binding GroupKey}" />
-                <TextBlock Classes="muted" FontSize="10" TextTrimming="CharacterEllipsis" Text="{Binding PositionsText}" />
-              </StackPanel>
-              <TextBlock Grid.Column="2" Classes="muted" FontSize="11" Margin="8,0,0,0" Text="{Binding SpanText}"
-                         ToolTip.Tip="Time between the first and last copy" />
-            </Grid>
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
+    <Grid ColumnDefinitions="*,8,*">
+      <Panel Grid.Column="0">
+        <StackPanel Classes="emptyState" IsVisible="{Binding !Groups.Count}">
+          <PathIcon Data="{StaticResource Icon.search}" />
+          <TextBlock Classes="emptyTitle" Text="No duplicates found yet" />
+          <TextBlock Classes="emptyHint" Text="Pick a topic and a grouping, then Find duplicates." />
+        </StackPanel>
+        <ListBox Classes="rows" ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroup}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="search:DuplicateGroup">
+              <Grid ColumnDefinitions="40,*,Auto">
+                <TextBlock Grid.Column="0" Classes="danger" FontWeight="SemiBold">
+                  <Run Text="×" /><Run Text="{Binding Count}" />
+                </TextBlock>
+                <StackPanel Grid.Column="1">
+                  <TextBlock Classes="mono" FontSize="11" TextTrimming="CharacterEllipsis" Text="{Binding GroupKey}" />
+                  <TextBlock Classes="muted" FontSize="10" TextTrimming="CharacterEllipsis" Text="{Binding PositionsText}" />
+                </StackPanel>
+                <TextBlock Grid.Column="2" Classes="muted" FontSize="11" Margin="8,0,0,0" Text="{Binding SpanText}"
+                           ToolTip.Tip="Time between the first and last copy" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Panel>
 
-      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="8" />
 
       <ListBox Grid.Column="2" Classes="rows" ItemsSource="{Binding SelectedGroup.Messages, FallbackValue={x:Null}}"
                SelectedItem="{Binding SelectedGroupMessage}">
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="msg:KafkaMessage">
-            <Grid ColumnDefinitions="Auto,Auto,*" Margin="6,3">
-              <TextBlock Grid.Column="0" Classes="muted" FontSize="11" Margin="0,0,8,0"
+            <Grid ColumnDefinitions="Auto,Auto,*">
+              <TextBlock Grid.Column="0" Classes="muted mono" FontSize="11" Margin="0,0,8,0"
                          Text="{Binding Timestamp, StringFormat='{}{0:MM-dd HH:mm:ss.fff}'}" />
-              <TextBlock Grid.Column="1" Classes="muted" FontSize="11" Margin="0,0,8,0">
+              <TextBlock Grid.Column="1" Classes="muted mono" FontSize="11" Margin="0,0,8,0">
                 <Run Text="#" /><Run Text="{Binding Partition}" /><Run Text="@" /><Run Text="{Binding Offset}" />
               </TextBlock>
-              <TextBlock Grid.Column="2" Classes="mono" Foreground="White" TextTrimming="CharacterEllipsis" Text="{Binding ValuePreview}" />
+              <TextBlock Grid.Column="2" Classes="mono" TextTrimming="CharacterEllipsis" Text="{Binding ValuePreview}" />
             </Grid>
           </DataTemplate>
         </ListBox.ItemTemplate>
