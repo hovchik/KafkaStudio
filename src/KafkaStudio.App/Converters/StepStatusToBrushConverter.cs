@@ -11,17 +11,12 @@ public sealed class StepStatusToBrushConverter : IValueConverter
 {
     public static readonly StepStatusToBrushConverter Instance = new();
 
-    private static readonly IBrush Passed = new SolidColorBrush(Color.Parse("#4CD97B"));
-    private static readonly IBrush Failed = new SolidColorBrush(Color.Parse("#FF6B6B"));
-    private static readonly IBrush Cancelled = new SolidColorBrush(Color.Parse("#E0AF68"));
-    private static readonly IBrush Skipped = new SolidColorBrush(Color.Parse("#9AA0AC"));
-
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value switch
     {
-        StepStatus.Passed => Passed,
-        StepStatus.Failed => Failed,
-        StepStatus.Cancelled => Cancelled,
-        _ => Skipped
+        StepStatus.Passed => ThemeBrushes.Get("SuccessBrush"),
+        StepStatus.Failed => ThemeBrushes.Get("DangerBrush"),
+        StepStatus.Cancelled => ThemeBrushes.Get("WarningBrush"),
+        _ => ThemeBrushes.Get("TextMutedBrush")
     };
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
@@ -33,15 +28,11 @@ public sealed class PassFailBrushConverter : IValueConverter
 {
     public static readonly PassFailBrushConverter Instance = new();
 
-    private static readonly IBrush Passed = new SolidColorBrush(Color.Parse("#4CD97B"));
-    private static readonly IBrush Failed = new SolidColorBrush(Color.Parse("#FF6B6B"));
-    private static readonly IBrush Unknown = new SolidColorBrush(Color.Parse("#9AA0AC"));
-
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value switch
     {
-        true => Passed,
-        false => Failed,
-        _ => Unknown
+        true => ThemeBrushes.Get("SuccessBrush"),
+        false => ThemeBrushes.Get("DangerBrush"),
+        _ => ThemeBrushes.Get("TextMutedBrush")
     };
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
