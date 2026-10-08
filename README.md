@@ -98,6 +98,12 @@ dotnet run --project src/KafkaStudio.Cli -- test samples/qa -c local=localhost:9
 dotnet publish src/KafkaStudio.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
 ```
 
+Rendering note: on Windows the app draws with Avalonia's software renderer rather than the GPU. The
+default GPU path (ANGLE + WinUI composition) can come back from a long minimize, lock screen or sleep
+as an empty window frame with nothing painted inside, as if the app had hung. Set the environment
+variable `KAFKASTUDIO_GPU_RENDERING=1` before starting the app to use the GPU path again, e.g. to
+compare the two when reporting a display problem.
+
 If `dotnet build`/`restore` reports XAML errors in `KafkaStudio.App`, they're almost certainly small -
 see the "what's verified" section above for why, and check the corresponding `.axaml` file; the
 ViewModel it binds to (in `KafkaStudio.App.ViewModels`) is already fully working and tested.
