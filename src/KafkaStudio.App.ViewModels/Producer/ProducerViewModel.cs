@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using KafkaStudio.App.ViewModels.Mvvm;
@@ -243,11 +244,16 @@ public sealed class ProducerViewModel : ObservableObject
             return;
         }
 
+        // Snapshot the form: the editor stays editable while a long "send N" runs, and every message
+        // of one run should carry what was there when Send was clicked.
         var topic = Topic.Trim();
+        var key = Key;
+        var messageValue = Value;
+        var isTombstone = IsTombstone;
         int? partition = null;
         if (!string.IsNullOrWhiteSpace(Partition))
         {
-            if (!int.TryParse(Partition.Trim(), out var p) || p < 0)
+            if (!int.TryParse(Partition.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var p) || p < 0)
             {
                 StatusMessage = $"Partition '{Partition}' must be a non-negative whole number (or empty).";
                 return;
@@ -285,8 +291,8 @@ public sealed class ProducerViewModel : ObservableObject
                 last = await gateway.ProduceAsync(new ProduceRequest
                 {
                     Topic = topic,
-                    Key = string.IsNullOrEmpty(Key) ? null : TemplateEngine.RenderBuiltIns(Key, i + 1),
-                    Value = IsTombstone ? null : TemplateEngine.RenderBuiltIns(Value, i + 1),
+                    Key = string.IsNullOrEmpty(key) ? null : TemplateEngine.RenderBuiltIns(key, i + 1),
+                    Value = isTombstone ? null : TemplateEngine.RenderBuiltIns(messageValue, i + 1),
                     Headers = headers,
                     Partition = partition
                 }, cts.Token).ConfigureAwait(true);
@@ -300,7 +306,7 @@ public sealed class ProducerViewModel : ObservableObject
                 Summary = count == 1
                     ? $"{started:HH:mm:ss}  {last!.Topic}#{last.Partition}@{last.Offset}"
                     : $"{started:HH:mm:ss}  {sent:N0} × {topic} (last #{last!.Partition}@{last.Offset})",
-                Detail = IsTombstone ? "<tombstone>" : Truncate(Value, 300)
+                Detail = isTombstone ? "<tombstone>" : Truncate(messageValue, 300)
             });
             StatusMessage = count == 1 ? "Sent." : $"Sent {sent:N0} messages.";
         }

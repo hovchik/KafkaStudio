@@ -746,7 +746,9 @@ public sealed class TopicBrowserViewModel : ObservableObject
 
     private async Task RefreshTopicsAsync()
     {
-        _topicsLoadCts?.Cancel();
+        var old = _topicsLoadCts;
+        old?.Cancel();
+        old?.Dispose();
         var cts = new CancellationTokenSource();
         _topicsLoadCts = cts;
 

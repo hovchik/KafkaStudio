@@ -17,7 +17,7 @@ public static class JUnitReportWriter
     public static string Write(TestRunReport report)
     {
         var suites = new XElement("testsuites",
-            new XAttribute("name", report.Name),
+            new XAttribute("name", Clean(report.Name)),
             new XAttribute("tests", report.Total),
             new XAttribute("failures", report.Failed),
             new XAttribute("errors", report.Errors),
@@ -29,7 +29,7 @@ public static class JUnitReportWriter
         {
             var results = group.ToList();
             var suite = new XElement("testsuite",
-                new XAttribute("name", group.Key.SuiteName),
+                new XAttribute("name", Clean(group.Key.SuiteName)),
                 new XAttribute("tests", results.Count),
                 new XAttribute("failures", results.Count(r => r.Outcome == TestOutcome.Failed)),
                 new XAttribute("errors", results.Count(r => r.Outcome == TestOutcome.Error)),
@@ -123,9 +123,27 @@ public static class JUnitReportWriter
 
     private static string Seconds(TimeSpan d) => d.TotalSeconds.ToString("0.000", CultureInfo.InvariantCulture);
 
-    /// <summary>Drops characters XML 1.0 can't carry (control characters from binary payloads).</summary>
-    private static string Clean(string text) =>
-        text.Any(c => !XmlConvert.IsXmlChar(c)) ? new string(text.Where(XmlConvert.IsXmlChar).ToArray()) : text;
+    /// <summary>Drops characters XML 1.0 can't carry (control characters from binary payloads). Surrogate
+    /// pairs (emoji and the like) are valid XML and are kept.</summary>
+    private static string Clean(string text)
+    {
+        var clean = true;
+        for (var i = 0; i < text.Length && clean; i++)
+        {
+            if (XmlConvert.IsXmlChar(text[i])) continue;
+            if (i + 1 < text.Length && XmlConvert.IsXmlSurrogatePair(text[i + 1], text[i])) { i++; continue; }
+            clean = false;
+        }
+        if (clean) return text;
+
+        var sb = new StringBuilder(text.Length);
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (XmlConvert.IsXmlChar(text[i])) sb.Append(text[i]);
+            else if (i + 1 < text.Length && XmlConvert.IsXmlSurrogatePair(text[i + 1], text[i])) { sb.Append(text[i]).Append(text[i + 1]); i++; }
+        }
+        return sb.ToString();
+    }
 
     private sealed class Utf8StringWriter(StringBuilder sb) : StringWriter(sb)
     {

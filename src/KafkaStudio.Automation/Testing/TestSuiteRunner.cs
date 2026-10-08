@@ -117,6 +117,7 @@ public sealed class TestSuiteRunner
             runner.StepCompleted += step => StepCompleted?.Invoke(testCase, step);
 
             ScriptRunResult run;
+            string? crash = null;
             try
             {
                 run = await runner.RunAsync(testCase.Block, timeoutCts.Token).ConfigureAwait(false);
@@ -125,11 +126,12 @@ public sealed class TestSuiteRunner
             {
                 // ScriptRunner turns script/Kafka errors into failed steps; this is a last-resort guard.
                 run = new ScriptRunResult(testCase.Block, false, Array.Empty<StepResult>(), timer.Elapsed);
-                earlier.Add($"unexpected error: {ex.Message}");
+                crash = $"unexpected error: {ex.Message}";
             }
 
             var timedOut = run.Cancelled && !cancellationToken.IsCancellationRequested;
             var (outcome, message) = Classify(run, timedOut, options.Timeout);
+            if (crash is not null) (outcome, message) = (TestOutcome.Error, crash);
             var failed = run.Steps.LastOrDefault(s => s.Status is StepStatus.Failed or StepStatus.Cancelled);
 
             var retry = outcome is TestOutcome.Failed or TestOutcome.Error && attempt < maxAttempts && !cancellationToken.IsCancellationRequested;

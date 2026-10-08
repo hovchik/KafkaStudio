@@ -43,6 +43,7 @@ public sealed partial class ContractCheckViewModel : ObservableObject
 
     private readonly AppState _state;
     private CancellationTokenSource? _cts;
+    private CancellationTokenSource? _topicsCts;
 
     public ContractCheckViewModel(AppState state)
     {
@@ -167,15 +168,24 @@ public sealed partial class ContractCheckViewModel : ObservableObject
 
     private async Task LoadTopicsAsync()
     {
+        _topicsCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _topicsCts = cts;
+
         if (SelectedConnection is null || !_state.Connections.TryGetValue(SelectedConnection, out var gateway)) return;
         try
         {
-            var topics = await gateway.ListTopicsAsync().ConfigureAwait(true);
+            var topics = await gateway.ListTopicsAsync(cts.Token).ConfigureAwait(true);
+            if (cts.IsCancellationRequested) return;
             CollectionSync.SyncSorted(TopicNames, topics);
+        }
+        catch (OperationCanceledException)
+        {
+            // superseded by a newer connection selection - ignore.
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Could not list topics: {ex.Message}";
+            if (!cts.IsCancellationRequested) StatusMessage = $"Could not list topics: {ex.Message}";
         }
     }
 

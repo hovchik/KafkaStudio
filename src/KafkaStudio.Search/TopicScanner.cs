@@ -71,7 +71,9 @@ public static class TopicScanner
         DateTimeOffset? now = null,
         int parallelism = DefaultParallelism)
     {
-        progress ??= new ScanProgress { TopicsTotal = topics.Count };
+        // Deduplicate once so the total, the progress and the summary all count the same topics.
+        var distinctTopics = topics.Distinct(StringComparer.Ordinal).ToList();
+        progress ??= new ScanProgress { TopicsTotal = distinctTopics.Count };
         var at = now ?? DateTimeOffset.UtcNow;
         var failed = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
         using var stopAll = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -85,7 +87,7 @@ public static class TopicScanner
 
         try
         {
-            await Parallel.ForEachAsync(topics.Distinct(StringComparer.Ordinal), parallelOptions, async (topic, token) =>
+            await Parallel.ForEachAsync(distinctTopics, parallelOptions, async (topic, token) =>
             {
                 try
                 {
@@ -129,7 +131,7 @@ public static class TopicScanner
 
         return new ScanSummary
         {
-            TopicsTotal = topics.Count,
+            TopicsTotal = distinctTopics.Count,
             TopicsScanned = progress.TopicsScanned,
             MessagesScanned = progress.MessagesScanned,
             FailedTopics = failed,

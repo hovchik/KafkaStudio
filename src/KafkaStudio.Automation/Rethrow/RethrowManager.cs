@@ -47,13 +47,20 @@ public sealed class RethrowManager : IAsyncDisposable
     public void Start(RethrowRule rule, IReadOnlyDictionary<string, IKafkaGateway> connections)
     {
         RethrowEngine.Validate(rule, connections);
+        if (_running.ContainsKey(rule.Name))
+        {
+            throw new InvalidOperationException($"rethrow rule '{rule.Name}' is already running");
+        }
+        RejectCycle(rule);
 
         var cts = new CancellationTokenSource();
+        var token = cts.Token; // read before the dispose in the duplicate-name path below can race it
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var task = Task.Run(async () =>
         {
             await gate.Task.ConfigureAwait(false); // don't start before we're registered
-            await _engine.RunAsync(rule, connections, cts.Token).ConfigureAwait(false);
+            if (token.IsCancellationRequested) return;
+            await _engine.RunAsync(rule, connections, token).ConfigureAwait(false);
         });
         var running = new RunningRule(cts, task);
 
@@ -70,6 +77,7 @@ public sealed class RethrowManager : IAsyncDisposable
             // Only report if the rule wasn't stopped deliberately (StopAsync removes it first).
             if (((ICollection<KeyValuePair<string, RunningRule>>)_running).Remove(new KeyValuePair<string, RunningRule>(rule.Name, running)))
             {
+                _rules.TryRemove(rule.Name, out _);
                 running.Cts.Dispose();
                 RuleStopped?.Invoke(rule, t.Exception?.GetBaseException());
             }
@@ -78,10 +86,47 @@ public sealed class RethrowManager : IAsyncDisposable
         gate.TrySetResult();
     }
 
+    private readonly ConcurrentDictionary<string, RethrowRule> _rules = new();
+
+    /// <summary>
+    /// A rule's own source == destination is caught by <see cref="RethrowEngine.Validate"/>; this catches the
+    /// indirect version - A→B while B→A (or A→B, B→C, C→A) is already running - which would otherwise
+    /// relay every message round and round forever, flooding every topic on the loop.
+    /// </summary>
+    private void RejectCycle(RethrowRule rule)
+    {
+        var edges = _running.Keys
+            .Select(name => _rules.TryGetValue(name, out var r) ? r : null)
+            .Where(r => r is not null)
+            .Select(r => r!)
+            .ToList();
+        var start = (rule.SourceConnection, rule.SourceTopic);
+        var seen = new HashSet<(string, string)> { (rule.DestinationConnection, rule.DestinationTopic) };
+        var frontier = new Queue<(string, string)>(seen);
+        while (frontier.Count > 0)
+        {
+            var node = frontier.Dequeue();
+            if (node == start)
+            {
+                throw new ArgumentException(
+                    $"'{rule.Name}' would complete a loop: messages relayed to '{rule.DestinationTopic}' already come back to '{rule.SourceTopic}' through a running rule");
+            }
+            foreach (var edge in edges)
+            {
+                if ((edge.SourceConnection, edge.SourceTopic) == node && seen.Add((edge.DestinationConnection, edge.DestinationTopic)))
+                {
+                    frontier.Enqueue((edge.DestinationConnection, edge.DestinationTopic));
+                }
+            }
+        }
+        _rules[rule.Name] = rule;
+    }
+
     public async Task StopAsync(string ruleName)
     {
         if (_running.TryRemove(ruleName, out var running))
         {
+            _rules.TryRemove(ruleName, out _);
             running.Cts.Cancel();
             try { await running.Task.ConfigureAwait(false); }
             catch { /* expected on cancellation */ }

@@ -190,14 +190,23 @@ public sealed partial class TestCommand
         var m = DurationPattern().Match(text);
         if (!m.Success) return null;
         var value = double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
-        var result = m.Groups[2].Value.ToLowerInvariant() switch
+        TimeSpan result;
+        try
         {
-            "ms" => TimeSpan.FromMilliseconds(value),
-            "s" => TimeSpan.FromSeconds(value),
-            "m" => TimeSpan.FromMinutes(value),
-            _ => TimeSpan.FromHours(value)
-        };
-        return result > TimeSpan.Zero ? result : null;
+            result = m.Groups[2].Value.ToLowerInvariant() switch
+            {
+                "ms" => TimeSpan.FromMilliseconds(value),
+                "s" => TimeSpan.FromSeconds(value),
+                "m" => TimeSpan.FromMinutes(value),
+                _ => TimeSpan.FromHours(value)
+            };
+        }
+        catch (OverflowException)
+        {
+            return null;
+        }
+        // CancelAfter can't take more than ~24 days; anything near that is a typo anyway.
+        return result > TimeSpan.Zero && result <= TimeSpan.FromDays(7) ? result : null;
     }
 
     public async Task<int> RunAsync(IReadOnlyList<string> args, CancellationToken cancellationToken = default)
@@ -329,8 +338,10 @@ public sealed partial class TestCommand
             await _out.WriteLineAsync($"{what}: {full}").ConfigureAwait(false);
             return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or System.Xml.XmlException)
         {
+            // ArgumentException/XmlException: a report writer choked on the content (e.g. a path that
+            // isn't valid, or text XML can't carry) - the run's exit code must still reflect the tests.
             await _err.WriteLineAsync($"error: can't write {what} to '{path}': {ex.Message}").ConfigureAwait(false);
             return false;
         }
@@ -363,12 +374,14 @@ public sealed partial class TestCommand
                     await gateway.ConnectAsync(ct).ConfigureAwait(false);
                     // Creating a client doesn't contact the broker: ask for the topic list, so an
                     // unreachable cluster fails the run up front instead of hanging inside the first test.
-                    var probe = gateway.ListTopicsAsync(ct);
-                    if (await Task.WhenAny(probe, Task.Delay(ConnectTimeout, ct)).ConfigureAwait(false) != probe)
+                    try
+                    {
+                        await gateway.ListTopicsAsync(ct).WaitAsync(ConnectTimeout, ct).ConfigureAwait(false);
+                    }
+                    catch (TimeoutException)
                     {
                         throw new TimeoutException($"no answer from the cluster within {ConnectTimeout.TotalSeconds:0}s");
                     }
-                    await probe.ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

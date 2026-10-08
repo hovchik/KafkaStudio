@@ -64,7 +64,7 @@ public static class ConsumerGroupTests
             Assert.Equal(10L, await ResetTo(OffsetResetTarget.Latest));
             Assert.Equal(7L, await ResetTo(OffsetResetTarget.Offset, 7));
             Assert.Equal(10L, await ResetTo(OffsetResetTarget.Offset, 999)); // clamped to the end
-            Assert.Null(await ResetTo(OffsetResetTarget.Earliest));          // offset 0 reads as "nothing committed"
+            Assert.Equal(0L, await ResetTo(OffsetResetTarget.Earliest));     // a reset to 0 is a real committed position, as on a real broker
             Assert.Equal(10L, (await gateway.DescribeConsumerGroupAsync("billing")).TotalLag);
         });
 

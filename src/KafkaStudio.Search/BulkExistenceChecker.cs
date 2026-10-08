@@ -74,9 +74,12 @@ public static class BulkExistenceChecker
         DateTimeOffset? now = null)
     {
         var matcher = new IdMatcher(ids, field, caseSensitive);
-        var rows = ids.Select(i => i.Trim()).Where(i => i.Length > 0).Distinct(StringComparer.Ordinal)
+        // One row per distinct id under the same comparison the matcher uses, so "ABC" and "abc" don't
+        // become two rows of which only one is ever updated.
+        var comparer = caseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
+        var rows = ids.Select(i => i.Trim()).Where(i => i.Length > 0).Distinct(comparer)
             .Select(i => new IdPresence { Id = i }).ToList();
-        var byId = new Dictionary<string, IdPresence>(caseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase);
+        var byId = new Dictionary<string, IdPresence>(comparer);
         foreach (var row in rows) byId.TryAdd(row.Id, row);
 
         var scan = await TopicScanner.ScanAsync(gateway, topics, range, (_, message) =>

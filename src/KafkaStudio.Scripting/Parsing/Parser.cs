@@ -758,7 +758,7 @@ public sealed class Parser
     {
         ExpectWord("set");
         ExpectWord("variable");
-        var name = ExpectWordText();
+        var name = ExpectVariableName();
         ExpectWord("to");
         var value = ExpectString();
         return new SetVariableAction(name, value);
@@ -779,7 +779,7 @@ public sealed class Parser
         else throw Error("expected 'capture json \"$.path\"', 'capture key', or 'capture value'");
 
         ExpectWord("as");
-        var name = ExpectWordText();
+        var name = ExpectVariableName();
         return new CaptureAction(source, path, name);
     }
 
@@ -946,8 +946,14 @@ public sealed class Parser
             : "expected 'beginning', 'end' or 'committed' after 'from'");
     }
 
+    /// <summary>Longest duration a step may name. Anything a script waits on is bounded by a timer
+    /// (which can't exceed ~24 days anyway), and a typo like "within 100000 hours" is better caught here
+    /// than as an overflow crash while the script runs.</summary>
+    private static readonly TimeSpan MaxDuration = TimeSpan.FromDays(7);
+
     private Duration ParseDuration()
     {
+        var line = Current.Line;
         var value = ExpectNumber();
         var unitWord = ExpectWordText().ToLowerInvariant();
         var unit = unitWord switch
@@ -958,6 +964,27 @@ public sealed class Parser
             "h" or "hour" or "hours" => TimeUnit.Hours,
             _ => throw Error($"unknown time unit '{unitWord}' (expected seconds/minutes/hours/ms)")
         };
-        return new Duration(value, unit);
+        var duration = new Duration(value, unit);
+        TimeSpan span;
+        try { span = duration.ToTimeSpan(); }
+        catch (OverflowException) { span = TimeSpan.MaxValue; }
+        if (value < 0 || double.IsNaN(value) || span > MaxDuration)
+        {
+            throw new KafScriptException($"duration '{value} {unitWord}' is out of range (0 up to {MaxDuration.TotalDays:0} days)", line);
+        }
+        return duration;
+    }
+
+    /// <summary>Variable names must be usable as a <c>{{placeholder}}</c>; anything else would be set
+    /// but could never be read back.</summary>
+    private string ExpectVariableName()
+    {
+        var line = Current.Line;
+        var name = ExpectWordText();
+        if (!System.Text.RegularExpressions.Regex.IsMatch(name, "^[A-Za-z_][A-Za-z0-9_]*$"))
+        {
+            throw new KafScriptException($"'{name}' isn't a valid variable name (letters, digits and _ only, not starting with a digit)", line);
+        }
+        return name;
     }
 }

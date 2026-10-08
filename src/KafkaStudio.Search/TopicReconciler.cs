@@ -127,10 +127,12 @@ public static class TopicReconciler
         ScanProgress? progress = null,
         DateTimeOffset? now = null)
     {
+        // Reconciling a topic with itself would match every row with itself - never what was meant.
+        if (request.TopicA == request.TopicB) throw new ArgumentException("the two topics must differ", nameof(request));
+
         var a = new Side(request.CaseSensitive);
         var b = new Side(request.CaseSensitive);
-        var sameTopic = request.TopicA == request.TopicB;
-        var topics = sameTopic ? new[] { request.TopicA } : new[] { request.TopicA, request.TopicB };
+        var topics = new[] { request.TopicA, request.TopicB };
 
         var scan = await TopicScanner.ScanAsync(gateway, topics, request.Range, (topic, message) =>
         {
@@ -140,12 +142,13 @@ public static class TopicReconciler
         }, cancellationToken, progress, now: now).ConfigureAwait(false);
 
         var comparer = request.CaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
+        var comparison = request.CaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
         var rows = new List<ReconcileRow>();
         foreach (var (join, left) in a.ByJoin)
         {
             if (b.ByJoin.TryGetValue(join, out var right))
             {
-                var differences = Compare(left.First, right.First, request.CompareFields);
+                var differences = Compare(left.First, right.First, request.CompareFields, comparison);
                 rows.Add(new ReconcileRow
                 {
                     JoinValue = join,
@@ -194,14 +197,15 @@ public static class TopicReconciler
             (existing.Count + 1, message.Timestamp < existing.First.Timestamp ? message : existing.First));
     }
 
-    private static string Compare(KafkaMessage a, KafkaMessage b, IReadOnlyList<FieldSelector> fields)
+    private static string Compare(KafkaMessage a, KafkaMessage b, IReadOnlyList<FieldSelector> fields, StringComparison comparison)
     {
         var differences = new List<string>();
         foreach (var field in fields)
         {
-            var left = field.Read(a);
-            var right = field.Read(b);
-            if (!string.Equals(left, right, StringComparison.Ordinal))
+            // Trimmed and under the request's case rule, like the join values.
+            var left = field.Read(a)?.Trim();
+            var right = field.Read(b)?.Trim();
+            if (!string.Equals(left, right, comparison))
             {
                 differences.Add($"{field.Label}: {Short(left)} ≠ {Short(right)}");
             }

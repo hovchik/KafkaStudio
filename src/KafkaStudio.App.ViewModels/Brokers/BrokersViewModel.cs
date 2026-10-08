@@ -97,7 +97,9 @@ public sealed class BrokersViewModel : ObservableObject
     {
         if (SelectedConnection is null || !_state.Connections.TryGetValue(SelectedConnection, out var gateway)) return;
 
-        _loadCts?.Cancel();
+        var oldLoad = _loadCts;
+        oldLoad?.Cancel();
+        oldLoad?.Dispose();
         var cts = _loadCts = new CancellationTokenSource();
         IsLoading = true;
         Status = "Loading brokers…";
@@ -132,7 +134,10 @@ public sealed class BrokersViewModel : ObservableObject
 
     private async Task LoadConfigAsync()
     {
-        _configCts?.Cancel();
+        var oldConfig = _configCts;
+        oldConfig?.Cancel();
+        oldConfig?.Dispose();
+        _configCts = null;
         _allConfig = new List<BrokerConfigEntry>();
         Config.Clear();
         if (SelectedBroker is not { } broker || SelectedConnection is null ||

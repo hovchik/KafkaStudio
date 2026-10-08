@@ -397,7 +397,14 @@ public sealed class MessageQuery
     private static bool LooksStructured(string text)
     {
         var first = text.TrimStart().TrimStart('(', ' ');
-        if (first.StartsWith('$')) return true;
+        if (first.StartsWith('$'))
+        {
+            // "$.path = ..." is structured; a lone "$19.99 ..." is plain text (same rule as the token overload).
+            var end = first.IndexOfAny(new[] { ' ', '\t', '=', '!', '<', '>', '~' });
+            var rest = end < 0 ? "" : first[end..].TrimStart();
+            var restWord = new string(rest.TakeWhile(c => char.IsLetter(c)).ToArray());
+            return rest.Length > 0 && (rest[0] is '=' or '!' or '<' or '>' or '~' || ComparatorStartWords.Contains(restWord));
+        }
         var word = new string(first.TakeWhile(c => char.IsLetter(c)).ToArray());
         return FieldWords.Contains(word) && first.Length > word.Length && char.IsWhiteSpace(first[word.Length]);
     }
@@ -412,13 +419,16 @@ public sealed class MessageQuery
         if (i >= tokens.Count) return false;
 
         var first = tokens[i];
-        if (first.Kind == TokenKind.Word && first.Text.StartsWith('$')) return true;
-        if (first.Kind != TokenKind.Word || !FieldWords.Contains(first.Text)) return false;
+        if (first.Kind != TokenKind.Word) return false;
 
         static bool IsComparatorStart(Token t) =>
             t.Kind == TokenKind.Symbol || (t.Kind == TokenKind.Word && ComparatorStartWords.Contains(t.Text));
 
-        var next = i + 1 < tokens.Count ? tokens[i + 1] : default;
+        // A lone word is never structured ("json", "header", "$19.99" are plain searches).
+        var next = i + 1 < tokens.Count ? tokens[i + 1] : new Token(TokenKind.End, "", -1);
+        if (first.Text.StartsWith('$')) return IsComparatorStart(next);
+        if (!FieldWords.Contains(first.Text)) return false;
+
         if (first.IsWord("json") || first.IsWord("header"))
         {
             if (next.Kind == TokenKind.String || (next.Kind == TokenKind.Word && next.Text.StartsWith('$'))) return true;
@@ -467,6 +477,10 @@ public sealed class MessageQuery
             {
                 var start = i;
                 var symbol = c.ToString();
+                if (c == '~' && i + 1 < text.Length && text[i + 1] == '=')
+                {
+                    throw new QueryParseException("unknown operator '~=' (did you mean 'matches'?)");
+                }
                 if (i + 1 < text.Length && text[i + 1] == '=' && c is '=' or '!' or '<' or '>')
                 {
                     symbol += "=";

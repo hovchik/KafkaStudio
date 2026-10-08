@@ -63,6 +63,9 @@ public sealed class RethrowEngine
                 // First subscription starts at the tail (a new rule relays new traffic, not history);
                 // after a failure, resume from what was committed so nothing in between is lost.
                 StartPosition = hasCommitted ? ConsumeStartPosition.Committed : ConsumeStartPosition.Latest,
+                // Commits are per partition: a partition this rule hasn't relayed from yet must resume
+                // at its tail too, not replay its whole history to the destination.
+                UncommittedStart = ConsumeStartPosition.Latest,
                 AutoAcknowledge = false
             };
 
@@ -125,16 +128,40 @@ public sealed class RethrowEngine
         var headers = new Dictionary<string, string>(message.Headers);
         foreach (var (name, value) in rule.ExtraHeaders) headers[name] = value;
 
-        // Produce failures (destination down, auth, too large) propagate to RunAsync, which reports
-        // them and resubscribes from the last commit - i.e. this message is retried, not lost.
-        var receipt = await destination.ProduceAsync(new ProduceRequest
+        var request = new ProduceRequest
         {
             Topic = rule.DestinationTopic,
             Key = key,
             Value = message.Value,
             RawValue = message.RawValue,
             Headers = headers
-        }, cancellationToken).ConfigureAwait(false);
+        };
+
+        // Produce failures (destination down, auth, too large) are retried right here, with backoff,
+        // while the source subscription stays alive at this message's position. Tearing the
+        // subscription down instead would lose the message when nothing has been committed yet (a
+        // resubscribe starts at the tail) and would skip whatever arrived during the backoff.
+        var delay = InitialRetryDelay;
+        ProduceReceipt receipt;
+        while (true)
+        {
+            try
+            {
+                receipt = await destination.ProduceAsync(request, cancellationToken).ConfigureAwait(false);
+                break;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                RelayFailed?.Invoke(rule, new InvalidOperationException(
+                    $"could not produce to '{rule.DestinationTopic}', retrying in {delay.TotalSeconds:0}s: {ex.Message}", ex));
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                delay = TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, MaxRetryDelay.Ticks));
+            }
+        }
 
         await source.AcknowledgeAsync(message, cancellationToken).ConfigureAwait(false);
         MessageRelayed?.Invoke(rule, message, receipt);

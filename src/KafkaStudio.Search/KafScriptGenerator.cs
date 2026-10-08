@@ -85,7 +85,8 @@ public static class KafScriptGenerator
                     conditions.Add(ignoreCase ? $"value matches {Str("(?i)" + Regex.Escape(term))}" : $"value contains {Str(term)}");
                     return true;
                 case TextMatchMode.Exact:
-                    conditions.Add(ignoreCase ? $"value matches {Str("(?i)^\\s*" + Regex.Escape(term) + "\\s*$")}" : $"value equals {Str(term)}");
+                    // \z rather than $: in .NET, $ also matches before a trailing newline.
+                    conditions.Add(ignoreCase ? $"value matches {Str("(?i)^\\s*" + Regex.Escape(term) + "\\s*\\z")}" : $"value equals {Str(term)}");
                     return true;
                 case TextMatchMode.WholeWord:
                     conditions.Add($"value matches {Str((ignoreCase ? "(?i)" : "") + @"(?<![\w-])" + Regex.Escape(term) + @"(?![\w-])")}");
@@ -149,7 +150,7 @@ public static class KafScriptGenerator
         switch (c.Comparator)
         {
             case QueryComparator.Equals:
-                text = ignoreCase ? $"{field} matches {Str($"{prefix}^{escaped}$")}" : $"{field} equals {Str(expected)}";
+                text = ignoreCase ? $"{field} matches {Str($"{prefix}^{escaped}\\z")}" : $"{field} equals {Str(expected)}";
                 return true;
             case QueryComparator.NotEquals when !ignoreCase:
                 text = $"{field} not equals {Str(expected)}";
@@ -161,7 +162,7 @@ public static class KafScriptGenerator
                 text = $"{field} matches {Str($"{prefix}^{escaped}")}";
                 return true;
             case QueryComparator.EndsWith:
-                text = $"{field} matches {Str($"{prefix}{escaped}$")}";
+                text = $"{field} matches {Str($"{prefix}{escaped}\\z")}";
                 return true;
             case QueryComparator.Matches:
                 text = $"{field} matches {Str(prefix + expected)}";

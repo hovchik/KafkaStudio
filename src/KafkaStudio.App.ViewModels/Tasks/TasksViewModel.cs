@@ -211,10 +211,17 @@ public sealed class TasksViewModel : ObservableObject
         }
 
         var added = 0;
+        var running = new List<string>();
         foreach (var (block, source) in SplitBlocks(NewTaskSource, document))
         {
-            // Re-registering a task with the same name replaces it (the usual "edit and register again").
+            // Re-registering a task with the same name replaces it (the usual "edit and register again") -
+            // unless it's mid-run: replacing it then would let "Run now" start a second concurrent run.
             var existing = Jobs.FirstOrDefault(j => j.Name == block.Name);
+            if (existing is { IsRunning: true })
+            {
+                running.Add(block.Name);
+                continue;
+            }
             if (existing is not null) Remove(existing, persist: false);
             AddJob(block, source, enabled: true);
             added++;
@@ -223,7 +230,8 @@ public sealed class TasksViewModel : ObservableObject
         Persist();
         var unscheduled = document.Blocks.Count(b => b.Schedule is null);
         StatusMessage = $"Registered {added} block(s)." +
-                        (unscheduled > 0 ? $" {unscheduled} without a schedule - they only run via Run now." : "");
+                        (unscheduled > 0 ? $" {unscheduled} without a schedule - they only run via Run now." : "") +
+                        (running.Count > 0 ? $" Skipped {string.Join(", ", running.Select(n => $"'{n}'"))}: still running - wait for it to finish before replacing it." : "");
     }
 
     private TaskRowViewModel AddJob(ScriptBlock block, string source, bool enabled)

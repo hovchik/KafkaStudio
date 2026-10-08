@@ -21,8 +21,15 @@ public static class TestDiscovery
             var path = Path.GetFullPath(raw);
             if (Directory.Exists(path))
             {
-                files.AddRange(Directory.EnumerateFiles(path, "*.kafscript", SearchOption.AllDirectories)
-                    .OrderBy(f => f, StringComparer.Ordinal));
+                try
+                {
+                    files.AddRange(Directory.EnumerateFiles(path, "*.kafscript", SearchOption.AllDirectories)
+                        .OrderBy(f => f, StringComparer.Ordinal));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    cases.Add(new TestCase(path, null, LoadError: $"can't list '{path}': {ex.Message}"));
+                }
             }
             else if (File.Exists(path))
             {

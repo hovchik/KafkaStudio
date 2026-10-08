@@ -104,6 +104,12 @@ public static partial class Lexer
                         i++;
                         continue;
                     }
+                    if (ch == '#' && closed)
+                    {
+                        // A trailing comment after the closing '|' - skip to the end of the line.
+                        while (i < n && source[i] != '\n') i++;
+                        break;
+                    }
                     if (ch != '\r') cell.Append(ch);
                     closed = closed && char.IsWhiteSpace(ch);
                     i++;
@@ -168,7 +174,7 @@ public static partial class Lexer
                     var sb = new StringBuilder();
                     while (i < n && source[i] != '"')
                     {
-                        if (source[i] == '\\' && i + 1 < n)
+                        if (source[i] == '\\' && i + 1 < n && source[i + 1] != '\n')
                         {
                             var next = source[i + 1];
                             sb.Append(next switch

@@ -16,7 +16,8 @@ public sealed record SchemaViolation(string Path, string Message)
 /// status from this list"). Implements the part of JSON Schema (draft 7 / 2019-09 / 2020-12 wording) that
 /// message contracts actually use, with no external dependency:
 /// <c>type</c> (incl. a list of types and OpenAPI's <c>nullable</c>), <c>properties</c>, <c>required</c>,
-/// <c>additionalProperties</c>, <c>minProperties</c>/<c>maxProperties</c>, <c>items</c>,
+/// <c>patternProperties</c>, <c>additionalProperties</c>, <c>propertyNames</c>, <c>minProperties</c>/<c>maxProperties</c>,
+/// <c>items</c>, <c>prefixItems</c>, <c>contains</c> (+ <c>minContains</c>/<c>maxContains</c>),
 /// <c>minItems</c>/<c>maxItems</c>/<c>uniqueItems</c>, <c>enum</c>, <c>const</c>,
 /// <c>minimum</c>/<c>maximum</c>/<c>exclusiveMinimum</c>/<c>exclusiveMaximum</c>, <c>multipleOf</c>,
 /// <c>minLength</c>/<c>maxLength</c>/<c>pattern</c>, <c>format</c> (date-time, date, time, uuid, email,
@@ -144,7 +145,7 @@ public sealed class JsonSchema
                 ValidateString(schema, value.GetString()!, path, errors);
                 break;
             case JsonValueKind.Number:
-                ValidateNumber(schema, value.GetDouble(), path, errors);
+                ValidateNumber(schema, value, path, errors);
                 break;
         }
 
@@ -196,15 +197,42 @@ public sealed class JsonSchema
         var count = 0;
         schema.TryGetProperty("properties", out var properties);
         var hasProperties = properties.ValueKind == JsonValueKind.Object;
+        schema.TryGetProperty("patternProperties", out var patternProperties);
+        var hasPatternProperties = patternProperties.ValueKind == JsonValueKind.Object;
         schema.TryGetProperty("additionalProperties", out var additional);
+        schema.TryGetProperty("propertyNames", out var propertyNames);
         foreach (var property in value.EnumerateObject())
         {
             count++;
+            if (propertyNames.ValueKind is JsonValueKind.Object or JsonValueKind.False)
+            {
+                using var nameDoc = JsonDocument.Parse(JsonSerializer.Serialize(property.Name));
+                var nameErrors = new List<SchemaViolation>();
+                ValidateNode(propertyNames, nameDoc.RootElement, ChildPath(path, property.Name), nameErrors, depth + 1);
+                foreach (var e in nameErrors) errors.Add(new SchemaViolation(e.Path, $"field name {e.Message} (propertyNames)"));
+            }
+
+            var covered = false;
             if (hasProperties && properties.TryGetProperty(property.Name, out var propertySchema))
             {
+                covered = true;
                 ValidateNode(propertySchema, property.Value, ChildPath(path, property.Name), errors, depth + 1);
             }
-            else if (additional.ValueKind == JsonValueKind.False)
+            if (hasPatternProperties)
+            {
+                foreach (var patterned in patternProperties.EnumerateObject())
+                {
+                    bool matched;
+                    try { matched = GetRegex(patterned.Name).IsMatch(property.Name); }
+                    catch (RegexMatchTimeoutException) { matched = false; }
+                    if (!matched) continue;
+                    covered = true;
+                    ValidateNode(patterned.Value, property.Value, ChildPath(path, property.Name), errors, depth + 1);
+                }
+            }
+            if (covered) continue;
+
+            if (additional.ValueKind == JsonValueKind.False)
             {
                 errors.Add(new SchemaViolation(ChildPath(path, property.Name), "field is not allowed by the schema (additionalProperties: false)"));
             }
@@ -235,12 +263,41 @@ public sealed class JsonSchema
         {
             errors.Add(new SchemaViolation(path, $"has {length} item(s), expected at most {max.GetDouble()}"));
         }
+        // 2020-12 tuples: prefixItems covers the first N positions, items the rest.
+        var prefixCount = 0;
+        if (schema.TryGetProperty("prefixItems", out var prefixItems) && prefixItems.ValueKind == JsonValueKind.Array)
+        {
+            var i = 0;
+            foreach (var item in value.EnumerateArray())
+            {
+                if (i >= prefixItems.GetArrayLength()) break;
+                ValidateNode(prefixItems[i], item, $"{path}[{i}]", errors, depth + 1);
+                i++;
+            }
+            prefixCount = prefixItems.GetArrayLength();
+        }
         if (schema.TryGetProperty("items", out var items) && items.ValueKind is JsonValueKind.Object or JsonValueKind.True or JsonValueKind.False)
         {
             var i = 0;
             foreach (var item in value.EnumerateArray())
             {
-                ValidateNode(items, item, $"{path}[{i++}]", errors, depth + 1);
+                if (i >= prefixCount) ValidateNode(items, item, $"{path}[{i}]", errors, depth + 1);
+                i++;
+            }
+        }
+        if (schema.TryGetProperty("contains", out var contains) && contains.ValueKind is JsonValueKind.Object or JsonValueKind.True or JsonValueKind.False)
+        {
+            var hits = value.EnumerateArray().Count(item => Passes(contains, item, depth));
+            var minContains = schema.TryGetProperty("minContains", out var minC) ? (int)minC.GetDouble() : 1;
+            if (hits < minContains)
+            {
+                errors.Add(new SchemaViolation(path, minContains == 1
+                    ? "no item matches the required shape (contains)"
+                    : $"only {hits} item(s) match the required shape, expected at least {minContains} (minContains)"));
+            }
+            if (schema.TryGetProperty("maxContains", out var maxC) && hits > maxC.GetDouble())
+            {
+                errors.Add(new SchemaViolation(path, $"{hits} item(s) match the shape, expected at most {maxC.GetDouble()} (maxContains)"));
             }
         }
         if (schema.TryGetProperty("uniqueItems", out var unique) && unique.ValueKind == JsonValueKind.True)
@@ -285,30 +342,54 @@ public sealed class JsonSchema
         }
     }
 
-    private static void ValidateNumber(JsonElement schema, double number, string path, List<SchemaViolation> errors)
+    private static void ValidateNumber(JsonElement schema, JsonElement value, string path, List<SchemaViolation> errors)
     {
-        if (schema.TryGetProperty("minimum", out var min) && number < min.GetDouble())
+        // Compare as decimal when both sides fit, so 64-bit ids and money amounts aren't rounded through
+        // a double (9007199254740993 would otherwise pass "maximum: 9007199254740992").
+        var number = value.GetDouble();
+        var exact = value.TryGetDecimal(out var dec);
+        int Compare(JsonElement bound) =>
+            exact && bound.TryGetDecimal(out var b) ? dec.CompareTo(b) : number.CompareTo(bound.GetDouble());
+        string Text() => exact ? dec.ToString(CultureInfo.InvariantCulture) : Format(number);
+
+        // Draft 4 spelled exclusive bounds as booleans that modify minimum/maximum.
+        var minExclusive = schema.TryGetProperty("exclusiveMinimum", out var xmin) && xmin.ValueKind == JsonValueKind.True;
+        var maxExclusive = schema.TryGetProperty("exclusiveMaximum", out var xmax) && xmax.ValueKind == JsonValueKind.True;
+
+        if (schema.TryGetProperty("minimum", out var min) && (minExclusive ? Compare(min) <= 0 : Compare(min) < 0))
         {
-            errors.Add(new SchemaViolation(path, $"{Format(number)} is less than the minimum {Format(min.GetDouble())}"));
+            errors.Add(new SchemaViolation(path, minExclusive
+                ? $"{Text()} must be greater than {Format(min.GetDouble())}"
+                : $"{Text()} is less than the minimum {Format(min.GetDouble())}"));
         }
-        if (schema.TryGetProperty("maximum", out var max) && number > max.GetDouble())
+        if (schema.TryGetProperty("maximum", out var max) && (maxExclusive ? Compare(max) >= 0 : Compare(max) > 0))
         {
-            errors.Add(new SchemaViolation(path, $"{Format(number)} is greater than the maximum {Format(max.GetDouble())}"));
+            errors.Add(new SchemaViolation(path, maxExclusive
+                ? $"{Text()} must be less than {Format(max.GetDouble())}"
+                : $"{Text()} is greater than the maximum {Format(max.GetDouble())}"));
         }
-        if (schema.TryGetProperty("exclusiveMinimum", out var xmin) && xmin.ValueKind == JsonValueKind.Number && number <= xmin.GetDouble())
+        if (xmin.ValueKind == JsonValueKind.Number && Compare(xmin) <= 0)
         {
-            errors.Add(new SchemaViolation(path, $"{Format(number)} must be greater than {Format(xmin.GetDouble())}"));
+            errors.Add(new SchemaViolation(path, $"{Text()} must be greater than {Format(xmin.GetDouble())}"));
         }
-        if (schema.TryGetProperty("exclusiveMaximum", out var xmax) && xmax.ValueKind == JsonValueKind.Number && number >= xmax.GetDouble())
+        if (xmax.ValueKind == JsonValueKind.Number && Compare(xmax) >= 0)
         {
-            errors.Add(new SchemaViolation(path, $"{Format(number)} must be less than {Format(xmax.GetDouble())}"));
+            errors.Add(new SchemaViolation(path, $"{Text()} must be less than {Format(xmax.GetDouble())}"));
         }
         if (schema.TryGetProperty("multipleOf", out var multiple))
         {
-            var quotient = number / multiple.GetDouble();
-            if (Math.Abs(quotient - Math.Round(quotient)) > 1e-9)
+            var divisor = multiple.GetDouble();
+            bool isMultiple;
+            if (divisor == 0) isMultiple = false;
+            else if (exact && multiple.TryGetDecimal(out var decDivisor) && decDivisor != 0) isMultiple = decimal.Remainder(dec, decDivisor) == 0;
+            else
             {
-                errors.Add(new SchemaViolation(path, $"{Format(number)} is not a multiple of {Format(multiple.GetDouble())}"));
+                var quotient = number / divisor;
+                isMultiple = Math.Abs(quotient - Math.Round(quotient)) <= 1e-9;
+            }
+            if (!isMultiple)
+            {
+                errors.Add(new SchemaViolation(path, $"{Text()} is not a multiple of {Format(divisor)}"));
             }
         }
     }
@@ -332,7 +413,7 @@ public sealed class JsonSchema
     {
         "date-time" => DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out _) && text.Contains('T', StringComparison.OrdinalIgnoreCase),
         "date" => DateOnly.TryParseExact(text, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _),
-        "time" => TimeOnly.TryParse(text.Split('+', 'Z', 'z')[0], CultureInfo.InvariantCulture, out _),
+        "time" => Regex.IsMatch(text, @"^([01]\d|2[0-3]):[0-5]\d:([0-5]\d|60)(\.\d+)?([Zz]|[+-]([01]\d|2[0-3]):[0-5]\d)$", RegexOptions.None, RegexTimeout),
         "uuid" => Guid.TryParseExact(text, "D", out _),
         "email" => Regex.IsMatch(text, @"^[^@\s]+@[^@\s]+\.[^@\s]+$", RegexOptions.None, RegexTimeout),
         "uri" => Uri.TryCreate(text, UriKind.Absolute, out _),
@@ -365,6 +446,19 @@ public sealed class JsonSchema
                 "properties" or "definitions" or "$defs" => v.ValueKind != JsonValueKind.Object
                     ? $"{at}: must be an object"
                     : v.EnumerateObject().Select(p => CheckSchema(p.Value, root, $"{at}/{p.Name}")).FirstOrDefault(x => x is not null),
+                "patternProperties" => v.ValueKind != JsonValueKind.Object
+                    ? $"{at}: must be an object"
+                    : v.EnumerateObject().Select(p => CheckPattern(p.Name, $"{at}/{p.Name}") ?? CheckSchema(p.Value, root, $"{at}/{p.Name}")).FirstOrDefault(x => x is not null),
+                "prefixItems" => v.ValueKind != JsonValueKind.Array
+                    ? $"{at}: must be a list of schemas"
+                    : v.EnumerateArray().Select((sub, i) => CheckSchema(sub, root, $"{at}/{i}")).FirstOrDefault(x => x is not null),
+                "contains" or "propertyNames" => CheckSchema(v, root, at),
+                "minContains" or "maxContains" => v.ValueKind == JsonValueKind.Number ? null : $"{at}: must be a number",
+                // Keywords this validator doesn't implement: fail loudly instead of silently passing
+                // everything a contract meant to restrict.
+                "if" or "then" or "else" or "dependentRequired" or "dependentSchemas" or "dependencies"
+                    or "unevaluatedProperties" or "unevaluatedItems" =>
+                    $"{at}: '{keyword.Name}' isn't supported by KafkaStudio's contract checks - restate the rule with allOf/anyOf/oneOf/not",
                 "required" => v.ValueKind == JsonValueKind.Array && v.EnumerateArray().All(r => r.ValueKind == JsonValueKind.String)
                     ? null : $"{at}: must be a list of field names",
                 "enum" => v.ValueKind == JsonValueKind.Array ? null : $"{at}: must be a list of values",

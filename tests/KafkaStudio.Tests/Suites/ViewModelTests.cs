@@ -2,6 +2,9 @@ using KafkaStudio.App.ViewModels;
 using KafkaStudio.App.ViewModels.Scripts;
 using KafkaStudio.App.ViewModels.Shared;
 using KafkaStudio.App.ViewModels.Tasks;
+using KafkaStudio.Core.Abstractions;
+using KafkaStudio.Core.Messaging;
+using KafkaStudio.Core.Testing;
 using KafkaStudio.Tests.Harness;
 
 namespace KafkaStudio.Tests.Suites;
@@ -97,6 +100,61 @@ public static class ViewModelTests
             await main.DisposeAsync();
         });
 
+        runner.Add("ViewModels: Producer", "a repeated send carries the form as it was when Send was clicked", async () =>
+        {
+            var state = new AppState();
+            var gateway = new SlowProduceGateway(new InMemoryKafkaGateway(
+                new KafkaStudio.Core.Connections.ConnectionProfile { Name = "slow", BootstrapServers = "x:1" }, state.DemoBroker));
+            state.AddConnection(gateway.Profile, gateway);
+            var main = new MainWindowViewModel(state);
+
+            main.Producer.SelectedConnection = "slow";
+            main.Producer.Topic = "orders";
+            main.Producer.Value = "hello";
+            main.Producer.RepeatCount = 3;
+
+            main.Producer.SendCommand.Execute(null);
+            // The first message is in flight: edits made now must not leak into the remaining ones.
+            main.Producer.Value = "changed";
+            main.Producer.IsTombstone = true;
+            while (main.Producer.SendCommand.IsRunning) await Task.Delay(10);
+
+            Assert.Equal(3, gateway.ProducedValues.Count);
+            Assert.True(gateway.ProducedValues.All(v => v == "hello"), "a mid-run edit changed what was sent");
+
+            await main.DisposeAsync();
+        });
+
+        runner.Add("ViewModels: Consumer", "switching connection stops the watch and late messages are discarded", async () =>
+        {
+            var state = new AppState();
+            state.AddDemoConnection("a");
+            state.AddDemoConnection("b");
+            var main = new MainWindowViewModel(state);
+            var consumer = main.Consumer;
+            var gateway = state.Connections["a"];
+
+            consumer.SelectedConnection = "a";
+            consumer.Topic = "orders";
+            consumer.StartCommand.Execute(null);
+            Assert.True(consumer.IsWatching);
+            await WaitUntil(() => consumer.StatusMessage == "Watching 'orders'."); // Latest: only messages after subscribing
+            await gateway.ProduceAsync(new ProduceRequest { Topic = "orders", Value = "first" });
+            await WaitUntil(() => consumer.Messages.Count == 1);
+
+            consumer.SelectedConnection = "b";
+            Assert.False(consumer.IsWatching, "changing the connection must stop the watch");
+            Assert.Equal("Stopped.", consumer.StatusMessage);
+
+            await gateway.ProduceAsync(new ProduceRequest { Topic = "orders", Value = "late" });
+            await Task.Delay(100);
+            Assert.Equal(1, consumer.Messages.Count);
+            Assert.Equal(1L, consumer.ReceivedCount);
+            Assert.Equal("Stopped.", consumer.StatusMessage);
+
+            await main.DisposeAsync();
+        });
+
         runner.Add("ViewModels: Scripts", "parses on construction and exposes a parse error for bad input", () =>
         {
             var state = new AppState();
@@ -166,6 +224,75 @@ public static class ViewModelTests
             Assert.Equal(0, vm.Jobs[0].Job.RunCount);
             Assert.Equal("manual only", vm.Jobs[0].NextRun);
         });
+
+        runner.Add("ViewModels: Tasks", "re-registering a task that is mid-run keeps the running job", async () =>
+        {
+            var state = new AppState();
+            state.AddDemoConnection("local");
+            var vm = new TasksViewModel(state);
+
+            vm.NewTaskSource = """
+                Task: Sleeper
+                Given use connection "local"
+                Given wait for 1 hour
+                """;
+            vm.RegisterTaskCommand.Execute(null);
+            // Jobs also holds tasks persisted by earlier tests, so look ours up by name.
+            var row = vm.Jobs.Single(j => j.Name == "Sleeper");
+            var count = vm.Jobs.Count;
+            vm.RunNowCommand.Execute(row);
+            await WaitUntil(() => row.IsRunning);
+
+            vm.RegisterTaskCommand.Execute(null);
+
+            Assert.Equal(count, vm.Jobs.Count);
+            Assert.True(ReferenceEquals(row, vm.Jobs.Single(j => j.Name == "Sleeper")), "the running job was replaced");
+            Assert.Contains("still running", vm.StatusMessage ?? "");
+
+            await state.DisposeAsync(); // cancels the hour-long run
+        });
+    }
+
+    private static async Task WaitUntil(Func<bool> condition, int timeoutMs = 5000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline) throw new AssertionFailedException("timed out waiting for condition");
+            await Task.Delay(10);
+        }
+    }
+
+    /// <summary>Demo gateway whose produces take a moment, so a test can edit the form mid-run.</summary>
+    private sealed class SlowProduceGateway : IKafkaGateway
+    {
+        private readonly InMemoryKafkaGateway _inner;
+        public SlowProduceGateway(InMemoryKafkaGateway inner) => _inner = inner;
+
+        public List<string?> ProducedValues { get; } = new();
+
+        public async Task<ProduceReceipt> ProduceAsync(ProduceRequest request, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(30, cancellationToken);
+            ProducedValues.Add(request.Value);
+            return await _inner.ProduceAsync(request, cancellationToken);
+        }
+
+        public KafkaStudio.Core.Connections.ConnectionProfile Profile => _inner.Profile;
+        public Task ConnectAsync(CancellationToken ct = default) => _inner.ConnectAsync(ct);
+        public Task<IReadOnlyList<string>> ListTopicsAsync(CancellationToken ct = default) => _inner.ListTopicsAsync(ct);
+        public Task<TopicMetadata> DescribeTopicAsync(string topic, CancellationToken ct = default) => _inner.DescribeTopicAsync(topic, ct);
+        public Task<ClusterInfo> DescribeClusterAsync(CancellationToken ct = default) => _inner.DescribeClusterAsync(ct);
+        public Task<IReadOnlyList<BrokerConfigEntry>> GetBrokerConfigAsync(int brokerId, CancellationToken ct = default) => _inner.GetBrokerConfigAsync(brokerId, ct);
+        public Task CreateTopicAsync(string topic, int partitions, short replicationFactor, CancellationToken ct = default) => _inner.CreateTopicAsync(topic, partitions, replicationFactor, ct);
+        public IAsyncEnumerable<KafkaMessage> ConsumeAsync(ConsumeOptions options, CancellationToken ct = default) => _inner.ConsumeAsync(options, ct);
+        public Task<bool> IsTopicCompactedAsync(string topic, CancellationToken ct = default) => _inner.IsTopicCompactedAsync(topic, ct);
+        public Task AcknowledgeAsync(KafkaMessage message, CancellationToken ct = default) => _inner.AcknowledgeAsync(message, ct);
+        public Task<IReadOnlyList<ConsumerGroupSummary>> ListConsumerGroupsAsync(CancellationToken ct = default) => _inner.ListConsumerGroupsAsync(ct);
+        public Task<ConsumerGroupDetail> DescribeConsumerGroupAsync(string groupId, CancellationToken ct = default) => _inner.DescribeConsumerGroupAsync(groupId, ct);
+        public Task<IReadOnlyList<OffsetChange>> PlanOffsetResetAsync(OffsetResetRequest request, CancellationToken ct = default) => _inner.PlanOffsetResetAsync(request, ct);
+        public Task ApplyOffsetResetAsync(string groupId, IReadOnlyList<OffsetChange> changes, CancellationToken ct = default) => _inner.ApplyOffsetResetAsync(groupId, changes, ct);
+        public ValueTask DisposeAsync() => _inner.DisposeAsync();
     }
 }
 

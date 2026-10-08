@@ -15,7 +15,7 @@ public static class TextSimilarity
     /// <summary>Strings longer than this are compared by token overlap instead of edit distance.</summary>
     public const int MaxEditDistanceLength = 128;
 
-    private static readonly char[] TokenDelimiters =
+    internal static readonly char[] TokenDelimiters =
     {
         ' ', '\t', '\r', '\n', '"', '\'', ',', '{', '}', '[', ']', '(', ')', ':', ';', '=', '&', '?', '/', '\\', '<', '>', '|'
     };
@@ -29,7 +29,12 @@ public static class TextSimilarity
         for (var i = 0; i < s.Length; i++)
         {
             var c = s[i];
-            if (char.IsWhiteSpace(c) || c is '-' or '_') continue;
+            if (char.IsWhiteSpace(c) || c is '-' or '_')
+            {
+                // A separator starts a new number, so "10-05" keeps the zero rule per part (→ "105").
+                previousWasDigit = false;
+                continue;
+            }
             var isDigit = char.IsAsciiDigit(c);
             // A leading zero of a number (not the number "0" itself) carries no identity.
             if (c == '0' && !previousWasDigit && i + 1 < s.Length && char.IsAsciiDigit(s[i + 1])) continue;
@@ -112,8 +117,23 @@ public static class TextSimilarity
 public static class VolatileFields
 {
     private static readonly Regex VolatileName = new(
-        @"(time|date|^ts$|_at$|(?-i:[a-z]At$)|uuid|guid|trace[-_]?id|span[-_]?id|correlation[-_]?id|request[-_]?id|message[-_]?id|event[-_]?id|idempotency[-_]?key|nonce)",
+        @"(^ts$|_at$|(?-i:[a-z]At$)|uuid|guid|trace[-_]?id|span[-_]?id|correlation[-_]?id|request[-_]?id|message[-_]?id|event[-_]?id|idempotency[-_]?key|nonce)",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>Splits a field name into words at '_', '-', spaces and camelCase boundaries, so "time"/"date"
+    /// are matched as whole words: "event_time" and "orderDate" are volatile, "timeout" and "update" are not.</summary>
+    private static readonly Regex NameWordBoundary = new(
+        @"[_\-\s]+|(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])",
+        RegexOptions.CultureInvariant);
+
+    private static readonly HashSet<string> TimeWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "time", "date", "timestamp", "datetime"
+    };
+
+    /// <summary>Names that identify something (orderId, accountNumber, sku code...) - their values may look
+    /// generated (UUIDs, long digit runs) but are the identity of the message, not noise.</summary>
+    private static readonly Regex IdLikeName = new(@"(id|number|no|code|key)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static readonly Regex Uuid = new(
         @"^[{(]?[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}[)}]?$",
@@ -130,10 +150,24 @@ public static class VolatileFields
     /// Unix epoch (seconds/millis/micros).</summary>
     public static bool IsVolatile(string path, string? value) => IsVolatileName(path) || IsVolatileValue(value);
 
+    /// <summary>Like <see cref="IsVolatile"/>, but a value-shape match alone doesn't count for an id-like
+    /// field name (orderId, accountNumber...): used when grouping duplicates, where dropping the id would
+    /// make two different orders look like the same one.</summary>
+    public static bool IsVolatileForGrouping(string path, string? value) =>
+        IsVolatileName(path) || (!IsIdLikeName(path) && IsVolatileValue(value));
+
     public static bool IsVolatileName(string path)
     {
         var name = LastSegment(path);
-        return name.Length > 0 && VolatileName.IsMatch(name);
+        if (name.Length == 0) return false;
+        return VolatileName.IsMatch(name) || NameWordBoundary.Split(name).Any(TimeWords.Contains);
+    }
+
+    /// <summary>True when the last segment of <paramref name="path"/> ends in id/number/no/code/key.</summary>
+    public static bool IsIdLikeName(string path)
+    {
+        var name = LastSegment(path);
+        return name.Length > 0 && IdLikeName.IsMatch(name);
     }
 
     public static bool IsVolatileValue(string? value)

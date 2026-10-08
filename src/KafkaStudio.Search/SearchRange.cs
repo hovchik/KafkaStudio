@@ -30,6 +30,11 @@ public sealed record SearchRange
     public static SearchRange All { get; } = new();
 
     public static SearchRange LastPeriod(TimeSpan period) => new() { Kind = SearchRangeKind.LastDuration, Last = period };
+
+    /// <summary>The duration of a <see cref="SearchRangeKind.LastDuration"/> range; a "last" range without one
+    /// would silently scan everything, so it's rejected instead.</summary>
+    private TimeSpan LastOrThrow =>
+        Last ?? throw new ArgumentException("a 'last ...' range needs a duration", nameof(Last));
     public static SearchRange Between(DateTimeOffset? from, DateTimeOffset? to) => new() { Kind = SearchRangeKind.Between, From = from, To = to };
     public static SearchRange Newest(int count) => new() { Kind = SearchRangeKind.NewestPerPartition, NewestCount = count };
 
@@ -46,10 +51,10 @@ public sealed record SearchRange
 
         return Kind switch
         {
-            SearchRangeKind.LastDuration when Last is { } last => options with
+            SearchRangeKind.LastDuration => options with
             {
                 StartPosition = ConsumeStartPosition.FromTimestamp,
-                FromTimestamp = now - last
+                FromTimestamp = now - LastOrThrow
             },
             SearchRangeKind.Between when From is { } from => options with
             {
@@ -69,7 +74,7 @@ public sealed record SearchRange
     /// messages with out-of-order timestamps that a timestamp seek still returns).</summary>
     public bool Includes(KafkaMessage message, DateTimeOffset now) => Kind switch
     {
-        SearchRangeKind.LastDuration when Last is { } last => message.Timestamp >= now - last,
+        SearchRangeKind.LastDuration => message.Timestamp >= now - LastOrThrow,
         SearchRangeKind.Between => (From is not { } from || message.Timestamp >= from) &&
                                    (To is not { } to || message.Timestamp <= to),
         _ => true
@@ -77,7 +82,7 @@ public sealed record SearchRange
 
     public string Describe() => Kind switch
     {
-        SearchRangeKind.LastDuration when Last is { } last => $"last {FormatDuration(last)}",
+        SearchRangeKind.LastDuration => Last is { } last ? $"last {FormatDuration(last)}" : "last (no duration)",
         SearchRangeKind.Between => $"{From?.ToString("yyyy-MM-dd HH:mm") ?? "beginning"} → {To?.ToString("yyyy-MM-dd HH:mm") ?? "now"}",
         SearchRangeKind.NewestPerPartition => $"newest {NewestCount:N0} per partition",
         _ => "all messages"

@@ -48,7 +48,8 @@ public partial class App : Application
                 FileDialogs = new StorageFileDialogService(window),
                 SetClipboardText = async text =>
                 {
-                    if (window.Clipboard is { } clipboard) await clipboard.SetTextAsync(text);
+                    if (window.Clipboard is not { } clipboard) throw new InvalidOperationException("the clipboard isn't available");
+                    await clipboard.SetTextAsync(text);
                 }
             };
 

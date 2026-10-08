@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using KafkaStudio.App.ViewModels.Mvvm;
 using KafkaStudio.App.ViewModels.Shared;
 using KafkaStudio.Core.Connections;
@@ -168,7 +169,7 @@ public sealed class ConnectionsViewModel : ObservableObject
         foreach (var server in servers.Split(',', StringSplitOptions.RemoveEmptyEntries))
         {
             var colon = server.LastIndexOf(':');
-            if (colon <= 0 || !int.TryParse(server[(colon + 1)..], out var port) || port is <= 0 or > 65535)
+            if (colon <= 0 || !int.TryParse(server[(colon + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var port) || port is <= 0 or > 65535)
             {
                 error = $"'{server}' isn't a valid host:port";
                 return null;
