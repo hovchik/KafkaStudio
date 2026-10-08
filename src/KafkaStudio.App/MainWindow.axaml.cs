@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using KafkaStudio.App.ViewModels;
 using KafkaStudio.App.ViewModels.Mvvm;
 
@@ -40,6 +41,25 @@ public partial class MainWindow : Window
                 vm.Notification = null;
                 e.Handled = true;
             }
+        }
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+
+        // Coming back from minimized: Windows may have thrown away the window's surface while it was
+        // hidden (long minimize, lock screen, sleep), and the renderer doesn't always notice on its own,
+        // leaving an empty frame. Explicitly mark the whole window dirty so the next frame repaints it.
+        if (change.Property == WindowStateProperty &&
+            change.GetOldValue<WindowState>() == WindowState.Minimized &&
+            change.GetNewValue<WindowState>() != WindowState.Minimized)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                InvalidateMeasure();
+                InvalidateVisual();
+            }, DispatcherPriority.Render);
         }
     }
 
