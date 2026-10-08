@@ -369,6 +369,19 @@
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
   </Style>
+  <!-- The header is a ToggleButton; keep the generic checked/hover button look (which only
+       paints the text column, not the chevron) off it so the disclosure line stays flat. -->
+  <Style Selector="Expander /template/ ToggleButton#ExpanderHeader /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="Expander /template/ ToggleButton#ExpanderHeader:checked /template/ ContentPresenter#PART_ContentPresenter,
+                   Expander /template/ ToggleButton#ExpanderHeader:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter,
+                   Expander /template/ ToggleButton#ExpanderHeader:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+  </Style>
   <Style Selector="Expander /template/ Border#ExpanderContent">
     <Setter Property="Padding" Value="0" />
     <Setter Property="BorderThickness" Value="0" />

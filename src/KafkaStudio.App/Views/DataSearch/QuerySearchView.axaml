@@ -60,46 +60,63 @@
                  Text='Fields: key, value, $.path, header "name", topic, partition, offset, any · compare with = != contains "not contains" "starts with" "ends with" matches (~) "similar to" exists missing &gt; &gt;= &lt; &lt;= · combine with and / or / not and ( ) · quote values with spaces.' />
     </StackPanel>
 
-    <!-- Saved searches, history, export, KafScript -->
+    <!-- Saved searches, history, export, KafScript.
+         One labelled row per group; the wide control in each row stretches so nothing is
+         squeezed when the pane is narrow. -->
     <Expander Grid.Row="3" Header="Saved searches · history · export · make it a check" Margin="0,6,0,0" HorizontalAlignment="Stretch">
       <Border Classes="toolbar" Background="{DynamicResource SurfaceRaisedBrush}" Margin="0,4,0,0">
         <StackPanel Spacing="6">
-          <Grid ColumnDefinitions="90,*,Auto,Auto,Auto,Auto">
+          <Grid ColumnDefinitions="80,*,Auto">
             <TextBlock Grid.Column="0" Text="Saved" Classes="muted" />
-            <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding SavedSearches}" SelectedItem="{Binding SelectedSavedSearch}"
-                      PlaceholderText="Pick a saved search to restore it (query, options and scope)…">
+            <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" MinWidth="160"
+                      ItemsSource="{Binding SavedSearches}" SelectedItem="{Binding SelectedSavedSearch}"
+                      PlaceholderText="Pick a saved search…"
+                      ToolTip.Tip="Restore a saved search (query, options and scope)">
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="search:SavedSearch">
-                  <TextBlock>
+                  <TextBlock TextTrimming="CharacterEllipsis">
                     <Run Text="{Binding Name}" /><Run Text="   " /><Run Text="{Binding Query}" Foreground="{DynamicResource TextMutedBrush}" />
                   </TextBlock>
                 </DataTemplate>
               </ComboBox.ItemTemplate>
             </ComboBox>
-            <TextBox Grid.Column="2" Width="140" Text="{Binding NewSearchName}" Watermark="Name…" />
-            <CheckBox Grid.Column="3" Content="as Exists?" IsChecked="{Binding ExistenceCheckDefault}"
-                      ToolTip.Tip="Remember that this search is meant as a yes/no existence check" />
-            <Button Grid.Column="4" Content="Save search" Command="{Binding SaveSearchCommand}" />
-            <Button Grid.Column="5" Classes="ghost" Content="Delete" Command="{Binding DeleteSavedSearchCommand}" Margin="0" />
+            <Button Grid.Column="2" Classes="ghost" Content="Delete" Command="{Binding DeleteSavedSearchCommand}" Margin="0"
+                    ToolTip.Tip="Delete the selected saved search" />
           </Grid>
-          <Grid ColumnDefinitions="90,*,Auto">
+          <Grid ColumnDefinitions="80,*,Auto,Auto">
+            <TextBlock Grid.Column="0" Text="Save as" Classes="muted" />
+            <TextBox Grid.Column="1" MinWidth="120" Text="{Binding NewSearchName}" Watermark="Name for this search…" />
+            <CheckBox Grid.Column="2" Content="as Exists?" IsChecked="{Binding ExistenceCheckDefault}"
+                      ToolTip.Tip="Remember that this search is meant as a yes/no existence check" />
+            <Button Grid.Column="3" Content="Save search" Command="{Binding SaveSearchCommand}" Margin="0" />
+          </Grid>
+          <Grid ColumnDefinitions="80,*,Auto">
             <TextBlock Grid.Column="0" Text="History" Classes="muted" />
-            <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding History}" SelectedItem="{Binding SelectedHistory}"
+            <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" MinWidth="160"
+                      ItemsSource="{Binding History}" SelectedItem="{Binding SelectedHistory}"
                       PlaceholderText="Recent searches…" />
             <Button Grid.Column="2" Classes="ghost" Content="Clear history" Command="{Binding ClearHistoryCommand}" Margin="0" />
           </Grid>
-          <WrapPanel>
-            <TextBlock Text="Results" Classes="muted" Width="90" />
-            <Button Content="Export JSON" Command="{Binding ExportJsonCommand}" Margin="0,0,6,0" />
-            <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" Margin="0,0,6,0" />
-            <Button Content="Copy summary" Command="{Binding CopySummaryCommand}" Margin="0,0,14,0" />
-            <TextBlock Text="KafScript" Classes="muted" />
-            <Button Content="Make a check (Scenario)" Command="{Binding ToScriptCommand}" Margin="0,0,6,0"
-                    ToolTip.Tip="Open a KafScript scenario that passes when matching data exists (uses the topics that had matches)" />
-            <Button Content="Make a Task" Command="{Binding ToTaskCommand}" Margin="0,0,6,0"
-                    ToolTip.Tip="Same, as a scheduled Task - register it on the Tasks screen" />
-            <TextBox Width="150" Text="{Binding TaskSchedule}" Watermark="every 15 minutes" ToolTip.Tip="Task schedule: every N minutes / at 9:30 / run once" />
-          </WrapPanel>
+          <Grid ColumnDefinitions="80,*">
+            <TextBlock Grid.Column="0" Text="Results" Classes="muted" />
+            <WrapPanel Grid.Column="1">
+              <Button Content="Export JSON" Command="{Binding ExportJsonCommand}" />
+              <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" />
+              <Button Content="Copy summary" Command="{Binding CopySummaryCommand}" Margin="0" />
+            </WrapPanel>
+          </Grid>
+          <Grid ColumnDefinitions="80,*">
+            <TextBlock Grid.Column="0" Text="KafScript" Classes="muted" />
+            <WrapPanel Grid.Column="1">
+              <Button Content="Make a check (Scenario)" Command="{Binding ToScriptCommand}"
+                      ToolTip.Tip="Open a KafScript scenario that passes when matching data exists (uses the topics that had matches)" />
+              <Button Content="Make a Task" Command="{Binding ToTaskCommand}"
+                      ToolTip.Tip="Same, as a scheduled Task - register it on the Tasks screen" />
+              <TextBlock Text="schedule" Classes="muted" />
+              <TextBox Width="140" Text="{Binding TaskSchedule}" Watermark="every 15 minutes" Margin="0"
+                       ToolTip.Tip="Task schedule: every N minutes / at 9:30 / run once" />
+            </WrapPanel>
+          </Grid>
         </StackPanel>
       </Border>
     </Expander>
