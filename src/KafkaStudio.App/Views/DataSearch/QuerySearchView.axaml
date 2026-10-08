@@ -10,10 +10,10 @@
 
   <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
 
-    <!-- Query -->
-    <Border Grid.Row="0" Classes="toolbar">
+    <!-- Query (sub-toolbar: this view renders inside the Find Data pane) -->
+    <Border Grid.Row="0" Classes="toolbar" Background="{DynamicResource SurfaceRaisedBrush}">
       <Grid ColumnDefinitions="*,Auto,Auto,Auto">
-        <TextBox Grid.Column="0" Text="{Binding QueryText}" FontFamily="Consolas,Menlo,monospace"
+        <TextBox Grid.Column="0" Text="{Binding QueryText}" FontFamily="{DynamicResource MonoFont}"
                  Watermark='Text to find - or a query: $.order.id = "ORD-42" and header source = billing'>
           <TextBox.KeyBindings>
             <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}" />
@@ -24,7 +24,7 @@
                 ToolTip.Tip="Find every matching message in scope (Enter)" />
         <Button Grid.Column="2" Content="Exists?" Command="{Binding ExistsCommand}"
                 ToolTip.Tip="Quick yes/no: stop at the first match on each topic (Ctrl+Enter)" />
-        <Button Grid.Column="3" Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" Margin="0" />
+        <Button Grid.Column="3" Classes="ghost" Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" Margin="0" />
       </Grid>
     </Border>
 
@@ -40,9 +40,11 @@
       <Border Classes="chip selected" IsVisible="{Binding HasSingleTopic}" VerticalAlignment="Center">
         <StackPanel Orientation="Horizontal" Spacing="6">
           <TextBlock FontSize="11" VerticalAlignment="Center">
-            <Run Text="only topic " Foreground="{DynamicResource MutedTextBrush}" /><Run Text="{Binding SingleTopic}" Foreground="White" />
+            <Run Text="only topic " Foreground="{DynamicResource TextMutedBrush}" /><Run Text="{Binding SingleTopic}" />
           </TextBlock>
-          <Button Classes="small" Content="✕" Command="{Binding ClearSingleTopicCommand}" ToolTip.Tip="Search the whole scope again" />
+          <Button Classes="icon small ghost" Command="{Binding ClearSingleTopicCommand}" ToolTip.Tip="Search the whole scope again">
+            <PathIcon Data="{StaticResource Icon.close}" />
+          </Button>
         </StackPanel>
       </Border>
     </WrapPanel>
@@ -60,7 +62,7 @@
 
     <!-- Saved searches, history, export, KafScript -->
     <Expander Grid.Row="3" Header="Saved searches · history · export · make it a check" Margin="0,6,0,0" HorizontalAlignment="Stretch">
-      <Border Classes="toolbar" Margin="0,4,0,0">
+      <Border Classes="toolbar" Background="{DynamicResource SurfaceRaisedBrush}" Margin="0,4,0,0">
         <StackPanel Spacing="6">
           <Grid ColumnDefinitions="90,*,Auto,Auto,Auto,Auto">
             <TextBlock Grid.Column="0" Text="Saved" Classes="muted" />
@@ -69,7 +71,7 @@
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="search:SavedSearch">
                   <TextBlock>
-                    <Run Text="{Binding Name}" /><Run Text="   " /><Run Text="{Binding Query}" Foreground="Gray" />
+                    <Run Text="{Binding Name}" /><Run Text="   " /><Run Text="{Binding Query}" Foreground="{DynamicResource TextMutedBrush}" />
                   </TextBlock>
                 </DataTemplate>
               </ComboBox.ItemTemplate>
@@ -78,13 +80,13 @@
             <CheckBox Grid.Column="3" Content="as Exists?" IsChecked="{Binding ExistenceCheckDefault}"
                       ToolTip.Tip="Remember that this search is meant as a yes/no existence check" />
             <Button Grid.Column="4" Content="Save search" Command="{Binding SaveSearchCommand}" />
-            <Button Grid.Column="5" Content="Delete" Command="{Binding DeleteSavedSearchCommand}" Margin="0" />
+            <Button Grid.Column="5" Classes="ghost" Content="Delete" Command="{Binding DeleteSavedSearchCommand}" Margin="0" />
           </Grid>
           <Grid ColumnDefinitions="90,*,Auto">
             <TextBlock Grid.Column="0" Text="History" Classes="muted" />
             <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding History}" SelectedItem="{Binding SelectedHistory}"
                       PlaceholderText="Recent searches…" />
-            <Button Grid.Column="2" Content="Clear history" Command="{Binding ClearHistoryCommand}" Margin="0" />
+            <Button Grid.Column="2" Classes="ghost" Content="Clear history" Command="{Binding ClearHistoryCommand}" Margin="0" />
           </Grid>
           <WrapPanel>
             <TextBlock Text="Results" Classes="muted" Width="90" />
@@ -109,53 +111,60 @@
         <Border Classes="badge bad" IsVisible="{Binding IsNotFound}"><TextBlock Text="NOT FOUND" /></Border>
       </Panel>
       <StackPanel Grid.Column="1" Spacing="2">
-        <SelectableTextBlock Foreground="White" TextWrapping="Wrap" Text="{Binding Status}" />
+        <SelectableTextBlock FontSize="12.5" TextWrapping="Wrap" Text="{Binding Status}" />
         <TextBlock Classes="muted" Text="{Binding Progress}" IsVisible="{Binding IsRunning}" />
       </StackPanel>
     </Grid>
 
     <!-- Results: per-topic outcomes | matching messages -->
-    <Grid Grid.Row="5" ColumnDefinitions="220,6,*">
+    <Grid Grid.Row="5" ColumnDefinitions="220,8,*">
       <DockPanel Grid.Column="0">
         <TextBlock DockPanel.Dock="Top" Classes="label" Text="BY TOPIC" Margin="0,0,0,4" />
         <ListBox Classes="rows" ItemsSource="{Binding TopicOutcomes}" SelectedItem="{Binding SelectedOutcome}">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="search:TopicSearchOutcome">
-              <Grid ColumnDefinitions="*,Auto" Margin="6,3" ToolTip.Tip="{Binding Error}">
-                <TextBlock Grid.Column="0" Text="{Binding Topic}" FontSize="12" Foreground="White" TextTrimming="CharacterEllipsis" />
-                <TextBlock Grid.Column="1" FontSize="11" Margin="6,0,0,0" Foreground="{DynamicResource AccentBrush}" Text="{Binding Hits}" />
+              <Grid ColumnDefinitions="*,Auto" ToolTip.Tip="{Binding Error}">
+                <TextBlock Grid.Column="0" Text="{Binding Topic}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="1" Classes="accent" FontSize="11" Margin="6,0,0,0" Text="{Binding Hits}" />
               </Grid>
             </DataTemplate>
           </ListBox.ItemTemplate>
         </ListBox>
       </DockPanel>
 
-      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="8" />
 
       <DockPanel Grid.Column="2">
         <TextBlock DockPanel.Dock="Top" Classes="label" Margin="0,0,0,4">
           <Run Text="MATCHES " /><Run Text="{Binding Hits.Count}" />
         </TextBlock>
-        <ListBox Classes="rows" ItemsSource="{Binding Hits}" SelectedItem="{Binding SelectedHit}">
-          <ListBox.ItemTemplate>
-            <DataTemplate x:DataType="msg:KafkaMessage">
-              <Grid ColumnDefinitions="3,Auto,Auto,Auto,Auto,*" Margin="0,3,6,3">
-                <Border Grid.Column="0" Background="{Binding Partition, Converter={x:Static conv:PartitionToBrushConverter.Instance}}" CornerRadius="2" />
-                <TextBlock Grid.Column="1" FontSize="11" Margin="6,0,8,0" MaxWidth="160" VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis" Foreground="{DynamicResource AccentBrush}" Text="{Binding Topic}" />
-                <TextBlock Grid.Column="2" Classes="muted" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center"
-                           Text="{Binding Timestamp, StringFormat='{}{0:MM-dd HH:mm:ss}'}" />
-                <TextBlock Grid.Column="3" Classes="muted" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center">
-                  <Run Text="#" /><Run Text="{Binding Partition}" /><Run Text="@" /><Run Text="{Binding Offset}" />
-                </TextBlock>
-                <TextBlock Grid.Column="4" FontSize="11" Margin="0,0,8,0" MaxWidth="140" VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis" Foreground="White" Text="{Binding Key}" />
-                <TextBlock Grid.Column="5" Classes="mono" Foreground="White" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                           Text="{Binding ValuePreview}" />
-              </Grid>
-            </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
+        <Panel>
+          <StackPanel Classes="emptyState" IsVisible="{Binding !Hits.Count}">
+            <PathIcon Data="{StaticResource Icon.search}" />
+            <TextBlock Classes="emptyTitle" Text="No matches yet" />
+            <TextBlock Classes="emptyHint" Text="Type a text or a query above and press Search, or Exists? for a quick yes/no." />
+          </StackPanel>
+          <ListBox Classes="rows" ItemsSource="{Binding Hits}" SelectedItem="{Binding SelectedHit}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="msg:KafkaMessage">
+                <Grid ColumnDefinitions="3,Auto,Auto,Auto,Auto,*">
+                  <Border Grid.Column="0" Background="{Binding Partition, Converter={x:Static conv:PartitionToBrushConverter.Instance}}" CornerRadius="2" />
+                  <TextBlock Grid.Column="1" Classes="accent" FontSize="11" Margin="8,0,8,0" MaxWidth="160" VerticalAlignment="Center"
+                             TextTrimming="CharacterEllipsis" Text="{Binding Topic}" />
+                  <TextBlock Grid.Column="2" Classes="muted mono" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center"
+                             Text="{Binding Timestamp, StringFormat='{}{0:MM-dd HH:mm:ss}'}" />
+                  <TextBlock Grid.Column="3" Classes="muted mono" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center">
+                    <Run Text="#" /><Run Text="{Binding Partition}" /><Run Text="@" /><Run Text="{Binding Offset}" />
+                  </TextBlock>
+                  <TextBlock Grid.Column="4" FontSize="11" Margin="0,0,8,0" MaxWidth="140" VerticalAlignment="Center"
+                             TextTrimming="CharacterEllipsis" Text="{Binding Key}" />
+                  <TextBlock Grid.Column="5" Classes="mono" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                             Text="{Binding ValuePreview}" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Panel>
       </DockPanel>
     </Grid>
   </Grid>

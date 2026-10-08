@@ -19,12 +19,13 @@ public sealed class JsonInlinesConverter : IValueConverter
 
     private const int MaxColorizedLength = 100_000;
 
-    private static readonly IBrush PunctuationBrush = Brushes.Gray;
-    private static readonly IBrush KeyBrush = new SolidColorBrush(Color.FromRgb(0x9C, 0xDC, 0xFE));
-    private static readonly IBrush StringBrush = new SolidColorBrush(Color.FromRgb(0xCE, 0x91, 0x78));
-    private static readonly IBrush NumberBrush = new SolidColorBrush(Color.FromRgb(0xB5, 0xCE, 0xA8));
-    private static readonly IBrush KeywordBrush = new SolidColorBrush(Color.FromRgb(0x56, 0x9C, 0xD6));
-    private static readonly IBrush DefaultBrush = Brushes.White;
+    // Resolved per call so the colouring follows the active theme (see Styles/Tokens.axaml).
+    private static IBrush PunctuationBrush => ThemeBrushes.Get("CodePunctuationBrush");
+    private static IBrush KeyBrush => ThemeBrushes.Get("CodeKeyBrush");
+    private static IBrush StringBrush => ThemeBrushes.Get("CodeStringBrush");
+    private static IBrush NumberBrush => ThemeBrushes.Get("CodeNumberBrush");
+    private static IBrush KeywordBrush => ThemeBrushes.Get("CodeKeywordBrush");
+    private static IBrush DefaultBrush => ThemeBrushes.Get("TextPrimaryBrush");
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {

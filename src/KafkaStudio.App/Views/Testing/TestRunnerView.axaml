@@ -22,9 +22,8 @@
         <Button Grid.Column="1" Content="Run failed" Command="{Binding RunFailedCommand}" ToolTip.Tip="Re-run only the tests that failed or errored" />
         <Button Grid.Column="2" Content="Run selected" Command="{Binding RunSelectedCommand}" />
         <Button Grid.Column="3" Content="■ Stop" Command="{Binding StopCommand}" ToolTip.Tip="Stop after the current step (Shift+F5)" />
-        <ProgressBar Grid.Column="4" IsIndeterminate="True" IsVisible="{Binding IsRunning}" Width="16" Height="16" MinWidth="16"
-                     VerticalAlignment="Center" Margin="0,0,6,0" />
-        <TextBlock Grid.Column="5" Classes="muted" Text="{Binding ProgressText}" Margin="0,0,6,0" />
+        <ProgressBar Grid.Column="4" Classes="busy" IsVisible="{Binding IsRunning}" />
+        <TextBlock Grid.Column="5" Classes="muted" Text="{Binding ProgressText}" />
         <Border Grid.Column="6" Classes="sep" />
         <TextBlock Grid.Column="7" Text="{Binding RunSummary}" TextTrimming="CharacterEllipsis" FontWeight="SemiBold" ToolTip.Tip="{Binding RunSummary}"
                    Foreground="{Binding LastRunPassed, Converter={x:Static conv:PassFailBrushConverter.Instance}}" />
@@ -37,7 +36,7 @@
       </Grid>
     </Border>
 
-    <Grid Grid.Row="1" Margin="0,6,0,0" ColumnDefinitions="270,6,1.2*,6,1*">
+    <Grid Grid.Row="1" Margin="0,8,0,0" ColumnDefinitions="270,8,1.2*,8,1*">
 
       <!-- Sources, filters and run options -->
       <Border Grid.Column="0" Classes="pane">
@@ -49,9 +48,11 @@
                 <DataTemplate x:DataType="x:String">
                   <Grid ColumnDefinitions="*,Auto" Margin="0,1">
                     <TextBlock Grid.Column="0" Text="{Binding}" Classes="mono" FontSize="11" TextTrimming="CharacterEllipsis"
-                               ToolTip.Tip="{Binding}" VerticalAlignment="Center" Foreground="White" />
-                    <Button Grid.Column="1" Classes="small" Content="✕" ToolTip.Tip="Remove"
-                            Command="{Binding #PathsList.((vm:TestRunnerViewModel)DataContext).RemovePathCommand}" CommandParameter="{Binding}" />
+                               ToolTip.Tip="{Binding}" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Classes="icon small ghost" ToolTip.Tip="Remove"
+                            Command="{Binding #PathsList.((vm:TestRunnerViewModel)DataContext).RemovePathCommand}" CommandParameter="{Binding}">
+                      <PathIcon Data="{StaticResource Icon.close}" />
+                    </Button>
                   </Grid>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
@@ -87,8 +88,7 @@
             <CheckBox Content="Stop at the first failure" IsChecked="{Binding FailFast}" />
 
             <TextBlock Classes="paneTitle" Text="Variables" Margin="0,8,0,0" />
-            <TextBox Text="{Binding VariablesText}" AcceptsReturn="True" TextWrapping="NoWrap" MinHeight="80"
-                     FontFamily="Cascadia Mono,Consolas,Menlo,monospace" FontSize="12"
+            <TextBox Classes="code" Text="{Binding VariablesText}" AcceptsReturn="True" TextWrapping="NoWrap" MinHeight="80"
                      Watermark="customerId=CUST-42&#x0a;env=staging"
                      ToolTip.Tip="name=value per line - every test starts with these, use them as {{name}}" />
             <TextBlock Classes="error" Text="{Binding VariablesError}"
@@ -97,12 +97,12 @@
         </ScrollViewer>
       </Border>
 
-      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="8" />
 
       <!-- Tests -->
       <Border Grid.Column="2" Classes="pane">
         <DockPanel>
-          <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,6">
+          <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8">
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Grid.Column="0" Classes="paneTitle" Text="Tests" />
               <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
@@ -117,16 +117,18 @@
                        IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           </StackPanel>
           <Panel>
-            <TextBlock Classes="hint" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="360"
-                       Text="Add a .kafscript file or folder on the left (or write Scenarios in the Script Editor). Tag them with @smoke, @regression… and filter here."
-                       IsVisible="{Binding !Tests.Count}" />
+            <StackPanel Classes="emptyState" MaxWidth="360" IsVisible="{Binding !Tests.Count}">
+              <PathIcon Data="{StaticResource Icon.qa}" />
+              <TextBlock Classes="emptyTitle" Text="No tests discovered" />
+              <TextBlock Classes="emptyHint" Text="Add a .kafscript file or folder on the left (or write Scenarios in the Script Editor). Tag them with @smoke, @regression… and filter here." />
+            </StackPanel>
             <ListBox Classes="rows" ItemsSource="{Binding Tests}" SelectedItem="{Binding SelectedTest}">
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:TestItemViewModel">
-                  <Grid ColumnDefinitions="20,*,Auto" RowDefinitions="Auto,Auto,Auto" Margin="0,2">
+                  <Grid ColumnDefinitions="20,*,Auto" RowDefinitions="Auto,Auto,Auto">
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding StatusGlyph}" FontWeight="Bold" ToolTip.Tip="{Binding StatusText}"
                                Foreground="{Binding State, Converter={x:Static conv:TestStateToBrushConverter.Instance}}" />
-                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Name}" Foreground="White" FontSize="12" TextTrimming="CharacterEllipsis"
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Name}" FontSize="12" TextTrimming="CharacterEllipsis"
                                ToolTip.Tip="{Binding Name}" />
                     <TextBlock Grid.Row="0" Grid.Column="2" Classes="muted" FontSize="11" Margin="6,0,0,0" Text="{Binding DurationText}" />
                     <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
@@ -145,12 +147,12 @@
         </DockPanel>
       </Border>
 
-      <GridSplitter Grid.Column="3" ResizeDirection="Columns" Width="6" />
+      <GridSplitter Grid.Column="3" ResizeDirection="Columns" Width="8" />
 
       <!-- Selected test -->
       <Border Grid.Column="4" Classes="pane">
         <DockPanel>
-          <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,6" IsVisible="{Binding SelectedTest, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8" IsVisible="{Binding SelectedTest, Converter={x:Static ObjectConverters.IsNotNull}}">
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Grid.Column="0" Classes="paneTitle" Text="{Binding SelectedTest.Name, FallbackValue=''}" TextWrapping="Wrap" />
               <Button Grid.Column="1" Classes="small" Content="Copy bug report" Command="{Binding CopyBugReportCommand}"
@@ -164,8 +166,11 @@
                                  Foreground="{Binding SelectedTest.State, FallbackValue={x:Null}, Converter={x:Static conv:TestStateToBrushConverter.Instance}}" />
           </StackPanel>
           <Panel>
-            <TextBlock Classes="hint" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
-                       Text="Select a test to see its steps." IsVisible="{Binding SelectedTest, Converter={x:Static ObjectConverters.IsNull}}" />
+            <StackPanel Classes="emptyState" IsVisible="{Binding SelectedTest, Converter={x:Static ObjectConverters.IsNull}}">
+              <PathIcon Data="{StaticResource Icon.qa}" />
+              <TextBlock Classes="emptyTitle" Text="No test selected" />
+              <TextBlock Classes="emptyHint" Text="Select a test to see its steps." />
+            </StackPanel>
             <ScrollViewer>
               <ItemsControl ItemsSource="{Binding SelectedTest.Steps, FallbackValue={x:Null}}">
                 <ItemsControl.ItemTemplate>
@@ -175,7 +180,7 @@
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding StatusGlyph}" FontWeight="Bold"
                                    Foreground="{Binding Status, Converter={x:Static conv:StepStatusToBrushConverter.Instance}}" />
                         <TextBlock Grid.Row="0" Grid.Column="1" TextWrapping="Wrap" FontSize="12">
-                          <Run Text="{Binding Line, StringFormat='L{0} '}" Foreground="{DynamicResource MutedTextBrush}" /><Run Text="{Binding Keyword}" Foreground="{DynamicResource MutedTextBrush}" /><Run Text=" " /><Run Text="{Binding Description}" Foreground="White" />
+                          <Run Text="{Binding Line, StringFormat='L{0} '}" Foreground="{DynamicResource TextMutedBrush}" /><Run Text="{Binding Keyword}" Foreground="{DynamicResource TextMutedBrush}" /><Run Text=" " /><Run Text="{Binding Description}" />
                         </TextBlock>
                         <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding DurationText}" Classes="muted" FontSize="11" Margin="6,0,0,0" />
                         <SelectableTextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Message}" TextWrapping="Wrap" FontSize="12"

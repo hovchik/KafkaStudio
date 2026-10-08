@@ -32,6 +32,9 @@ public partial class App : Application
                 ConnectionProfileStore.Protector = new DpapiSecretProtector();
             }
 
+            // Theme is a view-level preference saved alongside the other data files.
+            RequestedThemeVariant = UiSettings.LoadTheme();
+
             var window = new MainWindow();
 
             // Composition root: this is the one place that knows the real Kafka gateway

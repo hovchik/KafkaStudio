@@ -1,14 +1,16 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:KafkaStudio.App.ViewModels"
+        xmlns:conv="using:KafkaStudio.App.Converters"
         x:Class="KafkaStudio.App.MainWindow"
         x:DataType="vm:MainWindowViewModel"
+        x:Name="MainRoot"
         Title="KafkaStudio"
         Icon="/Assets/app.ico"
         Width="1440" Height="880"
         MinWidth="1024" MinHeight="600"
         WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource AppBackgroundBrush}">
+        Background="{DynamicResource CanvasBrush}">
 
   <Window.KeyBindings>
     <KeyBinding Gesture="Ctrl+D1" Command="{Binding NavigateCommand}" CommandParameter="topics" />
@@ -22,36 +24,60 @@
     <KeyBinding Gesture="Ctrl+D9" Command="{Binding NavigateCommand}" CommandParameter="brokers" />
     <KeyBinding Gesture="Ctrl+D0" Command="{Binding NavigateCommand}" CommandParameter="groups" />
     <KeyBinding Gesture="Ctrl+K" Command="{Binding OpenConnectionsCommand}" />
+    <KeyBinding Gesture="Ctrl+Shift+T" Command="{Binding #MainRoot.ToggleThemeCommand}" />
   </Window.KeyBindings>
 
   <Grid>
-    <Grid ColumnDefinitions="210,*">
+    <Grid ColumnDefinitions="244,*">
 
-      <!-- Sidebar -->
-      <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}" Padding="0,16">
-        <DockPanel>
-          <StackPanel DockPanel.Dock="Top" Margin="18,0,18,20" Spacing="2">
-            <TextBlock Text="KafkaStudio" FontSize="20" FontWeight="Bold" Foreground="White" />
-            <TextBlock Text="Kafka checks &amp; automation" FontSize="12" Opacity="0.6" Foreground="White" />
+      <!-- ===== Sidebar ===== -->
+      <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}"
+              BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
+        <DockPanel Margin="12,14,12,12">
+
+          <!-- Brand -->
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*" Margin="6,0,6,18">
+            <Border Grid.Column="0" Width="30" Height="30" CornerRadius="8" Background="{DynamicResource AccentBrush}" VerticalAlignment="Center">
+              <TextBlock Text="K" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource TextOnAccentBrush}"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" Spacing="0">
+              <TextBlock Text="KafkaStudio" FontSize="14" FontWeight="SemiBold" />
+              <TextBlock Text="Checks &amp; automation" Classes="muted" FontSize="11" />
+            </StackPanel>
+          </Grid>
+
+          <!-- Footer: connections + theme -->
+          <StackPanel DockPanel.Dock="Bottom" Spacing="2">
+            <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="4,0,4,8" />
+            <Button Classes="sidebarAction" Command="{Binding OpenConnectionsCommand}"
+                    ToolTip.Tip="Manage connections (Ctrl+K)">
+              <Grid ColumnDefinitions="Auto,*,Auto">
+                <PathIcon Grid.Column="0" Data="{StaticResource Icon.plug}" />
+                <TextBlock Grid.Column="1" Text="{Binding ConnectionsSummary}" Margin="10,0,0,0" VerticalAlignment="Center" FontSize="13" TextTrimming="CharacterEllipsis" />
+                <Border Grid.Column="2" Classes="kbd"><TextBlock Text="Ctrl+K" /></Border>
+              </Grid>
+            </Button>
+            <Button Classes="sidebarAction" Click="OnToggleThemeClick" ToolTip.Tip="Switch light / dark theme (Ctrl+Shift+T)">
+              <Grid ColumnDefinitions="Auto,*,Auto">
+                <PathIcon Grid.Column="0" x:Name="ThemeIcon" Data="{StaticResource Icon.sun}" />
+                <TextBlock Grid.Column="1" x:Name="ThemeLabel" Text="Light theme" Margin="10,0,0,0" VerticalAlignment="Center" FontSize="13" />
+                <Border Grid.Column="2" Classes="kbd"><TextBlock Text="Ctrl+⇧+T" /></Border>
+              </Grid>
+            </Button>
           </StackPanel>
 
-          <Button DockPanel.Dock="Bottom" Margin="10,8,10,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                  Command="{Binding OpenConnectionsCommand}" ToolTip.Tip="Manage connections (Ctrl+K)">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Text="⚙" Foreground="White" />
-              <TextBlock Text="{Binding ConnectionsSummary}" Foreground="White" />
-            </StackPanel>
-          </Button>
-
-          <ListBox ItemsSource="{Binding NavigationItems}"
-                   SelectedItem="{Binding SelectedItem}"
-                   Background="Transparent"
-                   Margin="8,0">
+          <!-- Navigation -->
+          <ListBox Classes="nav" ItemsSource="{Binding NavigationItems}" SelectedItem="{Binding SelectedItem}">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:NavigationItem">
-                <Grid ColumnDefinitions="26,*" Margin="6,8" Background="Transparent" ToolTip.Tip="{Binding Shortcut}">
-                  <TextBlock Grid.Column="0" Text="{Binding Icon}" FontSize="14" Opacity="0.85" VerticalAlignment="Center" />
-                  <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="14" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <Grid ColumnDefinitions="3,Auto,*,Auto" Height="34" Background="Transparent" ToolTip.Tip="{Binding Shortcut}">
+                  <Border Grid.Column="0" Classes="navPipe" Width="3" CornerRadius="2" Margin="0,8" />
+                  <PathIcon Grid.Column="1" Width="16" Height="16" Margin="9,0,0,0" VerticalAlignment="Center"
+                            Data="{Binding Key, Converter={x:Static conv:NavIconConverter.Instance}}" />
+                  <TextBlock Grid.Column="2" Classes="navLabel" Text="{Binding Label}" FontSize="13" Margin="10,0,0,0"
+                             VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  <Border Grid.Column="3" Classes="kbd" Margin="0,0,8,0"><TextBlock Text="{Binding Shortcut}" /></Border>
                 </Grid>
               </DataTemplate>
             </ListBox.ItemTemplate>
@@ -59,17 +85,25 @@
         </DockPanel>
       </Border>
 
-      <!-- Content -->
-      <Border Grid.Column="1" Background="{DynamicResource ContentBackgroundBrush}">
-        <DockPanel Margin="20,14,20,14">
+      <!-- ===== Content ===== -->
+      <Border Grid.Column="1" Background="{DynamicResource CanvasBrush}">
+        <DockPanel Margin="18,12,18,12">
+
+          <!-- Page header -->
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,Auto,*" Margin="2,0,2,10" Height="30">
+            <TextBlock Grid.Column="0" Classes="pageTitle" Text="{Binding SelectedItem.Label}" />
+            <Border Grid.Column="1" Classes="kbd" Margin="10,0,0,0"><TextBlock Text="{Binding SelectedItem.Shortcut}" /></Border>
+          </Grid>
+
           <!-- First-run guidance: nothing works until a connection exists. -->
-          <Border DockPanel.Dock="Top" Classes="empty" Margin="0,0,0,10" IsVisible="{Binding HasNoConnections}">
-            <Grid ColumnDefinitions="*,Auto">
-              <StackPanel Grid.Column="0" Spacing="2">
-                <TextBlock Text="Start by adding a connection" FontWeight="SemiBold" Foreground="White" />
+          <Border DockPanel.Dock="Top" Classes="callout" Margin="0,0,0,10" IsVisible="{Binding HasNoConnections}">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <PathIcon Grid.Column="0" Data="{StaticResource Icon.plug}" Width="18" Height="18" Foreground="{DynamicResource AccentBrush}" Margin="0,0,12,0" VerticalAlignment="Center" />
+              <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                <TextBlock Text="Start by adding a connection" FontWeight="SemiBold" />
                 <TextBlock Classes="hint" Text="Connect to a real cluster, or add a demo (in-memory) connection to try every screen and script without Kafka." />
               </StackPanel>
-              <Button Grid.Column="1" Content="Add connection" Classes="primary" Command="{Binding OpenConnectionsCommand}" VerticalAlignment="Center" />
+              <Button Grid.Column="2" Content="Add connection" Classes="primary" Command="{Binding OpenConnectionsCommand}" VerticalAlignment="Center" Margin="12,0,0,0" />
             </Grid>
           </Border>
 
@@ -82,22 +116,29 @@
     <!-- Notification (errors that no screen status line covers) -->
     <Border Classes="notification" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,18" MaxWidth="720"
             IsVisible="{Binding Notification, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-      <Grid ColumnDefinitions="*,Auto">
-        <SelectableTextBlock Grid.Column="0" Text="{Binding Notification}" Foreground="White" TextWrapping="Wrap" VerticalAlignment="Center" />
-        <Button Grid.Column="1" Classes="small" Content="Dismiss" Margin="12,0,0,0" Command="{Binding DismissNotificationCommand}" />
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <PathIcon Grid.Column="0" Data="{StaticResource Icon.warning}" Width="16" Height="16" Foreground="{DynamicResource DangerBrush}" Margin="0,0,10,0" VerticalAlignment="Center" />
+        <SelectableTextBlock Grid.Column="1" Text="{Binding Notification}" TextWrapping="Wrap" VerticalAlignment="Center" FontSize="12.5" />
+        <Button Grid.Column="2" Classes="small ghost" Content="Dismiss" Margin="12,0,0,0" Command="{Binding DismissNotificationCommand}" ToolTip.Tip="Esc" />
       </Grid>
     </Border>
 
     <!-- Connections flyout panel (click the dimmed area or press Esc to close) -->
     <Grid IsVisible="{Binding IsConnectionsOpen}">
-      <Border Background="#B0000000" PointerPressed="OnFlyoutBackdropPressed" />
+      <Border Background="{DynamicResource OverlayBrush}" PointerPressed="OnFlyoutBackdropPressed" />
       <Border HorizontalAlignment="Right" VerticalAlignment="Stretch"
-              Width="520" Background="{DynamicResource ContentBackgroundBrush}"
-              BoxShadow="-4 0 16 0 #40000000">
-        <DockPanel Margin="16">
-          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
-            <TextBlock Grid.Column="0" Classes="h1" Text="Connections" Foreground="White" />
-            <Button Grid.Column="1" Content="Close" Command="{Binding CloseConnectionsCommand}" ToolTip.Tip="Esc" VerticalAlignment="Center" />
+              Width="540" Background="{DynamicResource CanvasBrush}"
+              BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,0,0"
+              BoxShadow="-8 0 32 0 #50000000">
+        <DockPanel Margin="18,14,18,16">
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+            <StackPanel Grid.Column="0" Spacing="2">
+              <TextBlock Classes="h1" Text="Connections" />
+              <TextBlock Classes="muted" Text="Clusters this app can talk to. Saved in your user profile." />
+            </StackPanel>
+            <Button Grid.Column="1" Classes="icon ghost" Command="{Binding CloseConnectionsCommand}" ToolTip.Tip="Close (Esc)" VerticalAlignment="Top">
+              <PathIcon Data="{StaticResource Icon.close}" />
+            </Button>
           </Grid>
           <ScrollViewer>
             <ContentControl Content="{Binding Connections}" />

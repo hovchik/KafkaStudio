@@ -6,7 +6,7 @@
              x:DataType="vm:BulkCheckViewModel"
              x:CompileBindings="True">
 
-  <Grid ColumnDefinitions="260,6,*">
+  <Grid ColumnDefinitions="260,8,*">
 
     <!-- Input -->
     <DockPanel Grid.Column="0">
@@ -35,20 +35,20 @@
         <CheckBox Content="Match case" IsChecked="{Binding CaseSensitive}" />
         <StackPanel Orientation="Horizontal" Spacing="6">
           <Button Content="Check ids" Classes="primary" Command="{Binding RunCommand}" />
-          <Button Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" />
+          <Button Classes="ghost" Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" />
         </StackPanel>
       </StackPanel>
 
-      <TextBox Text="{Binding IdsText}" AcceptsReturn="True" TextWrapping="NoWrap" FontFamily="Consolas,Menlo,monospace"
+      <TextBox Classes="code" Text="{Binding IdsText}" AcceptsReturn="True" TextWrapping="NoWrap"
                Watermark="ORD-1001&#x0a;ORD-1002&#x0a;…" VerticalContentAlignment="Top" />
     </DockPanel>
 
-    <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
+    <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="8" />
 
     <!-- Results -->
     <DockPanel Grid.Column="2">
       <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,6">
-        <SelectableTextBlock Foreground="White" TextWrapping="Wrap" Text="{Binding Status}" />
+        <SelectableTextBlock FontSize="12.5" TextWrapping="Wrap" Text="{Binding Status}" />
         <TextBlock Classes="muted" Text="{Binding Progress}" IsVisible="{Binding IsRunning}" />
         <WrapPanel>
           <CheckBox Content="Only missing" IsChecked="{Binding OnlyMissing}" Margin="0,0,10,0" />
@@ -57,22 +57,38 @@
         </WrapPanel>
       </StackPanel>
 
-      <ListBox Classes="rows" ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow}">
-        <ListBox.ItemTemplate>
-          <DataTemplate x:DataType="search:IdPresence">
-            <Grid ColumnDefinitions="150,64,*,Auto" Margin="6,3">
-              <TextBlock Grid.Column="0" Classes="mono" Foreground="White" TextTrimming="CharacterEllipsis" Text="{Binding Id}" />
-              <Panel Grid.Column="1">
-                <TextBlock FontSize="11" Foreground="{DynamicResource SuccessBrush}" Text="{Binding Status}" IsVisible="{Binding Found}" />
-                <TextBlock FontSize="11" Foreground="{DynamicResource FailureBrush}" Text="missing" IsVisible="{Binding !Found}" />
-              </Panel>
-              <TextBlock Grid.Column="2" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" Text="{Binding TopicsText}" ToolTip.Tip="{Binding TopicsText}" />
-              <TextBlock Grid.Column="3" Classes="muted" FontSize="11" Margin="8,0,0,0"
-                         Text="{Binding First.Timestamp, StringFormat='{}{0:MM-dd HH:mm:ss}', FallbackValue=''}" ToolTip.Tip="First seen" />
-            </Grid>
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
+      <Border DockPanel.Dock="Top" Classes="tableHeader">
+        <Grid ColumnDefinitions="150,64,*,Auto">
+          <TextBlock Grid.Column="0" Text="ID" />
+          <TextBlock Grid.Column="1" Text="STATUS" />
+          <TextBlock Grid.Column="2" Text="TOPICS" />
+          <TextBlock Grid.Column="3" Text="FIRST SEEN" Margin="8,0,0,0" />
+        </Grid>
+      </Border>
+
+      <Panel>
+        <StackPanel Classes="emptyState" IsVisible="{Binding !Rows.Count}">
+          <PathIcon Data="{StaticResource Icon.search}" />
+          <TextBlock Classes="emptyTitle" Text="No ids checked yet" />
+          <TextBlock Classes="emptyHint" Text="Paste ids on the left and press Check ids." />
+        </StackPanel>
+        <ListBox Classes="rows" ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="search:IdPresence">
+              <Grid ColumnDefinitions="150,64,*,Auto">
+                <TextBlock Grid.Column="0" Classes="mono" TextTrimming="CharacterEllipsis" Text="{Binding Id}" />
+                <Panel Grid.Column="1">
+                  <TextBlock Classes="success" FontSize="11" Text="{Binding Status}" IsVisible="{Binding Found}" />
+                  <TextBlock Classes="danger" FontSize="11" Text="missing" IsVisible="{Binding !Found}" />
+                </Panel>
+                <TextBlock Grid.Column="2" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" Text="{Binding TopicsText}" ToolTip.Tip="{Binding TopicsText}" />
+                <TextBlock Grid.Column="3" Classes="muted mono" FontSize="11" Margin="8,0,0,0"
+                           Text="{Binding First.Timestamp, StringFormat='{}{0:MM-dd HH:mm:ss}', FallbackValue=''}" ToolTip.Tip="First seen" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Panel>
     </DockPanel>
   </Grid>
 </UserControl>

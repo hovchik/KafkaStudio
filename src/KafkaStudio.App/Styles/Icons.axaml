@@ -1,0 +1,29 @@
+<!-- Icon geometries (20x20 grid, filled paths) used by the sidebar and shared chrome. They are
+     rendered through PathIcon so they take the current Foreground and scale crisply at any DPI. -->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- Navigation (keyed by NavigationItem.Key, see NavIconConverter) -->
+  <StreamGeometry x:Key="Icon.topics">M3,4 h14 a1,1 0 0 1 0,2 h-14 a1,1 0 0 1 0,-2 Z M3,9 h14 a1,1 0 0 1 0,2 h-14 a1,1 0 0 1 0,-2 Z M3,14 h9 a1,1 0 0 1 0,2 h-9 a1,1 0 0 1 0,-2 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.producer">M10,3 L15.5,8.5 a1,1 0 0 1 -1.4,1.4 L11,6.8 V16 a1,1 0 0 1 -2,0 V6.8 L5.9,9.9 a1,1 0 0 1 -1.4,-1.4 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.consumer">M10,17 L4.5,11.5 a1,1 0 0 1 1.4,-1.4 L9,13.2 V4 a1,1 0 0 1 2,0 V13.2 L14.1,10.1 a1,1 0 0 1 1.4,1.4 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.scripts">M7.2,4.3 a1,1 0 0 1 0,1.4 L3.9,9 l3.3,3.3 a1,1 0 0 1 -1.4,1.4 L1.8,9.7 a1,1 0 0 1 0,-1.4 L5.8,4.3 a1,1 0 0 1 1.4,0 Z M12.8,4.3 a1,1 0 0 1 1.4,0 l4,4 a1,1 0 0 1 0,1.4 l-4,4 a1,1 0 0 1 -1.4,-1.4 L16.1,9 12.8,5.7 a1,1 0 0 1 0,-1.4 Z M11.6,2.6 a1,1 0 0 1 0.7,1.2 l-3,12 a1,1 0 0 1 -1.9,-0.5 l3,-12 a1,1 0 0 1 1.2,-0.7 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.tasks">M10,2 a8,8 0 1 1 0,16 a8,8 0 0 1 0,-16 Z M10,4 a6,6 0 1 0 0,12 a6,6 0 0 0 0,-12 Z M9,6 h2 v4.6 l3,1.7 l-1,1.7 l-4,-2.3 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.rethrow">M12.5,2.3 a1,1 0 0 1 1.4,0 l3,3 a1,1 0 0 1 0,1.4 l-3,3 a1,1 0 0 1 -1.4,-1.4 L13.8,7 H4 a1,1 0 0 1 0,-2 h9.8 L12.5,3.7 a1,1 0 0 1 0,-1.4 Z M7.5,10.3 a1,1 0 0 1 0,1.4 L6.2,13 H16 a1,1 0 0 1 0,2 H6.2 l1.3,1.3 a1,1 0 0 1 -1.4,1.4 l-3,-3 a1,1 0 0 1 0,-1.4 l3,-3 a1,1 0 0 1 1.4,0 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.search">M8.5,2 a6.5,6.5 0 1 1 0,13 a6.5,6.5 0 0 1 0,-13 Z M8.5,4 a4.5,4.5 0 1 0 0,9 a4.5,4.5 0 0 0 0,-9 Z M12.3,12.3 l5.2,5.2 l-1.4,1.4 l-5.2,-5.2 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.qa">M5,3 h10 a2,2 0 0 1 2,2 v10 a2,2 0 0 1 -2,2 H5 a2,2 0 0 1 -2,-2 V5 a2,2 0 0 1 2,-2 Z M5,5 v10 h10 V5 Z M13.3,7.3 l1.4,1.4 l-5.2,5.2 l-3.2,-3.2 l1.4,-1.4 l1.8,1.8 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.brokers">M4,3 h12 a2,2 0 0 1 2,2 v2 a2,2 0 0 1 -2,2 H4 a2,2 0 0 1 -2,-2 V5 a2,2 0 0 1 2,-2 Z M4,5 v2 h12 V5 Z M14,5.2 a0.8,0.8 0 1 1 0,1.6 a0.8,0.8 0 0 1 0,-1.6 Z M4,11 h12 a2,2 0 0 1 2,2 v2 a2,2 0 0 1 -2,2 H4 a2,2 0 0 1 -2,-2 v-2 a2,2 0 0 1 2,-2 Z M4,13 v2 h12 v-2 Z M14,13.2 a0.8,0.8 0 1 1 0,1.6 a0.8,0.8 0 0 1 0,-1.6 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.groups">M7,3 a3,3 0 1 1 0,6 a3,3 0 0 1 0,-6 Z M7,5 a1,1 0 1 0 0,2 a1,1 0 0 0 0,-2 Z M14,5 a2.5,2.5 0 1 1 0,5 a2.5,2.5 0 0 1 0,-5 Z M14,7 a0.5,0.5 0 1 0 0,1 a0.5,0.5 0 0 0 0,-1 Z M7,10.5 c3,0 5.5,1.6 5.5,3.8 V17 H1.5 v-2.7 c0,-2.2 2.5,-3.8 5.5,-3.8 Z M7,12.5 c-2.1,0 -3.5,1 -3.5,1.8 V15 h7 v-0.7 c0,-0.8 -1.4,-1.8 -3.5,-1.8 Z M14,11.5 c2.5,0 4.5,1.3 4.5,3.1 V17 H14 v-2 h2.5 c-0.1,-0.5 -1,-1.3 -2.5,-1.5 Z</StreamGeometry>
+
+  <!-- Chrome -->
+  <StreamGeometry x:Key="Icon.plug">M7,2 a1,1 0 0 1 1,1 v3 h4 V3 a1,1 0 0 1 2,0 v3 h1 a1,1 0 0 1 1,1 v2 a5,5 0 0 1 -4,4.9 V17 a1,1 0 0 1 -2,0 v-3.1 A5,5 0 0 1 4,9 V7 a1,1 0 0 1 1,-1 h1 V3 a1,1 0 0 1 1,-1 Z M6,8 v1 a4,4 0 0 0 8,0 V8 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.sun">M10,5.5 a4.5,4.5 0 1 1 0,9 a4.5,4.5 0 0 1 0,-9 Z M10,7.5 a2.5,2.5 0 1 0 0,5 a2.5,2.5 0 0 0 0,-5 Z M9,1 h2 v2.5 h-2 Z M9,16.5 h2 V19 h-2 Z M1,9 h2.5 v2 H1 Z M16.5,9 H19 v2 h-2.5 Z M3.6,2.2 l1.8,1.8 l-1.4,1.4 l-1.8,-1.8 Z M14.6,13.2 l1.8,1.8 l-1.4,1.4 l-1.8,-1.8 Z M16.4,2.2 l1.4,1.4 l-1.8,1.8 l-1.4,-1.4 Z M5.4,13.2 l1.4,1.4 l-1.8,1.8 l-1.4,-1.4 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.moon">M11.5,2 a8,8 0 1 0 6.5,12.3 a1,1 0 0 0 -1.1,-1.5 A6,6 0 0 1 9.4,3.4 a1,1 0 0 0 -0.6,-1.3 A8,8 0 0 0 11.5,2 Z M9.3,4.2 A8,8 0 0 0 15.7,14.7 A6,6 0 1 1 9.3,4.2 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.close">M4.3,4.3 a1,1 0 0 1 1.4,0 L10,8.6 l4.3,-4.3 a1,1 0 0 1 1.4,1.4 L11.4,10 l4.3,4.3 a1,1 0 0 1 -1.4,1.4 L10,11.4 l-4.3,4.3 a1,1 0 0 1 -1.4,-1.4 L8.6,10 4.3,5.7 a1,1 0 0 1 0,-1.4 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.refresh">M10,3 a7,7 0 0 1 6,3.4 V4 a1,1 0 0 1 2,0 v5 a1,1 0 0 1 -1,1 h-5 a1,1 0 0 1 0,-2 h2.7 A5,5 0 1 0 15,11 a1,1 0 0 1 2,0 A7,7 0 1 1 10,3 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.warning">M10,2.5 l8,14 a1,1 0 0 1 -0.9,1.5 H2.9 A1,1 0 0 1 2,16.5 Z M10,5.5 L4.6,16 h10.8 Z M9,8 h2 v4 H9 Z M9,13.2 h2 v2 H9 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.info">M10,2 a8,8 0 1 1 0,16 a8,8 0 0 1 0,-16 Z M10,4 a6,6 0 1 0 0,12 a6,6 0 0 0 0,-12 Z M9,9 h2 v5 H9 Z M9,6 h2 v2 H9 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.inbox">M4,3 h12 a1,1 0 0 1 0.9,0.6 l2,5 A1,1 0 0 1 19,9 v6 a2,2 0 0 1 -2,2 H3 a2,2 0 0 1 -2,-2 V9 a1,1 0 0 1 0.1,-0.4 l2,-5 A1,1 0 0 1 4,3 Z M4.7,5 L3.5,8 H7 a1,1 0 0 1 1,1 a2,2 0 0 0 4,0 a1,1 0 0 1 1,-1 h3.5 L15.3,5 Z M3,10 v5 h14 v-5 h-2.1 a4,4 0 0 1 -7.8,0 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.spark">M10,1.5 l1.8,5.2 l5.2,1.8 l-5.2,1.8 L10,15.5 l-1.8,-5.2 L3,8.5 l5.2,-1.8 Z M3.5,14 l0.8,2.2 l2.2,0.8 l-2.2,0.8 L3.5,20 l-0.8,-2.2 L0.5,17 l2.2,-0.8 Z</StreamGeometry>
+
+</ResourceDictionary>

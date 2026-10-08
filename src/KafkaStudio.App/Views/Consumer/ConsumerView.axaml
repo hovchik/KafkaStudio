@@ -20,7 +20,7 @@
         <ComboBox Grid.Column="0" Width="170" PlaceholderText="Connection…" ItemsSource="{Binding ConnectionNames}"
                   SelectedItem="{Binding SelectedConnection}" ToolTip.Tip="Connection" />
         <AutoCompleteBox Grid.Column="1" MinWidth="160" ItemsSource="{Binding TopicNames}" Text="{Binding Topic}"
-                         FilterMode="Contains" Watermark="topic name" IsEnabled="{Binding !IsWatching}" />
+                         FilterMode="Contains" Watermark="Topic" IsEnabled="{Binding !IsWatching}" />
 
         <Border Grid.Column="2" Classes="sep" />
 
@@ -33,23 +33,22 @@
         <Button Grid.Column="7" Content="Stop" Command="{Binding StopCommand}" ToolTip.Tip="Stop watching (Shift+F5)" />
         <Button Grid.Column="8" Content="{Binding PauseLabel}" Command="{Binding TogglePauseCommand}" IsEnabled="{Binding IsWatching}"
                 ToolTip.Tip="Freeze the list to read it; messages keep arriving and appear on resume" />
-        <Button Grid.Column="9" Content="Clear" Command="{Binding ClearCommand}" />
+        <Button Grid.Column="9" Classes="ghost" Content="Clear" Command="{Binding ClearCommand}" />
 
         <Border Grid.Column="10" Classes="sep" />
 
         <TextBox Grid.Column="11" MinWidth="120" Text="{Binding Filter}" Watermark="Filter (key, value, headers)" />
-        <ProgressBar Grid.Column="12" IsIndeterminate="True" IsVisible="{Binding IsWatching}" Width="16" Height="16" MinWidth="16"
-                     VerticalAlignment="Center" Margin="0,0,6,0" />
+        <ProgressBar Grid.Column="12" Classes="busy" IsVisible="{Binding IsWatching}" />
         <Button Grid.Column="13" Content="Export" Command="{Binding ExportCommand}" Margin="0"
                 ToolTip.Tip="Save the shown messages to a JSON file" />
       </Grid>
     </Border>
 
     <!-- Data area: live list + detail. -->
-    <Grid Grid.Row="1" Margin="0,6,0,0" ColumnDefinitions="*,6,1*">
+    <Grid Grid.Row="1" Margin="0,8,0,0" ColumnDefinitions="*,8,1*">
       <Border Grid.Column="0" Classes="pane">
         <DockPanel>
-          <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,6">
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,8">
             <TextBlock Grid.Column="0" Classes="paneTitle" Text="Live messages" Margin="0,0,8,0" />
             <TextBlock Grid.Column="1" Classes="muted" VerticalAlignment="Center">
               <Run Text="{Binding Messages.Count}" /><Run Text=" shown · " /><Run Text="{Binding ReceivedCount}" /><Run Text=" received" />
@@ -61,23 +60,25 @@
             </Border>
           </Grid>
           <Panel>
-            <TextBlock Classes="hint" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
-                       Text="Pick a connection and topic, then Start (F5). New messages appear on top."
-                       IsVisible="{Binding !Messages.Count}" />
+            <StackPanel Classes="emptyState" IsVisible="{Binding !Messages.Count}">
+              <PathIcon Data="{StaticResource Icon.consumer}" />
+              <TextBlock Classes="emptyTitle" Text="Nothing received yet" />
+              <TextBlock Classes="emptyHint" Text="Pick a connection and topic, then Start (F5). New messages appear on top." />
+            </StackPanel>
             <ListBox Classes="rows" ItemsSource="{Binding Messages}" SelectedItem="{Binding SelectedMessage}">
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="msg:KafkaMessage">
-                  <Grid ColumnDefinitions="3,Auto,Auto,Auto,*" Margin="0,3,6,3">
+                  <Grid ColumnDefinitions="3,Auto,Auto,Auto,*">
                     <Border Grid.Column="0" Background="{Binding Partition, Converter={x:Static conv:PartitionToBrushConverter.Instance}}" CornerRadius="2" />
-                    <TextBlock Grid.Column="1" Classes="muted" FontSize="11" Margin="6,0,8,0" VerticalAlignment="Center"
+                    <TextBlock Grid.Column="1" Classes="muted mono" FontSize="11" Margin="8,0,8,0" VerticalAlignment="Center"
                                Text="{Binding Timestamp, StringFormat='{}{0:HH:mm:ss.fff}'}" />
-                    <TextBlock Grid.Column="2" Classes="muted" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center">
+                    <TextBlock Grid.Column="2" Classes="muted mono" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center">
                       <Run Text="#" /><Run Text="{Binding Partition}" /><Run Text="@" /><Run Text="{Binding Offset}" />
                     </TextBlock>
-                    <TextBlock Grid.Column="3" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center" MaxWidth="160"
-                               TextTrimming="CharacterEllipsis" Foreground="{DynamicResource AccentBrush}"
+                    <TextBlock Grid.Column="3" Classes="accent" FontSize="11.5" Margin="0,0,8,0" VerticalAlignment="Center" MaxWidth="160"
+                               TextTrimming="CharacterEllipsis"
                                Text="{Binding Key}" IsVisible="{Binding Key, Converter={x:Static ObjectConverters.IsNotNull}}" />
-                    <TextBlock Grid.Column="4" Classes="mono" Foreground="White" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                    <TextBlock Grid.Column="4" Classes="mono" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                                Text="{Binding ValuePreview}" />
                   </Grid>
                 </DataTemplate>
@@ -87,17 +88,18 @@
         </DockPanel>
       </Border>
 
-      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="8" />
 
       <Border Grid.Column="2" Classes="pane">
         <DockPanel>
-          <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Text="Message" Margin="0,0,0,6" />
+          <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Text="Message" Margin="0,0,0,8" />
           <shared:MessageDetailView Message="{Binding SelectedMessage}" Actions="{Binding Actions}" />
         </DockPanel>
       </Border>
     </Grid>
 
-    <TextBlock Grid.Row="2" Classes="muted" Margin="4,6,0,0" TextTrimming="CharacterEllipsis"
-               Text="{Binding StatusMessage}" ToolTip.Tip="{Binding StatusMessage}" />
+    <Border Grid.Row="2" Classes="statusbar">
+      <TextBlock Text="{Binding StatusMessage}" ToolTip.Tip="{Binding StatusMessage}" />
+    </Border>
   </Grid>
 </UserControl>

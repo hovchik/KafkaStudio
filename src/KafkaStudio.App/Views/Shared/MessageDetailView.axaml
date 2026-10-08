@@ -5,16 +5,18 @@
              x:Name="Detail">
 
   <!-- Detail pane for one message: metadata, key, headers, pretty-printed value and actions.
-       Used by the Topics and Consume screens (Message/Actions are set by the host view). -->
+       Used by the Topics, Consume, Find Data and QA screens (Message/Actions are set by the host view). -->
   <Panel>
-    <TextBlock Classes="hint" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
-               Text="Select a message to see its key, headers and full value."
-               IsVisible="{Binding #Detail.Message, Converter={x:Static ObjectConverters.IsNull}}" />
+    <StackPanel Classes="emptyState" IsVisible="{Binding #Detail.Message, Converter={x:Static ObjectConverters.IsNull}}">
+      <PathIcon Data="{StaticResource Icon.inbox}" />
+      <TextBlock Classes="emptyTitle" Text="No message selected" />
+      <TextBlock Classes="emptyHint" Text="Select a message to see its key, headers and full value." />
+    </StackPanel>
 
     <DockPanel IsVisible="{Binding #Detail.Message, Converter={x:Static ObjectConverters.IsNotNull}}">
 
       <!-- Actions -->
-      <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+      <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,10">
         <Button Classes="small" Content="Copy value" Margin="0,0,4,4"
                 Command="{Binding #Detail.Actions.CopyValueCommand}" CommandParameter="{Binding #Detail.Message}" />
         <Button Classes="small" Content="Copy key" Margin="0,0,4,4"
@@ -34,44 +36,53 @@
       </WrapPanel>
 
       <!-- Metadata -->
-      <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,0,0,6">
-        <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="TOPIC" Margin="0,0,10,2" />
-        <SelectableTextBlock Grid.Row="0" Grid.Column="1" Text="{Binding #Detail.Message.Topic}" FontSize="12" Foreground="{DynamicResource AccentBrush}" />
+      <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,0,0,10">
+        <Grid.Styles>
+          <Style Selector="TextBlock.label">
+            <Setter Property="Margin" Value="0,0,12,4" />
+          </Style>
+          <Style Selector="SelectableTextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+          </Style>
+        </Grid.Styles>
+        <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="TOPIC" />
+        <SelectableTextBlock Grid.Row="0" Grid.Column="1" Classes="accent" Text="{Binding #Detail.Message.Topic}" />
 
-        <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="POSITION" Margin="0,0,10,2" />
-        <SelectableTextBlock Grid.Row="1" Grid.Column="1" FontSize="12" Foreground="White">
-          <Run Text="partition " /><Run Text="{Binding #Detail.Message.Partition}" /><Run Text="  ·  offset " /><Run Text="{Binding #Detail.Message.Offset}" />
+        <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="POSITION" />
+        <SelectableTextBlock Grid.Row="1" Grid.Column="1">
+          <Run Text="partition " Foreground="{DynamicResource TextMutedBrush}" /><Run Text="{Binding #Detail.Message.Partition}" /><Run Text="  ·  offset " Foreground="{DynamicResource TextMutedBrush}" /><Run Text="{Binding #Detail.Message.Offset}" />
         </SelectableTextBlock>
 
-        <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="TIME" Margin="0,0,10,2" />
-        <SelectableTextBlock Grid.Row="2" Grid.Column="1" FontSize="12" Foreground="White">
-          <Run Text="{Binding #Detail.Message.Timestamp, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss.fff zzz}'}" /><Run Text="  ·  " /><Run Text="{Binding #Detail.Message.ValueSize}" /><Run Text=" bytes" />
+        <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="TIME" />
+        <SelectableTextBlock Grid.Row="2" Grid.Column="1">
+          <Run Text="{Binding #Detail.Message.Timestamp, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss.fff zzz}'}" /><Run Text="  ·  " Foreground="{DynamicResource TextMutedBrush}" /><Run Text="{Binding #Detail.Message.ValueSize}" /><Run Text=" bytes" Foreground="{DynamicResource TextMutedBrush}" />
         </SelectableTextBlock>
 
-        <TextBlock Grid.Row="3" Grid.Column="0" Classes="label" Text="KEY" Margin="0,0,10,2" />
-        <SelectableTextBlock Grid.Row="3" Grid.Column="1" Classes="mono" Foreground="White" TextWrapping="Wrap"
+        <TextBlock Grid.Row="3" Grid.Column="0" Classes="label" Text="KEY" />
+        <SelectableTextBlock Grid.Row="3" Grid.Column="1" Classes="mono" TextWrapping="Wrap"
                              Text="{Binding #Detail.Message.Key, TargetNullValue='(no key)'}" />
       </Grid>
 
       <!-- Headers (only when there are any) -->
-      <StackPanel DockPanel.Dock="Top" Margin="0,0,0,6"
+      <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10"
                   IsVisible="{Binding #Detail.Message.Headers.Count, FallbackValue=False}">
-        <TextBlock Classes="label" Text="HEADERS" Margin="0,0,0,2" />
+        <TextBlock Classes="label" Text="HEADERS" Margin="0,0,0,4" />
         <ItemsControl ItemsSource="{Binding #Detail.Message.Headers}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <SelectableTextBlock Classes="mono" TextWrapping="Wrap">
-                <Run Text="{Binding Key}" Foreground="{DynamicResource AccentBrush}" /><Run Text=": " Foreground="Gray" /><Run Text="{Binding Value}" Foreground="White" />
+              <SelectableTextBlock Classes="mono" TextWrapping="Wrap" Margin="0,0,0,2">
+                <Run Text="{Binding Key}" Foreground="{DynamicResource CodeKeyBrush}" /><Run Text=": " Foreground="{DynamicResource TextMutedBrush}" /><Run Text="{Binding Value}" />
               </SelectableTextBlock>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
       </StackPanel>
 
-      <TextBlock DockPanel.Dock="Top" Classes="label" Text="VALUE" Margin="0,0,0,2" />
-      <Border Background="{DynamicResource SidebarBrush}" CornerRadius="6" Padding="8">
+      <TextBlock DockPanel.Dock="Top" Classes="label" Text="VALUE" Margin="0,0,0,4" />
+      <Border Classes="code">
         <ScrollViewer HorizontalScrollBarVisibility="Auto">
-          <SelectableTextBlock Classes="mono" Foreground="White" TextWrapping="Wrap"
+          <SelectableTextBlock Classes="mono" TextWrapping="Wrap" LineHeight="18"
                                Inlines="{Binding #Detail.Message.PrettyValue, Converter={x:Static conv:JsonInlinesConverter.Instance}}" />
         </ScrollViewer>
       </Border>

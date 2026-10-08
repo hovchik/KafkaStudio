@@ -6,19 +6,20 @@
              x:DataType="vm:ReconcileViewModel"
              x:CompileBindings="True">
 
-  <Grid RowDefinitions="Auto,Auto,*,6,Auto">
+  <Grid RowDefinitions="Auto,Auto,Auto,*,8,Auto">
 
-    <Border Grid.Row="0" Classes="toolbar">
+    <!-- Sub-toolbar: this view renders inside the Find Data pane. -->
+    <Border Grid.Row="0" Classes="toolbar" Background="{DynamicResource SurfaceRaisedBrush}">
       <StackPanel Spacing="6">
         <Grid ColumnDefinitions="20,*,Auto,160">
-          <TextBlock Grid.Column="0" Text="A" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
+          <TextBlock Grid.Column="0" Text="A" Classes="accent" FontWeight="Bold" />
           <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" PlaceholderText="Topic A (e.g. orders)…"
                     ItemsSource="{Binding TopicNames}" SelectedItem="{Binding TopicA}" />
           <TextBlock Grid.Column="2" Text="join on" Classes="muted" />
           <TextBox Grid.Column="3" Text="{Binding JoinA}" Watermark="key" ToolTip.Tip="key · $.orderId · header &quot;name&quot;" Margin="0" />
         </Grid>
         <Grid ColumnDefinitions="20,*,Auto,160">
-          <TextBlock Grid.Column="0" Text="B" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
+          <TextBlock Grid.Column="0" Text="B" Classes="accent" FontWeight="Bold" />
           <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" PlaceholderText="Topic B (e.g. payments)…"
                     ItemsSource="{Binding TopicNames}" SelectedItem="{Binding TopicB}" />
           <TextBlock Grid.Column="2" Text="join on" Classes="muted" />
@@ -29,13 +30,13 @@
           <TextBox Grid.Column="1" Text="{Binding CompareFields}" Watermark="fields to compare between matched pairs, e.g. $.amount, $.currency (optional)" />
           <CheckBox Grid.Column="2" Content="Match case" IsChecked="{Binding CaseSensitive}" />
           <Button Grid.Column="3" Content="Reconcile" Classes="primary" Command="{Binding RunCommand}" />
-          <Button Grid.Column="4" Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" Margin="0" />
+          <Button Grid.Column="4" Classes="ghost" Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" Margin="0" />
         </Grid>
       </StackPanel>
     </Border>
 
     <StackPanel Grid.Row="1" Spacing="4" Margin="2,8,0,6">
-      <SelectableTextBlock Foreground="White" TextWrapping="Wrap" Text="{Binding Status}" />
+      <SelectableTextBlock FontSize="12.5" TextWrapping="Wrap" Text="{Binding Status}" />
       <TextBlock Classes="muted" Text="{Binding Progress}" IsVisible="{Binding IsRunning}" />
       <WrapPanel>
         <ComboBox Width="150" ItemsSource="{Binding StatusFilters}" SelectedItem="{Binding StatusFilter}" Margin="0,0,6,0" />
@@ -45,34 +46,51 @@
       </WrapPanel>
     </StackPanel>
 
-    <ListBox Grid.Row="2" Classes="rows" ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow}">
-      <ListBox.ItemTemplate>
-        <DataTemplate x:DataType="search:ReconcileRow">
-          <Grid ColumnDefinitions="180,90,60,80,*" Margin="6,3">
-            <TextBlock Grid.Column="0" Classes="mono" Foreground="White" TextTrimming="CharacterEllipsis" Text="{Binding JoinValue}" />
-            <TextBlock Grid.Column="1" FontSize="11" Foreground="{DynamicResource AccentBrush}" Text="{Binding StatusText}" />
-            <TextBlock Grid.Column="2" Classes="muted" FontSize="11" ToolTip.Tip="messages in A / B">
-              <Run Text="{Binding CountA}" /><Run Text="/" /><Run Text="{Binding CountB}" />
-            </TextBlock>
-            <TextBlock Grid.Column="3" Classes="muted" FontSize="11" Text="{Binding LatencyText}" ToolTip.Tip="A → B latency" />
-            <TextBlock Grid.Column="4" FontSize="11" Foreground="White" TextTrimming="CharacterEllipsis" Text="{Binding Differences}" />
-          </Grid>
-        </DataTemplate>
-      </ListBox.ItemTemplate>
-    </ListBox>
+    <Border Grid.Row="2" Classes="tableHeader">
+      <Grid ColumnDefinitions="180,90,60,80,*">
+        <TextBlock Grid.Column="0" Text="JOIN VALUE" />
+        <TextBlock Grid.Column="1" Text="STATUS" />
+        <TextBlock Grid.Column="2" Text="A / B" ToolTip.Tip="messages in A / B" />
+        <TextBlock Grid.Column="3" Text="LATENCY" ToolTip.Tip="A → B latency" />
+        <TextBlock Grid.Column="4" Text="DIFFERENCES" />
+      </Grid>
+    </Border>
 
-    <GridSplitter Grid.Row="3" ResizeDirection="Rows" Height="6" HorizontalAlignment="Stretch" />
+    <Panel Grid.Row="3">
+      <StackPanel Classes="emptyState" IsVisible="{Binding !Rows.Count}">
+        <PathIcon Data="{StaticResource Icon.rethrow}" />
+        <TextBlock Classes="emptyTitle" Text="Nothing reconciled yet" />
+        <TextBlock Classes="emptyHint" Text="Pick topics A and B, their join fields, then Reconcile." />
+      </StackPanel>
+      <ListBox Classes="rows" ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="search:ReconcileRow">
+            <Grid ColumnDefinitions="180,90,60,80,*">
+              <TextBlock Grid.Column="0" Classes="mono" TextTrimming="CharacterEllipsis" Text="{Binding JoinValue}" />
+              <TextBlock Grid.Column="1" Classes="accent" FontSize="11" Text="{Binding StatusText}" />
+              <TextBlock Grid.Column="2" Classes="muted mono" FontSize="11" ToolTip.Tip="messages in A / B">
+                <Run Text="{Binding CountA}" /><Run Text="/" /><Run Text="{Binding CountB}" />
+              </TextBlock>
+              <TextBlock Grid.Column="3" Classes="muted" FontSize="11" Text="{Binding LatencyText}" ToolTip.Tip="A → B latency" />
+              <TextBlock Grid.Column="4" FontSize="11" TextTrimming="CharacterEllipsis" Text="{Binding Differences}" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Panel>
+
+    <GridSplitter Grid.Row="4" ResizeDirection="Rows" Height="8" HorizontalAlignment="Stretch" />
 
     <!-- Field-by-field diff of the selected pair -->
-    <DockPanel Grid.Row="4" MaxHeight="220">
+    <DockPanel Grid.Row="5" MaxHeight="220">
       <TextBlock DockPanel.Dock="Top" Classes="label" Text="SELECTED PAIR · A vs B (timestamps/ids ignored)" Margin="0,0,0,4" />
       <ItemsControl ItemsSource="{Binding RowDiff}">
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="search:DiffEntry">
             <Grid ColumnDefinitions="20,220,*,*" Margin="0,1">
-              <TextBlock Grid.Column="0" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" Text="{Binding Symbol}" />
-              <TextBlock Grid.Column="1" Classes="mono" Foreground="White" TextTrimming="CharacterEllipsis" Text="{Binding Path}" />
-              <TextBlock Grid.Column="2" Classes="mono" Foreground="{DynamicResource FailureBrush}" TextTrimming="CharacterEllipsis" Text="{Binding LeftText}" />
+              <TextBlock Grid.Column="0" Classes="accent" FontWeight="Bold" Text="{Binding Symbol}" />
+              <TextBlock Grid.Column="1" Classes="mono" TextTrimming="CharacterEllipsis" Text="{Binding Path}" />
+              <TextBlock Grid.Column="2" Classes="mono" Foreground="{DynamicResource DangerBrush}" TextTrimming="CharacterEllipsis" Text="{Binding LeftText}" />
               <TextBlock Grid.Column="3" Classes="mono" Foreground="{DynamicResource SuccessBrush}" TextTrimming="CharacterEllipsis" Text="{Binding RightText}" />
             </Grid>
           </DataTemplate>

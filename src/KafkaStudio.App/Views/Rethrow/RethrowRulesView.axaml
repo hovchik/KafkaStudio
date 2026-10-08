@@ -17,7 +17,7 @@
                   SelectedItem="{Binding NewSourceConnection}" ToolTip.Tip="Source connection" />
         <TextBox Grid.Column="3" MinWidth="120" Text="{Binding NewSourceTopic}" Watermark="source topic" />
 
-        <TextBlock Grid.Column="4" Text="→" Foreground="White" FontSize="16" />
+        <TextBlock Grid.Column="4" Text="→" Classes="muted" FontSize="16" />
 
         <ComboBox Grid.Column="5" Width="150" PlaceholderText="destination conn." ItemsSource="{Binding ConnectionNames}"
                   SelectedItem="{Binding NewDestinationConnection}" ToolTip.Tip="Destination connection" />
@@ -31,7 +31,7 @@
     </Border>
 
     <!-- Row 2: optional filter, key handling, extra header. -->
-    <Border Grid.Row="1" Classes="toolbar" Margin="0,4,0,0">
+    <Border Grid.Row="1" Classes="toolbar" Margin="0,6,0,0">
       <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto">
         <TextBlock Grid.Column="0" Text="Only relay where" Classes="muted" />
         <ComboBox Grid.Column="1" Width="110" ItemsSource="{Binding FilterFieldOptions}" SelectedItem="{Binding NewFilterField}" />
@@ -51,31 +51,32 @@
     </Border>
 
     <!-- Rules -->
-    <Border Grid.Row="2" Classes="pane" Margin="0,6,0,0">
+    <Border Grid.Row="2" Classes="pane" Margin="0,8,0,0">
       <DockPanel>
-        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,6">
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,8">
           <TextBlock Grid.Column="0" Classes="paneTitle">
-            <Run Text="Rules" /><Run Text=" " /><Run Text="{Binding Rules.Count}" Foreground="{DynamicResource MutedTextBrush}" />
+            <Run Text="Rules" /><Run Text=" " /><Run Text="{Binding Rules.Count}" Foreground="{DynamicResource TextMutedBrush}" />
           </TextBlock>
           <Button Grid.Column="1" Classes="small" Content="Start all" Command="{Binding StartAllCommand}" Margin="0,0,4,0" />
           <Button Grid.Column="2" Classes="small" Content="Stop all" Command="{Binding StopAllCommand}" />
         </Grid>
         <Panel>
-          <TextBlock Classes="hint" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" MaxWidth="520"
-                     Text="A rule continuously copies messages from a source topic to a destination topic (optionally filtered). Offsets are committed only after a message is relayed, so nothing is lost if the destination is briefly unavailable. Rules are saved; they always load stopped."
-                     IsVisible="{Binding !Rules.Count}" />
+          <StackPanel Classes="emptyState" MaxWidth="520" IsVisible="{Binding !Rules.Count}">
+            <PathIcon Data="{StaticResource Icon.rethrow}" />
+            <TextBlock Classes="emptyTitle" Text="No rules yet" />
+            <TextBlock Classes="emptyHint"
+                       Text="A rule continuously copies messages from a source topic to a destination topic (optionally filtered). Offsets are committed only after a message is relayed, so nothing is lost if the destination is briefly unavailable. Rules are saved; they always load stopped." />
+          </StackPanel>
           <ScrollViewer>
             <ItemsControl Name="RulesList" ItemsSource="{Binding Rules}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:RethrowRuleRowViewModel">
                   <Border Classes="row">
                     <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
-                      <Ellipse Grid.Row="0" Grid.Column="0" Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center"
-                               Fill="{DynamicResource SuccessBrush}" IsVisible="{Binding IsRunning}" />
-                      <Ellipse Grid.Row="0" Grid.Column="0" Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center"
-                               Fill="{DynamicResource MutedTextBrush}" IsVisible="{Binding IsStopped}" />
+                      <Ellipse Grid.Row="0" Grid.Column="0" Classes="dot ok" Margin="0,0,8,0" IsVisible="{Binding IsRunning}" />
+                      <Ellipse Grid.Row="0" Grid.Column="0" Classes="dot" Margin="0,0,8,0" IsVisible="{Binding IsStopped}" />
                       <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="White" FontSize="12" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
                         <Border Classes="badge ok" IsVisible="{Binding IsRunning}"><TextBlock Text="running" /></Border>
                       </StackPanel>
                       <WrapPanel Grid.Row="0" Grid.Column="2">
@@ -92,7 +93,7 @@
                         <Run Text="{Binding Description}" /><Run Text="   ·   " /><Run Text="{Binding FilterDescription}" /><Run Text="   ·   " /><Run Text="{Binding KeyDescription}" />
                       </TextBlock>
                       <TextBlock Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Classes="muted" Margin="0,2,0,0" TextTrimming="CharacterEllipsis">
-                        <Run Text="relayed " /><Run Text="{Binding RelayedCount}" Foreground="White" /><Run Text="   skipped " /><Run Text="{Binding SkippedCount}" Foreground="White" /><Run Text="   " /><Run Text="{Binding LastActivity}" />
+                        <Run Text="relayed " /><Run Text="{Binding RelayedCount}" Foreground="{DynamicResource TextPrimaryBrush}" /><Run Text="   skipped " /><Run Text="{Binding SkippedCount}" Foreground="{DynamicResource TextPrimaryBrush}" /><Run Text="   " /><Run Text="{Binding LastActivity}" />
                       </TextBlock>
                       <SelectableTextBlock Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding LastError}"
                                            Classes="error" Margin="0,4,0,0" IsVisible="{Binding HasError}" />
@@ -106,7 +107,8 @@
       </DockPanel>
     </Border>
 
-    <TextBlock Grid.Row="3" Classes="muted" Margin="4,6,0,0" TextTrimming="CharacterEllipsis"
-               Text="{Binding StatusMessage}" ToolTip.Tip="{Binding StatusMessage}" />
+    <Border Grid.Row="3" Classes="statusbar">
+      <TextBlock Text="{Binding StatusMessage}" ToolTip.Tip="{Binding StatusMessage}" />
+    </Border>
   </Grid>
 </UserControl>

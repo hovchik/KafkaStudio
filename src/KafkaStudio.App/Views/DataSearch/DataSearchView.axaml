@@ -11,16 +11,6 @@
     <KeyBinding Gesture="F1" Command="{Binding Help.ToggleCommand}" />
   </UserControl.KeyBindings>
 
-  <UserControl.Styles>
-    <!-- Compact tab headers (Fluent's defaults are sized for page-level navigation). -->
-    <Style Selector="TabItem">
-      <Setter Property="FontSize" Value="13" />
-      <Setter Property="MinHeight" Value="30" />
-      <Setter Property="Padding" Value="10,4" />
-      <Setter Property="Margin" Value="0,0,2,0" />
-    </Style>
-  </UserControl.Styles>
-
   <Grid RowDefinitions="Auto,*">
 
     <!-- Scope shared by every tab: connection, topics, time range. -->
@@ -29,9 +19,11 @@
         <WrapPanel Grid.Column="0">
           <ComboBox Width="160" PlaceholderText="Connection…" ToolTip.Tip="Connection"
                     ItemsSource="{Binding Scope.ConnectionNames}" SelectedItem="{Binding Scope.SelectedConnection}" Margin="0,0,6,4" />
-          <Button Content="⟳" ToolTip.Tip="Reload topics" Command="{Binding Scope.RefreshTopicsCommand}" Margin="0,0,6,4" />
+          <Button Classes="icon" ToolTip.Tip="Reload topics" Command="{Binding Scope.RefreshTopicsCommand}" Margin="0,0,6,4">
+            <PathIcon Data="{StaticResource Icon.refresh}" />
+          </Button>
 
-          <Border Classes="sep" Height="20" Margin="2,0,8,4" />
+          <Border Classes="sep" />
 
           <TextBlock Text="Topics" Classes="muted" Margin="0,0,6,4" />
           <ComboBox Width="190" PlaceholderText="(all topics)" ToolTip.Tip="Limit to a saved topic set (saved from Topics → search results)"
@@ -39,16 +31,18 @@
             <ComboBox.ItemTemplate>
               <DataTemplate x:DataType="topics:SavedTopicSet">
                 <TextBlock>
-                  <Run Text="{Binding Name}" /><Run Text="  ·  " Foreground="Gray" /><Run Text="{Binding Topics.Count}" Foreground="Gray" />
+                  <Run Text="{Binding Name}" /><Run Text="  ·  " Foreground="{DynamicResource TextMutedBrush}" /><Run Text="{Binding Topics.Count}" Foreground="{DynamicResource TextMutedBrush}" />
                 </TextBlock>
               </DataTemplate>
             </ComboBox.ItemTemplate>
           </ComboBox>
-          <Button Content="✕" ToolTip.Tip="All topics" Command="{Binding Scope.ClearTopicSetCommand}" Margin="0,0,6,4" />
+          <Button Classes="icon small ghost" ToolTip.Tip="All topics" Command="{Binding Scope.ClearTopicSetCommand}" Margin="0,0,6,4">
+            <PathIcon Data="{StaticResource Icon.close}" />
+          </Button>
           <TextBox Width="150" Text="{Binding Scope.TopicNameFilter}" Watermark="name contains…" Margin="0,0,6,4"
                    ToolTip.Tip="Only topics whose name contains this" />
 
-          <Border Classes="sep" Height="20" Margin="2,0,8,4" />
+          <Border Classes="sep" />
 
           <TextBlock Text="Range" Classes="muted" Margin="0,0,6,4" />
           <ComboBox Width="190" ItemsSource="{Binding Scope.RangeKinds}" SelectedItem="{Binding Scope.SelectedRangeKind}" Margin="0,0,6,4"
@@ -66,19 +60,19 @@
             <TextBlock Text="per partition" Classes="muted" />
           </StackPanel>
 
-          <ProgressBar IsIndeterminate="True" IsVisible="{Binding Scope.IsLoadingTopics}" Width="16" Height="16" MinWidth="16" Margin="0,0,6,4" />
+          <ProgressBar Classes="busy" IsVisible="{Binding Scope.IsLoadingTopics}" />
           <TextBlock Classes="muted" Text="{Binding Scope.ScopeSummary}" Margin="0,0,6,4" />
           <TextBlock Classes="error" Text="{Binding Scope.TopicsError}" Margin="0,0,6,4"
                      IsVisible="{Binding Scope.TopicsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         </WrapPanel>
-        <Button Grid.Column="1" Content="Help &amp; examples" Command="{Binding Help.ToggleCommand}" Margin="0,0,0,4"
+        <Button Grid.Column="1" Classes="ghost" Content="Help &amp; examples" Command="{Binding Help.ToggleCommand}" Margin="0,0,0,4"
                 VerticalAlignment="Top" ToolTip.Tip="How-tos and example queries for each tab (F1)" />
       </Grid>
     </Border>
 
-    <Grid Grid.Row="1" Margin="0,6,0,0" ColumnDefinitions="*,6,0.75*,Auto,Auto">
+    <Grid Grid.Row="1" Margin="0,8,0,0" ColumnDefinitions="*,8,0.75*,Auto,Auto">
       <Border Grid.Column="0" Classes="pane">
-        <TabControl SelectedIndex="{Binding SelectedTabIndex}" Padding="0,6,0,0">
+        <TabControl SelectedIndex="{Binding SelectedTabIndex}">
           <TabItem Header="Search" ToolTip.Tip="Find messages by text or by field, or check whether something exists">
             <ContentControl Content="{Binding Query}" />
           </TabItem>
@@ -103,12 +97,12 @@
         </TabControl>
       </Border>
 
-      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="8" />
 
       <!-- Shared detail of the message selected in any tab -->
       <Border Grid.Column="2" Classes="pane">
         <DockPanel>
-          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
             <TextBlock Grid.Column="0" Classes="paneTitle" Text="Message" />
             <Button Grid.Column="1" Classes="small" Content="Use as 'Similar' reference"
                     ToolTip.Tip="Find messages similar to this one"
@@ -118,7 +112,7 @@
         </DockPanel>
       </Border>
 
-      <GridSplitter Grid.Column="3" ResizeDirection="Columns" Width="6" IsVisible="{Binding Help.IsVisible}" />
+      <GridSplitter Grid.Column="3" ResizeDirection="Columns" Width="8" IsVisible="{Binding Help.IsVisible}" />
 
       <Border Grid.Column="4" Classes="pane" Width="360" IsVisible="{Binding Help.IsVisible}">
         <ContentControl Content="{Binding Help}" />

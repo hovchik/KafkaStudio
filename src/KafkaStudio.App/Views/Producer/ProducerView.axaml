@@ -30,9 +30,9 @@
         <CheckBox Grid.Column="7" Content="Tombstone" IsChecked="{Binding IsTombstone}"
                   ToolTip.Tip="Send a null value (deletes the key on compacted topics)" />
         <Button Grid.Column="8" Content="Send" Classes="primary" Command="{Binding SendCommand}" ToolTip.Tip="Send (Ctrl+Enter)" />
-        <Button Grid.Column="9" Content="Cancel" Command="{Binding CancelSendCommand}" IsVisible="{Binding IsSending}" />
+        <Button Grid.Column="9" Classes="ghost" Content="Cancel" Command="{Binding CancelSendCommand}" IsVisible="{Binding IsSending}" />
         <Button Grid.Column="10" Content="+ Header" Command="{Binding AddHeaderCommand}" />
-        <ProgressBar Grid.Column="11" IsIndeterminate="True" IsVisible="{Binding IsSending}" Width="16" Height="16" MinWidth="16" />
+        <ProgressBar Grid.Column="11" Classes="busy" IsVisible="{Binding IsSending}" />
       </Grid>
     </Border>
 
@@ -44,8 +44,10 @@
             <Grid ColumnDefinitions="*,*,Auto" Margin="0,0,0,2">
               <TextBox Grid.Column="0" Text="{Binding Name}" Watermark="header name" />
               <TextBox Grid.Column="1" Text="{Binding Value}" Watermark="header value (templates allowed)" />
-              <Button Grid.Column="2" Content="✕" ToolTip.Tip="Remove header"
-                      Command="{Binding #HeadersList.DataContext.RemoveHeaderCommand}" CommandParameter="{Binding}" />
+              <Button Grid.Column="2" Classes="icon ghost" ToolTip.Tip="Remove header" Margin="0"
+                      Command="{Binding #HeadersList.DataContext.RemoveHeaderCommand}" CommandParameter="{Binding}">
+                <PathIcon Data="{StaticResource Icon.close}" />
+              </Button>
             </Grid>
           </DataTemplate>
         </ItemsControl.ItemTemplate>
@@ -53,53 +55,59 @@
     </Border>
 
     <!-- Value editor + recently sent, resizable. -->
-    <Grid Grid.Row="2" Margin="0,6,0,0" ColumnDefinitions="*,6,340">
+    <Grid Grid.Row="2" Margin="0,8,0,0" ColumnDefinitions="*,8,340">
       <Border Grid.Column="0" Classes="pane">
         <DockPanel>
-          <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,6">
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,8">
             <TextBlock Grid.Column="0" Classes="paneTitle" Text="Value" Margin="0,0,8,0" />
             <TextBlock Grid.Column="1" Classes="muted" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="{Binding ValueInfo}" />
             <Button Grid.Column="2" Classes="small" Content="Format JSON" Command="{Binding FormatJsonCommand}" />
           </Grid>
           <TextBlock DockPanel.Dock="Bottom" Classes="hint" Margin="0,6,0,0">
-            <Run Text="Templates: " /><Run Text="{}{{$uuid}}  {{$now}}  {{$timestamp}}  {{$date}}  {{$random}}" FontFamily="Cascadia Mono,Consolas,monospace" /><Run Text="  - evaluated per message." />
+            <Run Text="Templates: " /><Run Text="{}{{$uuid}}  {{$now}}  {{$timestamp}}  {{$date}}  {{$random}}" FontFamily="{DynamicResource MonoFont}" /><Run Text="  - evaluated per message." />
           </TextBlock>
-          <TextBox Text="{Binding Value}" AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
-                   FontFamily="Cascadia Mono,Consolas,Menlo,monospace" FontSize="13"
-                   Background="{DynamicResource SidebarBrush}" BorderThickness="0" Padding="10"
+          <TextBox Classes="code" Text="{Binding Value}" AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
                    IsEnabled="{Binding !IsTombstone}"
                    Watermark="{}{ &quot;example&quot;: true }" />
         </DockPanel>
       </Border>
 
-      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="6" />
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="8" />
 
       <Border Grid.Column="2" Classes="pane">
         <DockPanel>
-          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
             <TextBlock Grid.Column="0" Classes="paneTitle" Text="Recently sent" />
-            <Button Grid.Column="1" Classes="small" Content="Clear" Command="{Binding ClearHistoryCommand}" />
+            <Button Grid.Column="1" Classes="small ghost" Content="Clear" Command="{Binding ClearHistoryCommand}" />
           </Grid>
-          <ScrollViewer>
-            <ItemsControl ItemsSource="{Binding History}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:SentMessageRow">
-                  <Border Classes="row">
-                    <StackPanel Spacing="2">
-                      <SelectableTextBlock Text="{Binding Summary}" FontSize="12" Foreground="White" TextWrapping="Wrap"
-                                           Classes.error="{Binding Failed}" />
-                      <SelectableTextBlock Text="{Binding Detail}" Classes="muted mono" TextWrapping="Wrap" MaxHeight="60" />
-                    </StackPanel>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </ScrollViewer>
+          <Panel>
+            <StackPanel Classes="emptyState" IsVisible="{Binding !History.Count}">
+              <PathIcon Data="{StaticResource Icon.producer}" />
+              <TextBlock Classes="emptyTitle" Text="Nothing sent yet" />
+              <TextBlock Classes="emptyHint" Text="Messages you send appear here with their partition and offset." />
+            </StackPanel>
+            <ScrollViewer>
+              <ItemsControl ItemsSource="{Binding History}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:SentMessageRow">
+                    <Border Classes="row">
+                      <StackPanel Spacing="2">
+                        <SelectableTextBlock Text="{Binding Summary}" FontSize="12" TextWrapping="Wrap"
+                                             Classes.error="{Binding Failed}" />
+                        <SelectableTextBlock Text="{Binding Detail}" Classes="muted mono" TextWrapping="Wrap" MaxHeight="60" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Panel>
         </DockPanel>
       </Border>
     </Grid>
 
-    <TextBlock Grid.Row="3" Classes="muted" Margin="4,6,0,0" TextTrimming="CharacterEllipsis"
-               Text="{Binding StatusMessage}" ToolTip.Tip="{Binding StatusMessage}" />
+    <Border Grid.Row="3" Classes="statusbar">
+      <TextBlock Text="{Binding StatusMessage}" ToolTip.Tip="{Binding StatusMessage}" />
+    </Border>
   </Grid>
 </UserControl>

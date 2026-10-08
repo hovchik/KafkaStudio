@@ -1,6 +1,11 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Media;
+using Avalonia.Styling;
 using KafkaStudio.App.ViewModels;
+using KafkaStudio.App.ViewModels.Mvvm;
 
 namespace KafkaStudio.App;
 
@@ -9,7 +14,13 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        ToggleThemeCommand = new RelayCommand(ToggleTheme);
+        ActualThemeVariantChanged += (_, _) => UpdateThemeButton();
+        UpdateThemeButton();
     }
+
+    /// <summary>Flips Dark/Light (Ctrl+Shift+T and the sidebar button).</summary>
+    public RelayCommand ToggleThemeCommand { get; }
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
@@ -35,5 +46,26 @@ public partial class MainWindow : Window
     private void OnFlyoutBackdropPressed(object? sender, PointerPressedEventArgs e)
     {
         if (DataContext is MainWindowViewModel vm) vm.IsConnectionsOpen = false;
+    }
+
+    private void OnToggleThemeClick(object? sender, RoutedEventArgs e) => ToggleTheme();
+
+    private void ToggleTheme()
+    {
+        if (Application.Current is not { } app) return;
+        var next = app.ActualThemeVariant == ThemeVariant.Light ? ThemeVariant.Dark : ThemeVariant.Light;
+        app.RequestedThemeVariant = next;
+        UiSettings.SaveTheme(next);
+    }
+
+    private void UpdateThemeButton()
+    {
+        var isLight = ActualThemeVariant == ThemeVariant.Light;
+        // The button offers the *other* theme.
+        ThemeLabel.Text = isLight ? "Dark theme" : "Light theme";
+        if (this.TryFindResource(isLight ? "Icon.moon" : "Icon.sun", out var icon) && icon is Geometry geometry)
+        {
+            ThemeIcon.Data = geometry;
+        }
     }
 }
