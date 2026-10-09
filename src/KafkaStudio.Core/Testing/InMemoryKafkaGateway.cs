@@ -37,15 +37,15 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
             return Task.FromException<TopicMetadata>(new KeyNotFoundException($"topic '{topic}' not found"));
         }
 
-        var (earliest, latest) = _broker.GetOffsets(topic);
         var metadata = new TopicMetadata
         {
             Name = topic,
-            ReplicationFactor = 1,
-            Partitions = new[]
+            ReplicationFactor = _broker.GetReplicationFactor(topic),
+            Partitions = Enumerable.Range(0, _broker.GetPartitionCount(topic)).Select(id =>
             {
-                new PartitionInfo { Id = 0, LeaderBrokerId = 0, EarliestOffset = earliest, LatestOffset = latest }
-            }
+                var (earliest, latest) = _broker.GetOffsets(topic, id);
+                return new PartitionInfo { Id = id, LeaderBrokerId = _broker.GetLeader(id), EarliestOffset = earliest, LatestOffset = latest };
+            }).ToArray()
         };
         return Task.FromResult(metadata);
     }
@@ -55,13 +55,15 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
         {
             ClusterId = "demo-cluster",
             ControllerId = 0,
-            Brokers = new[] { new BrokerInfo { Id = 0, Host = "localhost", Port = 9092, IsController = true } }
+            Brokers = Enumerable.Range(0, _broker.BrokerCount)
+                .Select(id => new BrokerInfo { Id = id, Host = "localhost", Port = 9092 + id, IsController = id == 0 })
+                .ToArray()
         });
 
     public Task<IReadOnlyList<BrokerConfigEntry>> GetBrokerConfigAsync(int brokerId,
         CancellationToken cancellationToken = default)
     {
-        if (brokerId != 0) return Task.FromException<IReadOnlyList<BrokerConfigEntry>>(
+        if (brokerId < 0 || brokerId >= _broker.BrokerCount) return Task.FromException<IReadOnlyList<BrokerConfigEntry>>(
             new KeyNotFoundException($"broker {brokerId} not found"));
         IReadOnlyList<BrokerConfigEntry> entries = new[]
         {
@@ -75,11 +77,14 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
     public Task CreateTopicAsync(string topic, int partitions, short replicationFactor,
         CancellationToken cancellationToken = default)
     {
-        if (_broker.TopicExists(topic))
+        try
         {
-            return Task.FromException(new InvalidOperationException($"topic '{topic}' already exists"));
+            _broker.CreateTopic(topic, partitions, replicationFactor);
         }
-        _broker.EnsureTopic(topic);
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            return Task.FromException(ex);
+        }
         return Task.CompletedTask;
     }
 
@@ -87,13 +92,22 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
     {
         cancellationToken.ThrowIfCancellationRequested();
         var raw = request.GetValueBytes();
-        var message = _broker.Append(
-            request.Topic,
-            request.Key,
-            request.RawValue is not null ? KafkaMessage.DecodeText(raw) : request.Value,
-            raw,
-            request.Headers,
-            _clock.UtcNow);
+        KafkaMessage message;
+        try
+        {
+            message = _broker.Append(
+                request.Topic,
+                request.Key,
+                request.RawValue is not null ? KafkaMessage.DecodeText(raw) : request.Value,
+                raw,
+                request.Headers,
+                _clock.UtcNow,
+                request.Partition);
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            return Task.FromException<ProduceReceipt>(ex);
+        }
 
         return Task.FromResult(new ProduceReceipt
         {
@@ -108,41 +122,44 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var (history, live, unsubscribe) = _broker.Subscribe(options.Topic);
+        // While reading, the consumer is a live member of its group (visible on the Consumer Groups
+        // screen, and it blocks offset resets just like a real consumer would).
+        using var membership = _broker.JoinGroup(options.ConsumerGroup, options.Topic);
         try
         {
             // The subscription above is registered atomically with the history snapshot, so from here
             // on nothing can be missed.
             try { options.OnReady?.Invoke(); } catch { /* caller bug - don't kill the subscription (same as the real gateway) */ }
 
-            long startOffset = options.StartPosition switch
+            // First offset to read, per partition (the live stream continues from the end of history).
+            var partitionCount = _broker.GetPartitionCount(options.Topic);
+            var start = new long[partitionCount];
+            var historyEnd = new long[partitionCount];
+            foreach (var m in history) historyEnd[m.Partition] = Math.Max(historyEnd[m.Partition], m.Offset + 1);
+
+            for (var p = 0; p < partitionCount; p++)
             {
-                ConsumeStartPosition.Earliest => 0,
-                ConsumeStartPosition.Latest => history.Count,
-                ConsumeStartPosition.Committed => _broker.GetCommittedOffset(options.Topic, options.ConsumerGroup) is var committed and >= 0
-                    ? committed + 1
-                    : options.UncommittedStart == ConsumeStartPosition.Latest ? history.Count : 0,
-                // No timestamp given: behave like Latest, as the real gateway does.
-                ConsumeStartPosition.FromTimestamp => options.FromTimestamp is null ? history.Count : FindFirstIndexAtOrAfter(history, options.FromTimestamp),
-                ConsumeStartPosition.Tail => Math.Max(0, history.Count - Math.Max(0, options.TailCount)),
-                _ => history.Count
-            };
+                var partitionHistory = history.Where(m => m.Partition == p).ToList();
+                var end = _broker.GetOffsets(options.Topic, p).latest;
+                start[p] = StartOffset(options, p, partitionHistory, end);
+            }
 
             var emitted = 0L;
-            long nextExpectedOffset = startOffset;
+            var nextExpected = (long[])start.Clone();
 
-            for (var i = (int)Math.Max(0, startOffset); i < history.Count; i++)
+            foreach (var msg in history)
             {
+                if (msg.Offset < start[msg.Partition]) continue;
                 if (options.MaxMessages is { } cap && emitted >= cap) yield break;
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var msg = history[i] with { ConsumerGroup = options.ConsumerGroup };
-                yield return msg;
+                yield return msg with { ConsumerGroup = options.ConsumerGroup };
                 emitted++;
-                nextExpectedOffset = msg.Offset + 1;
+                nextExpected[msg.Partition] = msg.Offset + 1;
 
                 if (options.AutoAcknowledge)
                 {
-                    _broker.Commit(options.Topic, options.ConsumerGroup, msg.Offset);
+                    _broker.Commit(options.Topic, options.ConsumerGroup, msg.Offset, msg.Partition);
                 }
             }
 
@@ -155,8 +172,9 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
 
             await foreach (var msg in live.ReadAllAsync(cancellationToken))
             {
-                if (msg.Offset < nextExpectedOffset) continue; // already emitted from history
-                nextExpectedOffset = msg.Offset + 1;
+                // Already emitted from history (or before the requested start position).
+                if (msg.Offset < nextExpected[msg.Partition] || msg.Offset < start[msg.Partition]) continue;
+                nextExpected[msg.Partition] = msg.Offset + 1;
 
                 var tagged = msg with { ConsumerGroup = options.ConsumerGroup };
                 yield return tagged;
@@ -164,7 +182,7 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
 
                 if (options.AutoAcknowledge)
                 {
-                    _broker.Commit(options.Topic, options.ConsumerGroup, tagged.Offset);
+                    _broker.Commit(options.Topic, options.ConsumerGroup, tagged.Offset, tagged.Partition);
                 }
 
                 if (options.MaxMessages is { } cap3 && emitted >= cap3) yield break;
@@ -174,6 +192,26 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
         {
             unsubscribe();
         }
+    }
+
+    /// <summary>The first offset to read on one partition for the requested start position.</summary>
+    private long StartOffset(ConsumeOptions options, int partition, IReadOnlyList<KafkaMessage> partitionHistory, long end)
+    {
+        long ForFallback(ConsumeStartPosition position) => position == ConsumeStartPosition.Latest ? end : 0;
+
+        return options.StartPosition switch
+        {
+            ConsumeStartPosition.Earliest => 0,
+            ConsumeStartPosition.Latest => end,
+            ConsumeStartPosition.Committed => _broker.GetCommittedOffset(options.Topic, options.ConsumerGroup, partition) is var committed and >= 0
+                ? committed + 1
+                : ForFallback(options.UncommittedStart),
+            // No timestamp given: behave like Latest, as the real gateway does.
+            ConsumeStartPosition.FromTimestamp => options.FromTimestamp is { } from ? FindFirstOffsetAtOrAfter(partitionHistory, from, end) : end,
+            // Per partition, like the real gateway.
+            ConsumeStartPosition.Tail => Math.Max(0, end - Math.Max(0, options.TailCount)),
+            _ => end
+        };
     }
 
     public Task<bool> IsTopicCompactedAsync(string topic, CancellationToken cancellationToken = default) =>
@@ -190,18 +228,17 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
                 "it was not associated with a consumer group (was it produced rather than consumed?).");
         }
 
-        _broker.Commit(message.Topic, message.ConsumerGroup, message.Offset);
+        _broker.Commit(message.Topic, message.ConsumerGroup, message.Offset, message.Partition);
         return Task.CompletedTask;
     }
 
-    private static long FindFirstIndexAtOrAfter(IReadOnlyList<KafkaMessage> history, DateTimeOffset? timestamp)
+    private static long FindFirstOffsetAtOrAfter(IReadOnlyList<KafkaMessage> partitionHistory, DateTimeOffset timestamp, long end)
     {
-        if (timestamp is null) return 0;
-        for (var i = 0; i < history.Count; i++)
+        foreach (var m in partitionHistory)
         {
-            if (history[i].Timestamp >= timestamp.Value) return i;
+            if (m.Timestamp >= timestamp) return m.Offset;
         }
-        return history.Count;
+        return end;
     }
 
     public Task<IReadOnlyList<ConsumerGroupSummary>> ListConsumerGroupsAsync(CancellationToken cancellationToken = default)
@@ -229,28 +266,29 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
         var memberCount = _broker.GetActiveMemberCount(groupId);
         var offsets = _broker.GetGroupOffsets(groupId).Select(o =>
         {
-            var (earliest, latest) = _broker.GetOffsets(o.topic);
+            var (earliest, latest) = _broker.GetOffsets(o.topic, o.partition);
             return new ConsumerGroupOffset
             {
                 Topic = o.topic,
-                Partition = 0,
+                Partition = o.partition,
                 CommittedOffset = o.nextOffset >= 0 ? o.nextOffset : null,
                 EarliestOffset = earliest,
                 EndOffset = latest
             };
         }).ToList();
+        var memberList = _broker.GetMembers(groupId);
 
         return Task.FromResult(new ConsumerGroupDetail
         {
             GroupId = groupId,
             State = memberCount > 0 ? "Stable" : ConsumerGroupStates.Empty,
             PartitionAssignor = memberCount > 0 ? "range" : null,
-            Members = Enumerable.Range(1, memberCount).Select(i => new ConsumerGroupMember
+            Members = memberList.Select((m, i) => new ConsumerGroupMember
             {
-                MemberId = $"{groupId}-member-{i}",
-                ClientId = $"client-{i}",
+                MemberId = m.memberId,
+                ClientId = $"client-{i + 1}",
                 Host = "/127.0.0.1",
-                Assignment = offsets.Select(o => $"{o.Topic}[{o.Partition}]").ToList()
+                Assignment = m.assignment
             }).ToList(),
             Offsets = offsets
         });
@@ -270,7 +308,7 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
             {
                 OffsetResetTarget.Earliest => o.EarliestOffset,
                 OffsetResetTarget.Latest => o.EndOffset,
-                OffsetResetTarget.Timestamp => FindOffsetAtOrAfter(o.Topic, request.Timestamp
+                OffsetResetTarget.Timestamp => FindOffsetAtOrAfter(o.Topic, o.Partition, request.Timestamp
                     ?? throw new ArgumentException("a timestamp is required"), o.EndOffset),
                 _ => Math.Clamp(request.Offset ?? throw new ArgumentException("an offset is required"),
                     o.EarliestOffset, o.EndOffset)
@@ -295,13 +333,13 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
                 $"consumer group '{groupId}' is active ({members} member(s)); stop its consumers before changing offsets"));
         }
 
-        foreach (var change in changes) _broker.SetNextOffset(change.Topic, groupId, change.NewOffset);
+        foreach (var change in changes) _broker.SetNextOffset(change.Topic, groupId, change.NewOffset, change.Partition);
         return Task.CompletedTask;
     }
 
-    private long FindOffsetAtOrAfter(string topic, DateTimeOffset timestamp, long endOffset)
+    private long FindOffsetAtOrAfter(string topic, int partition, DateTimeOffset timestamp, long endOffset)
     {
-        foreach (var (ts, offset) in _broker.GetTimestamps(topic))
+        foreach (var (ts, offset) in _broker.GetTimestamps(topic, partition))
         {
             if (ts >= timestamp) return offset;
         }
