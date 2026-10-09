@@ -110,7 +110,10 @@ ViewModel it binds to (in `KafkaStudio.App.ViewModels`) is already fully working
 
 You don't need a running Kafka cluster to try the app: on the Connections screen, use "Add demo
 (in-memory) connection" to get a simulated in-memory broker you can produce to, consume from, and run
-every sample script against.
+every sample script against. The simulated broker supports multi-partition topics (keyed messages
+hash to a stable partition, keyless ones rotate), per-partition offsets and consumer-group lag, and a
+consumer that is reading right now shows up as a live group member (so offset resets are refused, as on
+a real cluster). Topics created from the app get the partitions and replication factor you ask for.
 
 ## Using it
 

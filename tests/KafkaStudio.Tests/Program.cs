@@ -24,6 +24,7 @@ QaLanguageTests.Register(runner);
 QaEngineTests.Register(runner);
 QaLabViewModelTests.Register(runner);
 ConsumerGroupTests.Register(runner);
+MockBrokerTests.Register(runner);
 
 var exitCode = await runner.RunAllAsync();
 try { Directory.Delete(dataDir, recursive: true); } catch { /* best effort */ }

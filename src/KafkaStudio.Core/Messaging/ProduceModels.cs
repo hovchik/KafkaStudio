@@ -16,7 +16,7 @@ public sealed record ProduceRequest
 
     public IReadOnlyDictionary<string, string>? Headers { get; init; }
 
-    /// <summary>Leave null to let the partitioner (murmur2 hash of the key, or round-robin) decide.</summary>
+    /// <summary>Leave null to let the partitioner (hash of the key, or round-robin) decide.</summary>
     public int? Partition { get; init; }
 
     /// <summary>The bytes that will actually be sent, or null for a tombstone.</summary>
