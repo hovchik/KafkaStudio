@@ -148,6 +148,19 @@ a real cluster). Topics created from the app get the partitions and replication 
    **Contract check:** validate a topic against a JSON Schema, see the most common problems grouped by
    field, infer a schema from real messages, and turn it into a KafScript check.
 
+10. **Cluster Admin** (`Ctrl+Shift+A`) - **Topic settings:** view and edit a topic's configuration, add partitions, delete
+   a topic (destructive actions need a second click). **ACLs:** read-only list with filter. **Schema Registry:** subjects,
+   versions and schema text. **Kafka Connect:** connectors, state, failed tasks with their traces and configuration
+   (read only). **Message rates:** messages per second per topic, sampled every 5 seconds. None of this produces messages.
+11. **Schemas and masking** - on a connection, "Schemas, Connect and masking" takes a Schema Registry URL (basic auth
+   optional), a Kafka Connect URL and a list of fields to hide on screen (`$.card.number`, `password`,
+   `header:Authorization`). Avro, Protobuf (shown by field number, no .proto needed) and JSON Schema values are decoded
+   to JSON on Topics, Consume and Find Data. The sidebar's **View values as** shows values as UTF-8, base64, hex,
+   int32, int64 or float64 instead. All of this is display only: scripts, rethrow rules and Produce use the real bytes, and
+   "Edit in Producer" refuses to load a value that is hidden or was rewritten for display.
+12. **Consumer Groups** also has **Track lag** (a 60-sample sparkline that says whether lag is growing or draining) and
+   **Delete group** (confirmed; only for groups without live members).
+
 Settings live in `%APPDATA%/KafkaStudio` (override with the `KAFKASTUDIO_DATA_DIR` environment variable).
 
 See [`docs/qa-testing.md`](docs/qa-testing.md) for the QA guide (writing tests, QA Lab, CI),

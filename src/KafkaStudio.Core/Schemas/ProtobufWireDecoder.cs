@@ -60,6 +60,9 @@ public static class ProtobufWireDecoder
     private static JsonNode? LengthDelimited(ReadOnlySpan<byte> bytes, int depth)
     {
         if (bytes.Length == 0) return JsonValue.Create("");
+        // Printable text first: short strings often also parse as a (meaningless) nested message.
+        var text = KafkaStudio.Core.Messaging.KafkaMessage.DecodeText(bytes.ToArray());
+        if (text is not null && text.All(c => !char.IsControl(c) || c is '\n' or '\t' or '\r')) return JsonValue.Create(text);
         if (depth < 6)
         {
             try
@@ -69,8 +72,6 @@ public static class ProtobufWireDecoder
             }
             catch (FormatException) { /* not a message */ }
         }
-        var text = KafkaStudio.Core.Messaging.KafkaMessage.DecodeText(bytes.ToArray());
-        if (text is not null && text.All(c => !char.IsControl(c) || c is '\n' or '\t' or '\r')) return JsonValue.Create(text);
         return JsonValue.Create(Convert.ToBase64String(bytes));
     }
 
