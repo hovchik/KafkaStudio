@@ -31,12 +31,12 @@ public static class ConnectionProfileStore
     public static IReadOnlyList<ConnectionProfile> Load() =>
         JsonFileStore.Load<List<ConnectionProfile>>(FileName, new List<ConnectionProfile>())
             .Where(p => !string.IsNullOrWhiteSpace(p.Name) && p.BootstrapServers is not null)
-            .Select(p => p with { SaslPassword = Reveal(p.SaslPassword) })
+            .Select(p => p with { SaslPassword = Reveal(p.SaslPassword), SchemaRegistryPassword = Reveal(p.SchemaRegistryPassword) })
             .ToList();
 
     /// <summary>Returns an error message on failure, or null on success.</summary>
     public static string? Save(IEnumerable<ConnectionProfile> profiles) =>
-        JsonFileStore.TrySave(FileName, profiles.Select(p => p with { SaslPassword = Hide(p.SaslPassword) }).ToList());
+        JsonFileStore.TrySave(FileName, profiles.Select(p => p with { SaslPassword = Hide(p.SaslPassword), SchemaRegistryPassword = Hide(p.SchemaRegistryPassword) }).ToList());
 
     private static string? Hide(string? secret)
     {

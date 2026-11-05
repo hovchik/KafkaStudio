@@ -105,6 +105,24 @@ public sealed class ConnectionsViewModel : ObservableObject
     /// <summary>Disables broker certificate verification - for dev clusters with self-signed certs only.</summary>
     public bool NewSslSkipVerification { get => _newSslSkipVerification; set => SetProperty(ref _newSslSkipVerification, value); }
 
+    private string? _newSchemaRegistryUrl;
+    /// <summary>Confluent-compatible Schema Registry used to decode Avro / Protobuf / JSON Schema values.</summary>
+    public string? NewSchemaRegistryUrl { get => _newSchemaRegistryUrl; set => SetProperty(ref _newSchemaRegistryUrl, value); }
+
+    private string? _newSchemaRegistryUsername;
+    public string? NewSchemaRegistryUsername { get => _newSchemaRegistryUsername; set => SetProperty(ref _newSchemaRegistryUsername, value); }
+
+    private string? _newSchemaRegistryPassword;
+    public string? NewSchemaRegistryPassword { get => _newSchemaRegistryPassword; set => SetProperty(ref _newSchemaRegistryPassword, value); }
+
+    private string? _newConnectUrl;
+    /// <summary>Kafka Connect REST endpoint for the Kafka Connect screen.</summary>
+    public string? NewConnectUrl { get => _newConnectUrl; set => SetProperty(ref _newConnectUrl, value); }
+
+    private string? _newMaskedFields;
+    /// <summary>Fields to hide on screen, one per line: $.card.number, password, header:Authorization.</summary>
+    public string? NewMaskedFields { get => _newMaskedFields; set => SetProperty(ref _newMaskedFields, value); }
+
     private string _newClientId = "kafka-studio";
     public string NewClientId { get => _newClientId; set => SetProperty(ref _newClientId, value); }
 
@@ -208,9 +226,17 @@ public sealed class ConnectionsViewModel : ObservableObject
             SslCaLocation = UsesSsl && !string.IsNullOrWhiteSpace(NewSslCaLocation) ? NewSslCaLocation.Trim() : null,
             SslEnableVerification = !NewSslSkipVerification,
             ClientId = string.IsNullOrWhiteSpace(NewClientId) ? "kafka-studio" : NewClientId.Trim(),
+            SchemaRegistryUrl = NullIfBlank(NewSchemaRegistryUrl),
+            SchemaRegistryUsername = NullIfBlank(NewSchemaRegistryUsername),
+            SchemaRegistryPassword = string.IsNullOrEmpty(NewSchemaRegistryPassword) ? null : NewSchemaRegistryPassword,
+            ConnectUrl = NullIfBlank(NewConnectUrl),
+            MaskedFields = (NewMaskedFields ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(l => !l.StartsWith('#')).ToList(),
             AdvancedProperties = advanced
         };
     }
+
+    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private async Task AddConnectionAsync()
     {
@@ -373,6 +399,11 @@ public sealed class ConnectionsViewModel : ObservableObject
         NewSslCaLocation = p.SslCaLocation;
         NewSslSkipVerification = !p.SslEnableVerification;
         NewClientId = p.ClientId;
+        NewSchemaRegistryUrl = p.SchemaRegistryUrl;
+        NewSchemaRegistryUsername = p.SchemaRegistryUsername;
+        NewSchemaRegistryPassword = p.SchemaRegistryPassword;
+        NewConnectUrl = p.ConnectUrl;
+        NewMaskedFields = string.Join("\n", p.MaskedFields);
         NewAdvancedProperties = string.Join("\n", p.AdvancedProperties.Select(kv => $"{kv.Key}={kv.Value}"));
         StatusMessage = $"Editing '{p.Name}' - change settings and press Save & connect.";
     }
@@ -388,6 +419,11 @@ public sealed class ConnectionsViewModel : ObservableObject
         NewSslCaLocation = null;
         NewSslSkipVerification = false;
         NewClientId = "kafka-studio";
+        NewSchemaRegistryUrl = null;
+        NewSchemaRegistryUsername = null;
+        NewSchemaRegistryPassword = null;
+        NewConnectUrl = null;
+        NewMaskedFields = null;
         NewAdvancedProperties = null;
     }
 

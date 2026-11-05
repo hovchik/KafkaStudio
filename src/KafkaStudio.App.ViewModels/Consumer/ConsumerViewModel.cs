@@ -201,7 +201,7 @@ public sealed class ConsumerViewModel : ObservableObject
 
     private void Start()
     {
-        if (SelectedConnection is null || !_state.Connections.TryGetValue(SelectedConnection, out var gateway)) return;
+        if (SelectedConnection is null || !_state.TryGetReader(SelectedConnection, out var gateway)) return;
 
         var topic = Topic.Trim();
         var old = _watchCts;

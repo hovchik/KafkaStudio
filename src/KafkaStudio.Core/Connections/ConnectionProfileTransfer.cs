@@ -14,7 +14,7 @@ public static class ConnectionProfileTransfer
 
     public static string Export(IEnumerable<ConnectionProfile> profiles, bool includePasswords) =>
         JsonSerializer.Serialize(
-            profiles.Select(p => includePasswords ? p : p with { SaslPassword = null }).ToList(),
+            profiles.Select(p => includePasswords ? p : p with { SaslPassword = null, SchemaRegistryPassword = null }).ToList(),
             JsonFileStore.SerializerOptions);
 
     /// <summary>Parses an exported file. Throws <see cref="FormatException"/> when it isn't one.</summary>

@@ -323,6 +323,167 @@ public sealed class ConfluentKafkaGateway : IKafkaGateway
         }
     }
 
+    public async Task<IReadOnlyList<TopicConfigEntry>> GetTopicConfigAsync(string topic,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var results = await RequireAdmin().DescribeConfigsAsync(
+                new[] { new ConfigResource { Type = ResourceType.Topic, Name = topic } },
+                new DescribeConfigsOptions { RequestTimeout = MetadataTimeout })
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+            return results
+                .SelectMany(r => r.Entries)
+                .Select(e => new TopicConfigEntry
+                {
+                    Name = e.Key,
+                    Value = e.Value.IsSensitive ? null : e.Value.Value,
+                    IsDefault = e.Value.IsDefault,
+                    IsReadOnly = e.Value.IsReadOnly,
+                    IsSensitive = e.Value.IsSensitive,
+                    Source = e.Value.Source.ToString()
+                })
+                .OrderBy(e => e.Name, StringComparer.Ordinal)
+                .ToList();
+        }
+        catch (DescribeConfigsException ex)
+        {
+            var reason = ex.Results.FirstOrDefault(r => r.Error.IsError)?.Error.Reason ?? ex.Message;
+            throw new InvalidOperationException($"could not read config of topic '{topic}': {reason}", ex);
+        }
+        catch (KafkaException ex)
+        {
+            throw WrapTransportError(ex);
+        }
+    }
+
+    public async Task AlterTopicConfigAsync(string topic, IReadOnlyDictionary<string, string?> changes,
+        CancellationToken cancellationToken = default)
+    {
+        if (changes.Count == 0) return;
+        try
+        {
+            var entries = changes.Select(c => new ConfigEntry
+            {
+                Name = c.Key,
+                Value = c.Value,
+                IncrementalOperation = c.Value is null ? AlterConfigOpType.Delete : AlterConfigOpType.Set
+            }).ToList();
+            await RequireAdmin().IncrementalAlterConfigsAsync(
+                new Dictionary<ConfigResource, List<ConfigEntry>>
+                {
+                    [new ConfigResource { Type = ResourceType.Topic, Name = topic }] = entries
+                },
+                new IncrementalAlterConfigsOptions { RequestTimeout = MetadataTimeout })
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (IncrementalAlterConfigsException ex)
+        {
+            var reason = ex.Results.FirstOrDefault(r => r.Error.IsError)?.Error.Reason ?? ex.Message;
+            throw new InvalidOperationException($"could not change config of topic '{topic}': {reason}", ex);
+        }
+        catch (KafkaException ex)
+        {
+            throw WrapTransportError(ex);
+        }
+    }
+
+    public async Task DeleteTopicAsync(string topic, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await RequireAdmin().DeleteTopicsAsync(new[] { topic },
+                new DeleteTopicsOptions { RequestTimeout = MetadataTimeout })
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DeleteTopicsException ex)
+        {
+            var reason = ex.Results.FirstOrDefault(r => r.Error.IsError)?.Error.Reason ?? ex.Message;
+            throw new InvalidOperationException($"could not delete topic '{topic}': {reason}", ex);
+        }
+        catch (KafkaException ex)
+        {
+            throw WrapTransportError(ex);
+        }
+    }
+
+    public async Task CreatePartitionsAsync(string topic, int totalPartitions, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await RequireAdmin().CreatePartitionsAsync(
+                new[] { new PartitionsSpecification { Topic = topic, IncreaseTo = totalPartitions } },
+                new CreatePartitionsOptions { RequestTimeout = MetadataTimeout })
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (CreatePartitionsException ex)
+        {
+            var reason = ex.Results.FirstOrDefault(r => r.Error.IsError)?.Error.Reason ?? ex.Message;
+            throw new InvalidOperationException($"could not add partitions to topic '{topic}': {reason}", ex);
+        }
+        catch (KafkaException ex)
+        {
+            throw WrapTransportError(ex);
+        }
+    }
+
+    public async Task DeleteConsumerGroupAsync(string groupId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await RequireAdmin().DeleteGroupsAsync(new[] { groupId },
+                new DeleteGroupsOptions { RequestTimeout = MetadataTimeout })
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DeleteGroupsException ex)
+        {
+            var reason = ex.Results.FirstOrDefault(r => r.Error.IsError)?.Error.Reason ?? ex.Message;
+            throw new InvalidOperationException($"could not delete consumer group '{groupId}': {reason}", ex);
+        }
+        catch (KafkaException ex)
+        {
+            throw WrapTransportError(ex);
+        }
+    }
+
+    public async Task<IReadOnlyList<AclEntry>> ListAclsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var result = await RequireAdmin().DescribeAclsAsync(
+                new AclBindingFilter
+                {
+                    PatternFilter = new ResourcePatternFilter { Type = ResourceType.Any, ResourcePatternType = ResourcePatternType.Any },
+                    EntryFilter = new AccessControlEntryFilter { Operation = AclOperation.Any, PermissionType = AclPermissionType.Any }
+                },
+                new DescribeAclsOptions { RequestTimeout = MetadataTimeout })
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
+            return result.AclBindings
+                .Select(b => new AclEntry
+                {
+                    ResourceType = b.Pattern.Type.ToString(),
+                    ResourceName = b.Pattern.Name,
+                    PatternType = b.Pattern.ResourcePatternType.ToString(),
+                    Principal = b.Entry.Principal,
+                    Host = b.Entry.Host,
+                    Operation = b.Entry.Operation.ToString(),
+                    Permission = b.Entry.PermissionType.ToString()
+                })
+                .OrderBy(a => a.ResourceType, StringComparer.Ordinal)
+                .ThenBy(a => a.ResourceName, StringComparer.Ordinal)
+                .ThenBy(a => a.Principal, StringComparer.Ordinal)
+                .ToList();
+        }
+        catch (DescribeAclsException ex)
+        {
+            throw new InvalidOperationException($"could not list ACLs: {ex.Result.Error.Reason}", ex);
+        }
+        catch (KafkaException ex)
+        {
+            throw WrapTransportError(ex);
+        }
+    }
+
     public async Task CreateTopicAsync(string topic, int partitions, short replicationFactor,
         CancellationToken cancellationToken = default)
     {

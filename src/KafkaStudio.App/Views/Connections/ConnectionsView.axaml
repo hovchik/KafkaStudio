@@ -96,6 +96,22 @@
           <CheckBox Content="Skip certificate verification (dev clusters only)" IsChecked="{Binding NewSslSkipVerification}" />
         </StackPanel>
 
+        <Expander Header="Schemas, Connect and masking" Margin="0,8,0,0" HorizontalAlignment="Stretch">
+          <StackPanel Classes="form" Spacing="2">
+            <TextBlock Classes="label" Text="SCHEMA REGISTRY URL" />
+            <TextBox Text="{Binding NewSchemaRegistryUrl}" Watermark="http://localhost:8081 - decodes Avro / Protobuf values" />
+            <TextBlock Classes="label" Text="REGISTRY USERNAME / PASSWORD (OPTIONAL)" />
+            <TextBox Text="{Binding NewSchemaRegistryUsername}" />
+            <TextBox Text="{Binding NewSchemaRegistryPassword}" PasswordChar="•" />
+            <TextBlock Classes="label" Text="KAFKA CONNECT URL" />
+            <TextBox Text="{Binding NewConnectUrl}" Watermark="http://localhost:8083" />
+            <TextBlock Classes="label" Text="HIDE FIELDS ON SCREEN (one per line)" />
+            <TextBox Classes="code" Text="{Binding NewMaskedFields}" AcceptsReturn="True" MinHeight="60" TextWrapping="NoWrap"
+                     Watermark="$.card.number&#x0a;password&#x0a;header:Authorization" />
+            <TextBlock Classes="hint" Text="Hidden fields only change what you see. Scripts, rethrow rules and exports of produced data are not affected." TextWrapping="Wrap" />
+          </StackPanel>
+        </Expander>
+
         <Expander Header="Advanced" Margin="0,8,0,0" HorizontalAlignment="Stretch">
           <StackPanel Classes="form" Spacing="2">
             <TextBlock Classes="label" Text="CLIENT ID" />
