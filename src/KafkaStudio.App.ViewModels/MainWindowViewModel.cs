@@ -1,3 +1,4 @@
+using KafkaStudio.App.ViewModels.Admin;
 using KafkaStudio.App.ViewModels.Brokers;
 using KafkaStudio.App.ViewModels.Connections;
 using KafkaStudio.App.ViewModels.Consumer;
@@ -41,6 +42,21 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public DataSearchViewModel DataSearch { get; }
     public QaLabViewModel QaLab { get; }
     public BrokersViewModel Brokers { get; }
+    public ClusterAdminViewModel Admin { get; }
+
+    /// <summary>How message values are shown on the read screens (the sidebar's "View values as").</summary>
+    public IReadOnlyList<Core.Display.ValueFormat> DisplayFormats { get; } = Core.Display.ValueFormatter.All;
+
+    public Core.Display.ValueFormat DisplayFormat
+    {
+        get => State.DisplayFormat;
+        set
+        {
+            if (State.DisplayFormat == value) return;
+            State.DisplayFormat = value;
+            OnPropertyChanged();
+        }
+    }
 
     public IReadOnlyList<NavigationItem> NavigationItems { get; }
 
@@ -98,6 +114,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         DataSearch = new DataSearchViewModel(state);
         QaLab = new QaLabViewModel(state, () => Scripts.Source, () => Scripts.FilePath);
         Brokers = new BrokersViewModel(state);
+        Admin = new ClusterAdminViewModel(state);
 
         NavigationItems = new List<NavigationItem>
         {
@@ -110,7 +127,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             new("search", "Find Data", "⌕", "Ctrl+7", DataSearch),
             new("qa", "QA Lab", "✓", "Ctrl+8", QaLab),
             new("brokers", "Brokers", "▦", "Ctrl+9", Brokers),
-            new("groups", "Consumer Groups", "☰", "Ctrl+0", ConsumerGroups)
+            new("groups", "Consumer Groups", "☰", "Ctrl+0", ConsumerGroups),
+            new("admin", "Cluster Admin", "⚙", "Ctrl+⇧+A", Admin)
         };
 
         _selectedItem = NavigationItems[0];

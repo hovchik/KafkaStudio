@@ -84,6 +84,20 @@
                         ToolTip.Tip="Reload this group's offsets and state" />
               </Grid>
               <TextBlock Classes="muted" Text="{Binding DetailSummary}" />
+              <Grid ColumnDefinitions="Auto,*,Auto">
+                <CheckBox Grid.Column="0" Content="Track lag" IsChecked="{Binding TrackLag}"
+                          ToolTip.Tip="Re-reads this group every 5 seconds and shows whether its lag is growing or draining" />
+                <TextBlock Grid.Column="1" Classes="mono" Text="{Binding LagTrend}" Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <Button Grid.Column="2" Classes="small danger" Content="Delete group…" Command="{Binding DeleteGroupCommand}"
+                        ToolTip.Tip="Removes the group and its committed offsets (only possible while it has no live members)" />
+              </Grid>
+              <Border Classes="callout" IsVisible="{Binding HasDeleteConfirm}">
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                  <TextBlock Grid.Column="0" Text="{Binding DeleteConfirmText}" TextWrapping="Wrap" FontSize="12" VerticalAlignment="Center" />
+                  <Button Grid.Column="1" Classes="small danger" Content="Delete" Command="{Binding ConfirmDeleteGroupCommand}" Margin="10,0,6,0" />
+                  <Button Grid.Column="2" Classes="small" Content="Cancel" Command="{Binding CancelDeleteGroupCommand}" />
+                </Grid>
+              </Border>
               <Border Classes="callout warn" IsVisible="{Binding IsGroupActive}" HorizontalAlignment="Stretch">
                 <Grid ColumnDefinitions="Auto,*">
                   <PathIcon Grid.Column="0" Data="{StaticResource Icon.warning}" Width="14" Height="14"

@@ -88,6 +88,74 @@ public sealed class InMemoryKafkaGateway : IKafkaGateway
         return Task.CompletedTask;
     }
 
+    public Task<IReadOnlyList<TopicConfigEntry>> GetTopicConfigAsync(string topic, CancellationToken cancellationToken = default)
+    {
+        if (!_broker.TopicExists(topic))
+        {
+            return Task.FromException<IReadOnlyList<TopicConfigEntry>>(new KeyNotFoundException($"topic '{topic}' not found"));
+        }
+        var overrides = _broker.GetTopicConfigOverrides(topic);
+        IReadOnlyList<TopicConfigEntry> entries = InMemoryKafkaBroker.TopicConfigDefaults.Keys
+            .Concat(overrides.Keys)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .Select(name => overrides.TryGetValue(name, out var v)
+                ? new TopicConfigEntry { Name = name, Value = v, IsDefault = false, Source = "DynamicTopicConfig" }
+                : new TopicConfigEntry
+                {
+                    Name = name,
+                    Value = InMemoryKafkaBroker.TopicConfigDefaults[name],
+                    IsDefault = true,
+                    Source = "DefaultConfig"
+                })
+            .ToList();
+        return Task.FromResult(entries);
+    }
+
+    public Task AlterTopicConfigAsync(string topic, IReadOnlyDictionary<string, string?> changes,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            foreach (var (name, value) in changes) _broker.SetTopicConfig(topic, name, value);
+        }
+        catch (Exception ex) when (ex is KeyNotFoundException or ArgumentException)
+        {
+            return Task.FromException(ex);
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteTopicAsync(string topic, CancellationToken cancellationToken = default)
+    {
+        try { _broker.DeleteTopic(topic); }
+        catch (KeyNotFoundException ex) { return Task.FromException(ex); }
+        return Task.CompletedTask;
+    }
+
+    public Task CreatePartitionsAsync(string topic, int totalPartitions, CancellationToken cancellationToken = default)
+    {
+        try { _broker.AddPartitions(topic, totalPartitions); }
+        catch (Exception ex) when (ex is KeyNotFoundException or InvalidOperationException)
+        {
+            return Task.FromException(ex);
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteConsumerGroupAsync(string groupId, CancellationToken cancellationToken = default)
+    {
+        try { _broker.DeleteGroup(groupId); }
+        catch (Exception ex) when (ex is KeyNotFoundException or InvalidOperationException)
+        {
+            return Task.FromException(ex);
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<AclEntry>> ListAclsAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(_broker.ListAcls());
+
     public Task<ProduceReceipt> ProduceAsync(ProduceRequest request, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();

@@ -55,6 +55,21 @@ public sealed record ConnectionProfile
     /// <summary>Optional Confluent Schema Registry URL, used only by steps that need Avro/JSON-Schema decoding.</summary>
     public string? SchemaRegistryUrl { get; init; }
 
+    /// <summary>Optional basic-auth user for the Schema Registry.</summary>
+    public string? SchemaRegistryUsername { get; init; }
+
+    /// <summary>Optional basic-auth password for the Schema Registry. Treated as sensitive like <see cref="SaslPassword"/>.</summary>
+    public string? SchemaRegistryPassword { get; init; }
+
+    /// <summary>Optional Kafka Connect REST URL (for example http://localhost:8083), used by the Kafka Connect screen.</summary>
+    public string? ConnectUrl { get; init; }
+
+    /// <summary>
+    /// Fields hidden when messages from this connection are shown on screen (JSON paths such as
+    /// <c>$.card.number</c>, bare names such as <c>password</c>, or <c>header:Authorization</c>). Display only.
+    /// </summary>
+    public IReadOnlyList<string> MaskedFields { get; init; } = Array.Empty<string>();
+
     /// <summary>Client id reported to the broker; also used as a default prefix for consumer group names.</summary>
     public string ClientId { get; init; } = "kafka-studio";
 

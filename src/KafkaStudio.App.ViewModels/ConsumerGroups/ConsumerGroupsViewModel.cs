@@ -153,8 +153,12 @@ public sealed class ConsumerGroupsViewModel : ObservableObject
             if (!SetProperty(ref _selectedGroup, value)) return;
             _detailCts?.Cancel();
             ClearDetail();
+            _lagHistory.Clear();
+            LagTrend = null;
+            DeleteConfirmText = null;
             if (value is not null) _ = LoadDetailAsync(value.GroupId);
             RefreshDetailCommand.RaiseCanExecuteChanged();
+            DeleteGroupCommand?.RaiseCanExecuteChanged();
         }
     }
 
@@ -191,6 +195,107 @@ public sealed class ConsumerGroupsViewModel : ObservableObject
     private bool _isLoading;
     public bool IsLoading { get => _isLoading; private set => SetProperty(ref _isLoading, value); }
 
+    // ------------------------------------------------------------------ lag history / delete ----
+
+    private readonly LagHistory _lagHistory = new();
+    private CancellationTokenSource? _trackCts;
+
+    private string? _lagTrend;
+    /// <summary>Sparkline and verdict of the selected group's total lag while "Track lag" samples it.</summary>
+    public string? LagTrend { get => _lagTrend; private set => SetProperty(ref _lagTrend, value); }
+
+    private bool _trackLag;
+    /// <summary>Re-reads the selected group every 5 seconds and keeps the last 60 total-lag samples.</summary>
+    public bool TrackLag
+    {
+        get => _trackLag;
+        set
+        {
+            if (!SetProperty(ref _trackLag, value)) return;
+            if (value) StartTracking(); else StopTracking();
+        }
+    }
+
+    private string? _deleteConfirmText;
+    public string? DeleteConfirmText
+    {
+        get => _deleteConfirmText;
+        private set { if (SetProperty(ref _deleteConfirmText, value)) OnPropertyChanged(nameof(HasDeleteConfirm)); }
+    }
+
+    public bool HasDeleteConfirm => DeleteConfirmText is not null;
+
+    public RelayCommand DeleteGroupCommand { get; private set; } = null!;
+    public AsyncRelayCommand ConfirmDeleteGroupCommand { get; private set; } = null!;
+    public RelayCommand CancelDeleteGroupCommand { get; private set; } = null!;
+
+    private void StartTracking()
+    {
+        StopTracking();
+        var cts = _trackCts = new CancellationTokenSource();
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                while (!cts.IsCancellationRequested)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(5), cts.Token).ConfigureAwait(false);
+                    var id = SelectedGroup?.GroupId;
+                    if (id is null || SelectedConnection is null || !_state.Connections.TryGetValue(SelectedConnection, out var gateway)) continue;
+                    var detail = await gateway.DescribeConsumerGroupAsync(id, cts.Token).ConfigureAwait(false);
+                    _state.PostToUi(() =>
+                    {
+                        if (cts.IsCancellationRequested || SelectedGroup?.GroupId != id) return;
+                        RecordLag(detail.TotalLag);
+                    });
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                _state.PostToUi(() => { StatusMessage = $"Lag tracking stopped: {ex.Message}"; TrackLag = false; });
+            }
+        });
+    }
+
+    private void StopTracking()
+    {
+        _trackCts?.Cancel();
+        _trackCts?.Dispose();
+        _trackCts = null;
+    }
+
+    private void RecordLag(long totalLag)
+    {
+        _lagHistory.Add(totalLag, DateTimeOffset.UtcNow);
+        LagTrend = _lagHistory.Summary();
+    }
+
+    private void StageDeleteGroup()
+    {
+        if (SelectedGroup is not { } group) return;
+        DeleteConfirmText = $"Delete consumer group '{group.GroupId}' and its committed offsets? Its consumers will start from their auto.offset.reset position next time. This cannot be undone.";
+        ConfirmDeleteGroupCommand.RaiseCanExecuteChanged();
+    }
+
+    private async Task ConfirmDeleteGroupAsync()
+    {
+        var group = SelectedGroup;
+        DeleteConfirmText = null;
+        ConfirmDeleteGroupCommand.RaiseCanExecuteChanged();
+        if (group is null || SelectedConnection is null || !_state.Connections.TryGetValue(SelectedConnection, out var gateway)) return;
+        try
+        {
+            await gateway.DeleteConsumerGroupAsync(group.GroupId).ConfigureAwait(true);
+            StatusMessage = $"Deleted consumer group '{group.GroupId}'.";
+            await RefreshGroupsAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Could not delete '{group.GroupId}': {ex.Message}";
+        }
+    }
+
     // ------------------------------------------------------------------ commands ----
 
     public AsyncRelayCommand RefreshCommand { get; }
@@ -201,6 +306,9 @@ public sealed class ConsumerGroupsViewModel : ObservableObject
         _state = state;
         _state.ConnectionsChanged += RefreshConnectionNames;
 
+        DeleteGroupCommand = new RelayCommand(StageDeleteGroup, () => SelectedGroup is not null && !IsGroupActive);
+        ConfirmDeleteGroupCommand = new AsyncRelayCommand(ConfirmDeleteGroupAsync, () => HasDeleteConfirm);
+        CancelDeleteGroupCommand = new RelayCommand(() => { DeleteConfirmText = null; ConfirmDeleteGroupCommand.RaiseCanExecuteChanged(); });
         RefreshCommand = new AsyncRelayCommand(RefreshGroupsAsync, () => SelectedConnection is not null, allowConcurrentExecutions: true);
         RefreshDetailCommand = new AsyncRelayCommand(
             () => SelectedGroup is { } g ? LoadDetailAsync(g.GroupId) : Task.CompletedTask,
@@ -342,6 +450,8 @@ public sealed class ConsumerGroupsViewModel : ObservableObject
             if (cts.IsCancellationRequested) return;
 
             Detail = detail;
+            RecordLag(detail.TotalLag);
+            DeleteGroupCommand?.RaiseCanExecuteChanged();
             if (_allGroups.FirstOrDefault(g => g.GroupId == detail.GroupId) is { } listed)
             {
                 listed.Lag = detail.TotalLag;

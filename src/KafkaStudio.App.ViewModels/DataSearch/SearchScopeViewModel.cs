@@ -208,7 +208,7 @@ public sealed class SearchScopeViewModel : ObservableObject
             error = "Pick a connection first.";
             return null;
         }
-        if (!_state.Connections.TryGetValue(SelectedConnection, out var gateway))
+        if (!_state.TryGetReader(SelectedConnection, out var gateway))
         {
             error = $"Connection '{SelectedConnection}' isn't connected.";
             return null;

@@ -28,7 +28,7 @@ public sealed class InMemoryKafkaBroker
         }
 
         public readonly object Gate = new();
-        public readonly PartitionLog[] Partitions;
+        public PartitionLog[] Partitions;
         public readonly short ReplicationFactor;
         /// <summary>Every message of every partition in the order it was appended.</summary>
         public readonly List<KafkaMessage> All = new();
@@ -77,6 +77,101 @@ public sealed class InMemoryKafkaBroker
     }
 
     public bool TopicExists(string topic) => _topics.ContainsKey(topic);
+
+    // ---- administration ----
+
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, string>> _topicConfigs = new();
+    private readonly List<KafkaStudio.Core.Messaging.AclEntry> _acls = new();
+
+    /// <summary>Broker defaults reported for every topic, next to any overrides set with <see cref="SetTopicConfig"/>.</summary>
+    public static IReadOnlyDictionary<string, string> TopicConfigDefaults { get; } = new Dictionary<string, string>
+    {
+        ["cleanup.policy"] = "delete",
+        ["compression.type"] = "producer",
+        ["max.message.bytes"] = "1048588",
+        ["min.insync.replicas"] = "1",
+        ["retention.bytes"] = "-1",
+        ["retention.ms"] = "604800000",
+        ["segment.bytes"] = "1073741824"
+    };
+
+    public IReadOnlyDictionary<string, string> GetTopicConfigOverrides(string topic) =>
+        _topicConfigs.TryGetValue(topic, out var o)
+            ? new Dictionary<string, string>(o)
+            : new Dictionary<string, string>();
+
+    /// <summary>Sets (or, with a null value, removes) a topic-level override. <c>cleanup.policy</c> drives compaction.</summary>
+    public void SetTopicConfig(string topic, string name, string? value)
+    {
+        if (!_topics.ContainsKey(topic)) throw new KeyNotFoundException($"topic '{topic}' not found");
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("a config name is required", nameof(name));
+        var overrides = _topicConfigs.GetOrAdd(topic, static _ => new ConcurrentDictionary<string, string>());
+        if (value is null) overrides.TryRemove(name, out _);
+        else overrides[name] = value;
+        if (name == "cleanup.policy")
+        {
+            SetCompacted(topic, (value ?? "delete").Split(',', StringSplitOptions.TrimEntries).Contains("compact"));
+        }
+    }
+
+    public void DeleteTopic(string topic)
+    {
+        if (!_topics.TryRemove(topic, out var log)) throw new KeyNotFoundException($"topic '{topic}' not found");
+        _topicConfigs.TryRemove(topic, out _);
+        _compacted.TryRemove(topic, out _);
+        lock (log.Gate)
+        {
+            foreach (var channel in log.Subscribers) channel.Writer.TryComplete();
+            log.Subscribers.Clear();
+        }
+    }
+
+    /// <summary>Adds partitions (Kafka cannot remove them). Keyed messages already stored stay where they are.</summary>
+    public void AddPartitions(string topic, int totalPartitions)
+    {
+        var log = Find(topic) ?? throw new KeyNotFoundException($"topic '{topic}' not found");
+        lock (log.Gate)
+        {
+            var current = log.Partitions.Length;
+            if (totalPartitions <= current)
+            {
+                throw new InvalidOperationException(
+                    $"topic '{topic}' already has {current} partition(s); a topic can only grow (asked for {totalPartitions})");
+            }
+            var grown = new PartitionLog[totalPartitions];
+            Array.Copy(log.Partitions, grown, current);
+            for (var i = current; i < totalPartitions; i++) grown[i] = new PartitionLog();
+            log.Partitions = grown;
+        }
+    }
+
+    public void DeleteGroup(string group)
+    {
+        if (GetActiveMemberCount(group) > 0)
+        {
+            throw new InvalidOperationException($"consumer group '{group}' has active members and cannot be deleted");
+        }
+        if (!ListGroups().Contains(group)) throw new KeyNotFoundException($"consumer group '{group}' not found");
+        foreach (var log in _topics.Values)
+        {
+            foreach (var key in log.CommittedOffsets.Keys.Where(k => k.group == group).ToList())
+            {
+                log.CommittedOffsets.TryRemove(key, out _);
+            }
+        }
+        _simulatedMembers.TryRemove(group, out _);
+        _liveMembers.TryRemove(group, out _);
+    }
+
+    public void AddAcl(KafkaStudio.Core.Messaging.AclEntry acl)
+    {
+        lock (_acls) _acls.Add(acl);
+    }
+
+    public IReadOnlyList<KafkaStudio.Core.Messaging.AclEntry> ListAcls()
+    {
+        lock (_acls) return _acls.ToArray();
+    }
 
     public int GetPartitionCount(string topic) => GetOrCreate(topic).Partitions.Length;
 
