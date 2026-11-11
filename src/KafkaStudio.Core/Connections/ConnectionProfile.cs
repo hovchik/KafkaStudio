@@ -91,6 +91,12 @@ public sealed record ConnectionProfile
     /// </summary>
     public bool IsDemo { get; init; }
 
+    /// <summary>
+    /// The user marked this cluster as production. Display-only: the header chip and connection list
+    /// are tinted red so it is obvious which cluster is live. It changes no behaviour.
+    /// </summary>
+    public bool IsProduction { get; init; }
+
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsDemoConnection => IsDemo || BootstrapServers == DemoBootstrapServers;
 

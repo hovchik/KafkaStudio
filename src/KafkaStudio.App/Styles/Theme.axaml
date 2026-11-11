@@ -876,4 +876,41 @@
     <Setter Property="Padding" Value="0,6,0,0" />
   </Style>
 
+
+  <!-- Consumer group lag bar: grey track, accent fill while behind, red once the group is behind by half of what is retained. -->
+  <Style Selector="Ellipse.statusDot.warn">
+    <Setter Property="Fill" Value="{DynamicResource WarningBrush}" />
+  </Style>
+  <Style Selector="ProgressBar.lagBar">
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="Height" Value="6" />
+    <Setter Property="MinHeight" Value="6" />
+    <Setter Property="Margin" Value="0,0,8,0" />
+    <Setter Property="CornerRadius" Value="3" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ProgressBar.lagBar.warn">
+    <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+  </Style>
+  <Style Selector="ProgressBar.lagBar.danger">
+    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+  </Style>
+  <Style Selector="ProgressBar.lagBar /template/ Border#PART_Indicator">
+    <Setter Property="CornerRadius" Value="3" />
+  </Style>
+
+
+  <!-- Production marker: the cluster chip and connection rows turn red when a connection is flagged production. -->
+  <Style Selector="Button.clusterChip.prod">
+    <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+  </Style>
+  <Style Selector="TextBlock.prodTag">
+    <Setter Property="FontSize" Value="10" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="LetterSpacing" Value="0.6" />
+    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+  </Style>
+
 </Styles>

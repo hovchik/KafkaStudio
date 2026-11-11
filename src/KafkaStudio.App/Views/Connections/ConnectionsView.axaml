@@ -37,6 +37,7 @@
                   <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="6">
                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
                     <Border Classes="badge accent"><TextBlock Text="{Binding Kind}" /></Border>
+                    <TextBlock Classes="prodTag" Text="PROD" IsVisible="{Binding IsProduction}" />
                   </StackPanel>
                   <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding BootstrapServers}" Classes="muted mono" TextTrimming="CharacterEllipsis" />
                   <StackPanel Grid.Row="2" Grid.Column="1" Spacing="4" Margin="0,4,0,0">
@@ -111,6 +112,9 @@
             <TextBlock Classes="hint" Text="Hidden fields only change what you see. Scripts, rethrow rules and exports of produced data are not affected." TextWrapping="Wrap" />
           </StackPanel>
         </Expander>
+
+        <CheckBox Margin="0,8,0,0" Content="This is a production cluster" IsChecked="{Binding NewIsProduction}"
+                  ToolTip.Tip="Shows a red PROD marker in the header and list so you can tell at a glance which cluster you are on. Changes nothing else." />
 
         <Expander Header="Advanced" Margin="0,8,0,0" HorizontalAlignment="Stretch">
           <StackPanel Classes="form" Spacing="2">

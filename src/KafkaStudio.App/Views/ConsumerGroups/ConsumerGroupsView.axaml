@@ -52,12 +52,17 @@
             <ListBox ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroup}" Classes="rows">
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:GroupRowViewModel">
-                  <StackPanel Spacing="1">
-                    <TextBlock Text="{Binding GroupId}" FontSize="13" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding GroupId}" />
-                    <TextBlock Classes="muted">
-                      <Run Text="{Binding State}" /><Run Text=" · " /><Run Text="{Binding MemberCount}" /><Run Text=" member(s) · " /><Run Text="{Binding LagText}" FontWeight="SemiBold" />
-                    </TextBlock>
-                  </StackPanel>
+                  <Grid ColumnDefinitions="Auto,*">
+                    <Ellipse Grid.Column="0" Classes="statusDot" Margin="0,0,9,0" VerticalAlignment="Center"
+                             Classes.ok="{Binding IsCaughtUp}" Classes.warn="{Binding HasLag}"
+                             ToolTip.Tip="{Binding LagText}" />
+                    <StackPanel Grid.Column="1" Spacing="1">
+                      <TextBlock Text="{Binding GroupId}" FontSize="13" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding GroupId}" />
+                      <TextBlock Classes="muted">
+                        <Run Text="{Binding State}" /><Run Text=" · " /><Run Text="{Binding MemberCount}" /><Run Text=" member(s) · " /><Run Text="{Binding LagText}" FontWeight="SemiBold" />
+                      </TextBlock>
+                    </StackPanel>
+                  </Grid>
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
@@ -128,13 +133,13 @@
             <!-- Offsets table -->
             <DockPanel>
               <Border DockPanel.Dock="Top" Classes="tableHeader">
-                <Grid ColumnDefinitions="*,70,100,100,100,90,150,70">
+                <Grid ColumnDefinitions="*,70,100,100,100,170,150,70">
                   <TextBlock Grid.Column="0" Text="Topic" />
                   <TextBlock Grid.Column="1" Text="Partition" TextAlignment="Right" />
                   <TextBlock Grid.Column="2" Text="Committed" TextAlignment="Right" ToolTip.Tip="Next offset the group will read" />
                   <TextBlock Grid.Column="3" Text="Earliest" TextAlignment="Right" />
                   <TextBlock Grid.Column="4" Text="End" TextAlignment="Right" ToolTip.Tip="Offset the next produced message gets" />
-                  <TextBlock Grid.Column="5" Text="Lag" TextAlignment="Right" />
+                  <TextBlock Grid.Column="5" Text="Lag" Margin="12,0,0,0" />
                   <TextBlock Grid.Column="6" Text="Move to" Margin="12,0,0,0"
                              ToolTip.Tip="While a partition has lag, edit the offset to commit (prefilled with End = skip the backlog)" />
                 </Grid>
@@ -142,13 +147,17 @@
               <ListBox ItemsSource="{Binding Offsets}" Classes="rows">
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:GroupOffsetRowViewModel">
-                    <Grid ColumnDefinitions="*,70,100,100,100,90,150,70">
+                    <Grid ColumnDefinitions="*,70,100,100,100,170,150,70">
                       <TextBlock Grid.Column="0" Text="{Binding Topic}" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                       <TextBlock Grid.Column="1" Text="{Binding Partition}" Classes="mono" TextAlignment="Right" VerticalAlignment="Center" />
                       <TextBlock Grid.Column="2" Text="{Binding Committed}" Classes="mono" TextAlignment="Right" VerticalAlignment="Center" />
                       <TextBlock Grid.Column="3" Text="{Binding Earliest}" Classes="mono" TextAlignment="Right" VerticalAlignment="Center" />
                       <TextBlock Grid.Column="4" Text="{Binding End}" Classes="mono" TextAlignment="Right" VerticalAlignment="Center" />
-                      <TextBlock Grid.Column="5" Text="{Binding Lag}" Classes="mono" TextAlignment="Right" FontWeight="SemiBold" VerticalAlignment="Center" />
+                      <Grid Grid.Column="5" ColumnDefinitions="*,Auto" Margin="12,0,0,0" VerticalAlignment="Center" ToolTip.Tip="{Binding LagTooltip}">
+                        <ProgressBar Grid.Column="0" Classes="lagBar" Minimum="0" Maximum="1" Value="{Binding LagShare}"
+                                     Classes.warn="{Binding IsLagWarning}" Classes.danger="{Binding IsLagCritical}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Lag}" Classes="mono" TextAlignment="Right" MinWidth="44" FontWeight="SemiBold" />
+                      </Grid>
                       <NumericUpDown Grid.Column="6" Margin="12,0,0,0" Value="{Binding NewOffset}" Minimum="0" FormatString="0"
                                      IsVisible="{Binding HasLag}" IsEnabled="{Binding CanEdit}"
                                      ToolTip.Tip="Offset to commit for this partition" />

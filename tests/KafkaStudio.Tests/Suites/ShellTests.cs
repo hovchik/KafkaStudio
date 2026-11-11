@@ -1,4 +1,5 @@
 using KafkaStudio.App.ViewModels;
+using KafkaStudio.App.ViewModels.ConsumerGroups;
 using KafkaStudio.App.ViewModels.Shared;
 using KafkaStudio.Tests.Harness;
 
@@ -77,6 +78,34 @@ public static class ShellTests
             Assert.True(main.ClusterIsOk);
 
             await main.DisposeAsync();
+        });
+
+        runner.Add("Shell: production marker", "the header flags a connected cluster the user marked as production", async () =>
+        {
+            var state = new AppState();
+            var main = new MainWindowViewModel(state);
+
+            state.AddDemoConnection("demo");
+            Assert.False(main.ClusterIsProduction, "unmarked clusters are not flagged");
+
+            state.ConnectionProfiles["demo"] = state.ConnectionProfiles["demo"] with { IsProduction = true };
+            state.AddConnection(state.ConnectionProfiles["demo"], state.Connections["demo"]);
+            Assert.True(main.ClusterIsProduction);
+
+            await main.DisposeAsync();
+        });
+
+        runner.Add("Consumer groups: lag", "lag share is relative to what the partition retains and flags half or more as critical", () =>
+        {
+            GroupOffsetRowViewModel Row(long committed, long earliest, long end) => new(
+                new KafkaStudio.Core.Messaging.ConsumerGroupOffset { Topic = "t", Partition = 0, CommittedOffset = committed, EarliestOffset = earliest, EndOffset = end },
+                () => false, _ => Task.CompletedTask);
+
+            Assert.Equal(0d, Row(100, 0, 100).LagShare);
+            Assert.True(Row(90, 0, 100).IsLagWarning, "10 of 100 retained is a warning");
+            Assert.True(Row(40, 0, 100).IsLagCritical, "60 of 100 retained is critical");
+            Assert.Equal(1d, Row(0, 50, 100).LagShare);
+            return Task.CompletedTask;
         });
     }
 }

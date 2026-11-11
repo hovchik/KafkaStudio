@@ -28,6 +28,7 @@ public sealed class ConnectionRowViewModel : ObservableObject
     public bool HasError { get => _hasError; set => SetProperty(ref _hasError, value); }
 
     public string Kind => IsDemo ? "demo" : Profile.SecurityProtocol.ToString();
+    public bool IsProduction => Profile.IsProduction;
 }
 
 /// <summary>Manage named Kafka connections: add a real cluster (host, security, SASL) or an in-memory
@@ -125,6 +126,10 @@ public sealed class ConnectionsViewModel : ObservableObject
 
     private string _newClientId = "kafka-studio";
     public string NewClientId { get => _newClientId; set => SetProperty(ref _newClientId, value); }
+
+    private bool _newIsProduction;
+    /// <summary>Marks the connection as production (red chip in the header and in the list).</summary>
+    public bool NewIsProduction { get => _newIsProduction; set => SetProperty(ref _newIsProduction, value); }
 
     private string? _newAdvancedProperties;
     /// <summary>Extra librdkafka settings, one "key=value" per line.</summary>
@@ -232,7 +237,8 @@ public sealed class ConnectionsViewModel : ObservableObject
             ConnectUrl = NullIfBlank(NewConnectUrl),
             MaskedFields = (NewMaskedFields ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Where(l => !l.StartsWith('#')).ToList(),
-            AdvancedProperties = advanced
+            AdvancedProperties = advanced,
+            IsProduction = NewIsProduction
         };
     }
 
@@ -405,6 +411,7 @@ public sealed class ConnectionsViewModel : ObservableObject
         NewConnectUrl = p.ConnectUrl;
         NewMaskedFields = string.Join("\n", p.MaskedFields);
         NewAdvancedProperties = string.Join("\n", p.AdvancedProperties.Select(kv => $"{kv.Key}={kv.Value}"));
+        NewIsProduction = p.IsProduction;
         StatusMessage = $"Editing '{p.Name}' - change settings and press Save & connect.";
     }
 
@@ -425,6 +432,7 @@ public sealed class ConnectionsViewModel : ObservableObject
         NewConnectUrl = null;
         NewMaskedFields = null;
         NewAdvancedProperties = null;
+        NewIsProduction = false;
     }
 
     private void RefreshFromState()
