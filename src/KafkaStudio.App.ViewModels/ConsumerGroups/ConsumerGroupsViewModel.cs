@@ -33,6 +33,22 @@ public sealed class GroupOffsetRowViewModel : ObservableObject
     public long End => Offset.EndOffset;
     public long Lag => Offset.Lag;
 
+    /// <summary>
+    /// How far behind the group is as a share (0..1) of what the partition still retains (End - Earliest).
+    /// Near 1 means the group is close to the oldest retained message, i.e. at risk of losing data to retention.
+    /// </summary>
+    public double LagShare => Lag <= 0 ? 0 : Math.Min(1.0, (double)Lag / Math.Max(1, End - Earliest));
+
+    /// <summary>The group is behind by at least half of what the partition retains.</summary>
+    public bool IsLagCritical => LagShare >= 0.5;
+
+    /// <summary>Behind, but by less than half of what the partition retains.</summary>
+    public bool IsLagWarning => HasLag && !IsLagCritical;
+
+    public string LagTooltip => Lag <= 0
+        ? "Up to date"
+        : $"Behind by {Lag:N0} of {Math.Max(1, End - Earliest):N0} retained messages ({LagShare:P0})";
+
     /// <summary>Only partitions the group is behind on can be edited.</summary>
     public bool HasLag => Offset.Lag > 0;
 
@@ -75,11 +91,15 @@ public sealed class GroupRowViewModel : ObservableObject
         {
             if (!SetProperty(ref _lag, value)) return;
             OnPropertyChanged(nameof(HasLag));
+            OnPropertyChanged(nameof(IsCaughtUp));
             OnPropertyChanged(nameof(LagText));
         }
     }
 
     public bool HasLag => Lag is > 0;
+
+    /// <summary>Lag has been looked up and the group is up to date.</summary>
+    public bool IsCaughtUp => Lag is 0;
 
     public string LagText => Lag switch
     {

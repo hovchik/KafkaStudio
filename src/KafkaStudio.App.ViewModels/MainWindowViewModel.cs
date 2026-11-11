@@ -129,6 +129,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>A connected cluster is marked production: the header chip turns red.</summary>
+    public bool ClusterIsProduction =>
+        State.Connections.Keys.Any(name => State.ConnectionProfiles.TryGetValue(name, out var p) && p.IsProduction);
+
     /// <summary>Header dot is green when something is connected.</summary>
     public bool ClusterIsOk => State.Connections.Count > 0;
 
@@ -257,6 +261,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             OnPropertyChanged(nameof(HasNoConnections));
             OnPropertyChanged(nameof(ClusterStatusText));
             OnPropertyChanged(nameof(ClusterIsOk));
+            OnPropertyChanged(nameof(ClusterIsProduction));
             OnPropertyChanged(nameof(ClusterHasError));
         };
         state.EditInProducerRequested += (connection, message) =>

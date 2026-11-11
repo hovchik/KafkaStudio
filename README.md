@@ -122,7 +122,9 @@ a real cluster). Topics created from the app get the partitions and replication 
 1. **Connections** (cluster chip in the header or the sidebar footer, `Ctrl+Shift+K`) - add a real cluster (bootstrap servers, security
    protocol, SASL, CA certificate, extra librdkafka settings) or a demo in-memory one. Connections are
    tested before they're saved, can be edited/reconnected, and on Windows saved passwords are encrypted
-   with DPAPI for your user account.
+   with DPAPI for your user account. Tick **This is a production cluster** to get a red PROD marker in the
+   header and the list (display only). In Consumer Groups, lag shows as a bar per partition: amber while
+   behind, red once the group is behind by half or more of what the partition still retains.
 2. **Topics** (`Ctrl+1`) - browse topics, open one to see its **newest** N messages (or all of them),
    filter by text or by field (`$.status = FAILED and key starts with ORD-`), inspect a message
    (metadata, headers, pretty JSON, binary hex dump), copy it, export to JSON/CSV, pin messages side by
