@@ -25,6 +25,7 @@ QaEngineTests.Register(runner);
 QaLabViewModelTests.Register(runner);
 ConsumerGroupTests.Register(runner);
 MockBrokerTests.Register(runner);
+ShellTests.Register(runner);
 CompetitorGapTests.Register(runner);
 
 var exitCode = await runner.RunAllAsync();

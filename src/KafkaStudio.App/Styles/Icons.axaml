@@ -27,4 +27,6 @@
   <StreamGeometry x:Key="Icon.inbox">M4,3 h12 a1,1 0 0 1 0.9,0.6 l2,5 A1,1 0 0 1 19,9 v6 a2,2 0 0 1 -2,2 H3 a2,2 0 0 1 -2,-2 V9 a1,1 0 0 1 0.1,-0.4 l2,-5 A1,1 0 0 1 4,3 Z M4.7,5 L3.5,8 H7 a1,1 0 0 1 1,1 a2,2 0 0 0 4,0 a1,1 0 0 1 1,-1 h3.5 L15.3,5 Z M3,10 v5 h14 v-5 h-2.1 a4,4 0 0 1 -7.8,0 Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.spark">M10,1.5 l1.8,5.2 l5.2,1.8 l-5.2,1.8 L10,15.5 l-1.8,-5.2 L3,8.5 l5.2,-1.8 Z M3.5,14 l0.8,2.2 l2.2,0.8 l-2.2,0.8 L3.5,20 l-0.8,-2.2 L0.5,17 l2.2,-0.8 Z</StreamGeometry>
 
+  <StreamGeometry x:Key="Icon.sidebar">M3,3 h14 a1,1 0 0 1 1,1 v12 a1,1 0 0 1 -1,1 H3 a1,1 0 0 1 -1,-1 V4 a1,1 0 0 1 1,-1 Z M4,5 v10 h4 V5 Z M10,5 v10 h6 V5 Z</StreamGeometry>
+
 </ResourceDictionary>

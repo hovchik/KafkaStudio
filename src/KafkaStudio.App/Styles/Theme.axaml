@@ -776,4 +776,104 @@
     <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
   </Style>
 
+
+  <!-- ===== Shell: collapsible sidebar, group labels, cluster chip, command palette ===== -->
+  <Style Selector="Border.sidebar">
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="Border.sidebar.collapsed TextBlock.collapsible, Border.sidebar.collapsed Border.collapsible, Border.sidebar.collapsed StackPanel.collapsible">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector="TextBlock.navGroup">
+    <Setter Property="FontSize" Value="10" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LetterSpacing" Value="0.8" />
+    <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+    <Setter Property="Margin" Value="12,10,0,4" />
+  </Style>
+  <Style Selector="Border.navGroupRule">
+    <Setter Property="Height" Value="0" />
+  </Style>
+  <Style Selector="Border.sidebar.collapsed ListBox.nav ListBoxItem Border.navGroupRule">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Background" Value="{DynamicResource BorderBrush}" />
+    <Setter Property="Margin" Value="8,6,8,6" />
+  </Style>
+  <Style Selector="Border.sidebar.collapsed Button.sidebarAction">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Button.clusterChip, Button.paletteTrigger">
+    <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="10,0" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.clusterChip:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.paletteTrigger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+  </Style>
+  <Style Selector="Ellipse.statusDot">
+    <Setter Property="Width" Value="7" />
+    <Setter Property="Height" Value="7" />
+    <Setter Property="Fill" Value="{DynamicResource TextMutedBrush}" />
+  </Style>
+  <Style Selector="Ellipse.statusDot.ok">
+    <Setter Property="Fill" Value="{DynamicResource SuccessBrush}" />
+  </Style>
+  <Style Selector="Ellipse.statusDot.error">
+    <Setter Property="Fill" Value="{DynamicResource DangerBrush}" />
+  </Style>
+
+  <Style Selector="Border.palette">
+    <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="BoxShadow" Value="0 24 60 0 #70000000" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="TextBox.paletteInput">
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="Padding" Value="14,12" />
+    <Setter Property="FontSize" Value="14" />
+  </Style>
+  <Style Selector="ListBox.paletteList">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Padding" Value="4" />
+  </Style>
+  <Style Selector="ListBox.paletteList ListBoxItem">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="CornerRadius" Value="6" />
+  </Style>
+  <Style Selector="ListBox.paletteList ListBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+  </Style>
+
+
+  <!-- Inspector tabs (message detail): compact text tabs with the accent underline from Fluent's selected pipe. -->
+  <Style Selector="TabControl.inspector">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="TabControl.inspector TabItem">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="MinHeight" Value="28" />
+    <Setter Property="Padding" Value="10,4" />
+    <Setter Property="Margin" Value="0,0,2,0" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="TabControl.inspector TabItem:selected">
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="TabControl.inspector > DockPanel > ContentPresenter, TabControl.inspector /template/ ContentPresenter#PART_SelectedContentHost">
+    <Setter Property="Padding" Value="0,6,0,0" />
+  </Style>
+
 </Styles>

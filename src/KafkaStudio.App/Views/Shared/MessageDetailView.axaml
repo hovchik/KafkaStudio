@@ -55,7 +55,7 @@
         </SelectableTextBlock>
 
         <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="TIME" />
-        <SelectableTextBlock Grid.Row="2" Grid.Column="1">
+        <SelectableTextBlock Grid.Row="2" Grid.Column="1" TextWrapping="Wrap">
           <Run Text="{Binding #Detail.Message.Timestamp, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss.fff zzz}'}" /><Run Text="  ·  " Foreground="{DynamicResource TextMutedBrush}" /><Run Text="{Binding #Detail.Message.ValueSize}" /><Run Text=" bytes" Foreground="{DynamicResource TextMutedBrush}" />
         </SelectableTextBlock>
 
@@ -64,28 +64,41 @@
                              Text="{Binding #Detail.Message.Key, TargetNullValue='(no key)'}" />
       </Grid>
 
-      <!-- Headers (only when there are any) -->
-      <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10"
-                  IsVisible="{Binding #Detail.Message.Headers.Count, FallbackValue=False}">
-        <TextBlock Classes="label" Text="HEADERS" Margin="0,0,0,4" />
-        <ItemsControl ItemsSource="{Binding #Detail.Message.Headers}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <SelectableTextBlock Classes="mono" TextWrapping="Wrap" Margin="0,0,0,2">
-                <Run Text="{Binding Key}" Foreground="{DynamicResource CodeKeyBrush}" /><Run Text=": " Foreground="{DynamicResource TextMutedBrush}" /><Run Text="{Binding Value}" />
-              </SelectableTextBlock>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-      </StackPanel>
-
-      <TextBlock DockPanel.Dock="Top" Classes="label" Text="VALUE" Margin="0,0,0,4" />
-      <Border Classes="code">
-        <ScrollViewer HorizontalScrollBarVisibility="Auto">
-          <SelectableTextBlock Classes="mono" TextWrapping="Wrap" LineHeight="18"
-                               Inlines="{Binding #Detail.Message.PrettyValue, Converter={x:Static conv:JsonInlinesConverter.Instance}}" />
-        </ScrollViewer>
-      </Border>
+      <!-- Inspector tabs: pretty value / exact text / headers -->
+      <TabControl Classes="inspector">
+        <TabItem Header="Value">
+          <Border Classes="code">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto">
+              <SelectableTextBlock Classes="mono" TextWrapping="Wrap" LineHeight="18"
+                                   Inlines="{Binding #Detail.Message.PrettyValue, Converter={x:Static conv:JsonInlinesConverter.Instance}}" />
+            </ScrollViewer>
+          </Border>
+        </TabItem>
+        <TabItem Header="Raw" ToolTip.Tip="The value exactly as stored, without re-formatting">
+          <Border Classes="code">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto">
+              <SelectableTextBlock Classes="mono" TextWrapping="Wrap" LineHeight="18"
+                                   Text="{Binding #Detail.Message.Value}" />
+            </ScrollViewer>
+          </Border>
+        </TabItem>
+        <TabItem Header="{Binding #Detail.Message.Headers.Count, StringFormat='Headers ({0})', FallbackValue=Headers}">
+          <Panel>
+            <StackPanel Classes="emptyState" IsVisible="{Binding !#Detail.Message.Headers.Count, FallbackValue=True}">
+              <TextBlock Classes="emptyHint" Text="This message has no headers." />
+            </StackPanel>
+            <ItemsControl ItemsSource="{Binding #Detail.Message.Headers}" Margin="2,6">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <SelectableTextBlock Classes="mono" TextWrapping="Wrap" Margin="0,0,0,4">
+                    <Run Text="{Binding Key}" Foreground="{DynamicResource CodeKeyBrush}" /><Run Text=": " Foreground="{DynamicResource TextMutedBrush}" /><Run Text="{Binding Value}" />
+                  </SelectableTextBlock>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Panel>
+        </TabItem>
+      </TabControl>
     </DockPanel>
   </Panel>
 </UserControl>

@@ -117,7 +117,9 @@ a real cluster). Topics created from the app get the partitions and replication 
 
 ## Using it
 
-1. **Connections** (top of the sidebar, `Ctrl+K`) - add a real cluster (bootstrap servers, security
+`Ctrl+K` opens the command palette (jump to any screen or action), `Ctrl+B` collapses the sidebar to icons.
+
+1. **Connections** (cluster chip in the header or the sidebar footer, `Ctrl+Shift+K`) - add a real cluster (bootstrap servers, security
    protocol, SASL, CA certificate, extra librdkafka settings) or a demo in-memory one. Connections are
    tested before they're saved, can be edited/reconnected, and on Windows saved passwords are encrypted
    with DPAPI for your user account.

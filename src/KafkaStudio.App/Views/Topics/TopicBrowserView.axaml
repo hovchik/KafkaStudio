@@ -127,7 +127,7 @@
     </Expander>
 
     <!-- Data area: topic list | messages (or search results) | message detail. -->
-    <Grid Grid.Row="3" Margin="0,8,0,0" ColumnDefinitions="240,8,*,8,1.1*">
+    <Grid Grid.Row="3" Margin="0,8,0,0" ColumnDefinitions="220,8,1.7*,8,*">
 
       <Border Grid.Column="0" Classes="pane">
         <DockPanel>
@@ -191,6 +191,7 @@
             <TextBlock DockPanel.Dock="Top" Classes="error" Margin="0,0,0,6"
                        Text="{Binding MessageFilterError, StringFormat='Filter: {0} - showing every message'}"
                        IsVisible="{Binding MessageFilterError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <shared:MessageTableHeader DockPanel.Dock="Top" IsVisible="{Binding ScannedMessages.Count}" />
             <Panel>
               <StackPanel Classes="emptyState" IsVisible="{Binding LoadedTopic, Converter={x:Static ObjectConverters.IsNull}}">
                 <PathIcon Data="{StaticResource Icon.inbox}" />
@@ -199,21 +200,7 @@
               </StackPanel>
               <ListBox Classes="rows" ItemsSource="{Binding ScannedMessages}" SelectedItem="{Binding SelectedMessage}">
                 <ListBox.ItemTemplate>
-                  <DataTemplate x:DataType="msg:KafkaMessage">
-                    <Grid ColumnDefinitions="3,Auto,Auto,Auto,*">
-                      <Border Grid.Column="0" Background="{Binding Partition, Converter={x:Static conv:PartitionToBrushConverter.Instance}}" CornerRadius="2" />
-                      <TextBlock Grid.Column="1" Classes="muted mono" FontSize="11" Margin="8,0,8,0" VerticalAlignment="Center"
-                                 Text="{Binding Timestamp, StringFormat='{}{0:MM-dd HH:mm:ss}'}" />
-                      <TextBlock Grid.Column="2" Classes="muted mono" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center">
-                        <Run Text="#" /><Run Text="{Binding Partition}" /><Run Text="@" /><Run Text="{Binding Offset}" />
-                      </TextBlock>
-                      <TextBlock Grid.Column="3" Classes="accent" FontSize="11.5" Margin="0,0,8,0" VerticalAlignment="Center" MaxWidth="160"
-                                 TextTrimming="CharacterEllipsis"
-                                 Text="{Binding Key}" IsVisible="{Binding Key, Converter={x:Static ObjectConverters.IsNotNull}}" />
-                      <TextBlock Grid.Column="4" Classes="mono" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                                 Text="{Binding ValuePreview}" />
-                    </Grid>
-                  </DataTemplate>
+                  <DataTemplate x:DataType="msg:KafkaMessage"><shared:MessageRow /></DataTemplate>
                 </ListBox.ItemTemplate>
               </ListBox>
             </Panel>

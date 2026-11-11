@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:msg="using:KafkaStudio.Core.Messaging"
+             xmlns:conv="using:KafkaStudio.App.Converters"
+             x:Class="KafkaStudio.App.Views.Shared.MessageRow"
+             x:DataType="msg:KafkaMessage">
+
+  <!-- One message as a table row. Column widths must match MessageTableHeader. The partition stripe keeps
+       the colour coding; the value is a one-line, syntax-coloured preview. -->
+  <Grid ColumnDefinitions="3,96,26,62,100,*" Margin="8,4" ClipToBounds="True">
+    <Border Grid.Column="0" Margin="0,1" CornerRadius="2"
+            Background="{Binding Partition, Converter={x:Static conv:PartitionToBrushConverter.Instance}}" />
+    <TextBlock Grid.Column="1" Classes="muted mono" FontSize="11" Margin="8,0,8,0" VerticalAlignment="Center"
+               Text="{Binding Timestamp, StringFormat='{}{0:HH:mm:ss.fff}'}" ToolTip.Tip="{Binding Timestamp, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss.fff zzz}'}" />
+    <TextBlock Grid.Column="2" Classes="muted mono" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center"
+               Text="{Binding Partition}" />
+    <TextBlock Grid.Column="3" Classes="mono" FontSize="11" Margin="0,0,10,0" VerticalAlignment="Center" TextAlignment="Right"
+               Foreground="{DynamicResource TextSecondaryBrush}" Text="{Binding Offset}" />
+    <TextBlock Grid.Column="4" Classes="accent mono" FontSize="11" Margin="0,0,10,0" VerticalAlignment="Center"
+               TextTrimming="CharacterEllipsis" Text="{Binding Key}" ToolTip.Tip="{Binding Key}" />
+    <TextBlock Grid.Column="5" Classes="mono" FontSize="11" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+               Inlines="{Binding ValuePreview, Converter={x:Static conv:JsonInlinesConverter.Instance}}" />
+  </Grid>
+</UserControl>

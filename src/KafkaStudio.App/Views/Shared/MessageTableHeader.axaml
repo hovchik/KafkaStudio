@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="KafkaStudio.App.Views.Shared.MessageTableHeader">
+
+  <!-- Column titles for MessageRow lists; keep the column widths identical to MessageRow. -->
+  <Border Classes="tableHeader">
+    <Grid ColumnDefinitions="3,96,26,62,100,*" >
+      <TextBlock Grid.Column="1" Margin="8,0,0,0" Text="TIME" />
+      <TextBlock Grid.Column="2" Text="P" ToolTip.Tip="Partition" />
+      <TextBlock Grid.Column="3" Margin="0,0,10,0" TextAlignment="Right" Text="OFFSET" />
+      <TextBlock Grid.Column="4" Text="KEY" />
+      <TextBlock Grid.Column="5" Text="VALUE" />
+    </Grid>
+  </Border>
+</UserControl>
