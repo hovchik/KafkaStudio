@@ -4,6 +4,7 @@ using KafkaStudio.App.ViewModels.Connections;
 using KafkaStudio.App.ViewModels.Consumer;
 using KafkaStudio.App.ViewModels.ConsumerGroups;
 using KafkaStudio.App.ViewModels.DataSearch;
+using KafkaStudio.App.ViewModels.KeyChains;
 using KafkaStudio.App.ViewModels.Mvvm;
 using KafkaStudio.App.ViewModels.Producer;
 using KafkaStudio.App.ViewModels.Rethrow;
@@ -44,6 +45,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public TasksViewModel Tasks { get; }
     public RethrowRulesViewModel Rethrow { get; }
     public DataSearchViewModel DataSearch { get; }
+    public KeyChainViewModel KeyChain { get; }
     public QaLabViewModel QaLab { get; }
     public BrokersViewModel Brokers { get; }
     public ClusterAdminViewModel Admin { get; }
@@ -224,6 +226,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Tasks = new TasksViewModel(state);
         Rethrow = new RethrowRulesViewModel(state);
         DataSearch = new DataSearchViewModel(state);
+        KeyChain = new KeyChainViewModel(state);
         QaLab = new QaLabViewModel(state, () => Scripts.Source, () => Scripts.FilePath);
         Brokers = new BrokersViewModel(state);
         Admin = new ClusterAdminViewModel(state);
@@ -233,6 +236,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             new("topics", "Topics", "▤", "Ctrl+1", Topics, "DATA", true),
             new("consumer", "Consume", "↓", "Ctrl+3", Consumer, "DATA"),
             new("search", "Find Data", "⌕", "Ctrl+7", DataSearch, "DATA"),
+            new("chain", "Key Chain", "⛓", "Ctrl+⇧+L", KeyChain, "DATA"),
             new("producer", "Produce", "↑", "Ctrl+2", Producer, "AUTOMATION", true),
             new("scripts", "Scripts", "{ }", "Ctrl+4", Scripts, "AUTOMATION"),
             new("tasks", "Tasks & Checks", "⏱", "Ctrl+5", Tasks, "AUTOMATION"),
