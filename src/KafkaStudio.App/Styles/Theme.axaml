@@ -856,4 +856,24 @@
     <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
   </Style>
 
+
+  <!-- Inspector tabs (message detail): compact text tabs with the accent underline from Fluent's selected pipe. -->
+  <Style Selector="TabControl.inspector">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="TabControl.inspector TabItem">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="MinHeight" Value="28" />
+    <Setter Property="Padding" Value="10,4" />
+    <Setter Property="Margin" Value="0,0,2,0" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="TabControl.inspector TabItem:selected">
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="TabControl.inspector > DockPanel > ContentPresenter, TabControl.inspector /template/ ContentPresenter#PART_SelectedContentHost">
+    <Setter Property="Padding" Value="0,6,0,0" />
+  </Style>
+
 </Styles>
