@@ -23,6 +23,7 @@
     <KeyBinding Gesture="Ctrl+D8" Command="{Binding NavigateCommand}" CommandParameter="qa" />
     <KeyBinding Gesture="Ctrl+D9" Command="{Binding NavigateCommand}" CommandParameter="brokers" />
     <KeyBinding Gesture="Ctrl+D0" Command="{Binding NavigateCommand}" CommandParameter="groups" />
+    <KeyBinding Gesture="Ctrl+Shift+A" Command="{Binding NavigateCommand}" CommandParameter="admin" />
     <KeyBinding Gesture="Ctrl+K" Command="{Binding OpenPaletteCommand}" />
     <KeyBinding Gesture="Ctrl+Shift+K" Command="{Binding OpenConnectionsCommand}" />
     <KeyBinding Gesture="Ctrl+B" Command="{Binding ToggleSidebarCommand}" />
@@ -53,6 +54,10 @@
           <!-- Footer: connections + theme -->
           <StackPanel DockPanel.Dock="Bottom" Spacing="2">
             <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="4,0,4,8" />
+            <Grid ColumnDefinitions="Auto,*" Margin="6,0,6,6" ToolTip.Tip="How message values are shown on the Topics, Consume and Find Data screens. Display only: nothing is changed or produced.">
+              <TextBlock Grid.Column="0" Classes="muted" Text="View values as" VerticalAlignment="Center" FontSize="12" Margin="0,0,8,0" />
+              <ComboBox Grid.Column="1" ItemsSource="{Binding DisplayFormats}" SelectedItem="{Binding DisplayFormat}" HorizontalAlignment="Stretch" />
+            </Grid>
             <Button Classes="sidebarAction" Command="{Binding OpenConnectionsCommand}"
                     ToolTip.Tip="Manage connections (Ctrl+Shift+K)">
               <Grid ColumnDefinitions="Auto,*,Auto">

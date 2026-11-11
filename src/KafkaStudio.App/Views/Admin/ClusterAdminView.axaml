@@ -1,0 +1,235 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:KafkaStudio.App.ViewModels.Admin"
+             xmlns:msg="using:KafkaStudio.Core.Messaging"
+             xmlns:sch="using:KafkaStudio.Core.Schemas"
+             xmlns:top="using:KafkaStudio.Core.Topics"
+             x:Class="KafkaStudio.App.Views.Admin.ClusterAdminView"
+             x:DataType="vm:ClusterAdminViewModel">
+
+  <Grid RowDefinitions="Auto,Auto,Auto,*">
+
+    <Border Grid.Row="0" Classes="toolbar">
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+        <ComboBox Grid.Column="0" Width="200" PlaceholderText="Connection…" ItemsSource="{Binding ConnectionNames}"
+                  SelectedItem="{Binding SelectedConnection}" ToolTip.Tip="Connection" />
+        <Button Grid.Column="1" Classes="icon" ToolTip.Tip="Reload topics" Command="{Binding RefreshCommand}">
+          <PathIcon Data="{StaticResource Icon.refresh}" />
+        </Button>
+        <TextBlock Grid.Column="2" Classes="muted" Text="Settings, ACLs, schemas, Connect and message rates. Nothing here produces messages."
+                   TextTrimming="CharacterEllipsis" />
+        <ProgressBar Grid.Column="3" Classes="busy" IsVisible="{Binding IsBusy}" />
+      </Grid>
+    </Border>
+
+    <TextBlock Grid.Row="1" Classes="hint" Margin="4,8,4,0" Text="{Binding Status}" TextWrapping="Wrap"
+               IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+    <Border Grid.Row="2" Classes="callout" Margin="0,8,0,0" IsVisible="{Binding HasPending}">
+      <Grid ColumnDefinitions="*,Auto,Auto">
+        <TextBlock Grid.Column="0" Text="{Binding ConfirmText}" TextWrapping="Wrap" VerticalAlignment="Center" FontWeight="SemiBold" />
+        <Button Grid.Column="1" Content="Confirm" Classes="danger" Command="{Binding ConfirmCommand}" Margin="12,0,6,0" />
+        <Button Grid.Column="2" Content="Cancel" Command="{Binding CancelCommand}" />
+      </Grid>
+    </Border>
+
+    <TabControl Grid.Row="3" Margin="0,8,0,0">
+
+      <!-- ===== Topic settings ===== -->
+      <TabItem Header="Topic settings">
+        <Grid ColumnDefinitions="260,8,*">
+          <Border Grid.Column="0" Classes="pane">
+            <DockPanel>
+              <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Text="Topics" Margin="0,0,0,8" />
+              <ListBox Classes="rows" ItemsSource="{Binding TopicNames}" SelectedItem="{Binding SelectedTopic}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="x:String">
+                    <TextBlock Classes="mono" Text="{Binding}" TextTrimming="CharacterEllipsis" />
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
+          </Border>
+          <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="8" />
+          <Border Grid.Column="2" Classes="pane">
+            <DockPanel>
+              <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8" IsVisible="{Binding HasTopic}">
+                <Button Content="Apply changes" Classes="primary" Command="{Binding ApplyConfigCommand}" Margin="0,0,16,0"
+                        ToolTip.Tip="Saves every edited value. An empty value resets that setting to the broker default." />
+                <TextBlock Text="Grow to" VerticalAlignment="Center" Margin="0,0,6,0" />
+                <NumericUpDown Value="{Binding NewPartitionTotal}" Minimum="1" Maximum="10000" Width="110" FormatString="0" Margin="0,0,6,0" />
+                <TextBlock Text="partitions" VerticalAlignment="Center" Margin="0,0,6,0" />
+                <Button Content="Add partitions…" Command="{Binding AddPartitionsCommand}" Margin="0,0,16,0" />
+                <Button Content="Delete topic…" Classes="danger" Command="{Binding DeleteTopicCommand}" />
+              </WrapPanel>
+              <Border DockPanel.Dock="Top" Classes="tableHeader" IsVisible="{Binding HasTopic}">
+                <Grid ColumnDefinitions="2*,2*,140">
+                  <TextBlock Grid.Column="0" Text="SETTING" />
+                  <TextBlock Grid.Column="1" Text="VALUE" />
+                  <TextBlock Grid.Column="2" Text="SOURCE" />
+                </Grid>
+              </Border>
+              <Panel>
+                <StackPanel Classes="emptyState" IsVisible="{Binding !HasTopic}">
+                  <PathIcon Data="{StaticResource Icon.info}" />
+                  <TextBlock Classes="emptyTitle" Text="No topic selected" />
+                  <TextBlock Classes="emptyHint" Text="Pick a topic to see and edit its settings." />
+                </StackPanel>
+                <ListBox Classes="rows" ItemsSource="{Binding Config}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:TopicConfigRowViewModel">
+                      <Grid ColumnDefinitions="2*,2*,140">
+                        <TextBlock Grid.Column="0" Margin="0,0,10,0" Classes="mono" Text="{Binding Name}" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
+                        <TextBox Grid.Column="1" Margin="0,0,10,0" Classes="mono" Text="{Binding Value}" IsEnabled="{Binding CanEdit}" />
+                        <TextBlock Grid.Column="2" Classes="muted" Text="{Binding Source}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                      </Grid>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </Panel>
+            </DockPanel>
+          </Border>
+        </Grid>
+      </TabItem>
+
+      <!-- ===== ACLs ===== -->
+      <TabItem Header="ACLs">
+        <Border Classes="pane">
+          <DockPanel>
+            <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*" Margin="0,0,0,8">
+              <Button Grid.Column="0" Content="Load ACLs" Classes="primary" Command="{Binding LoadAclsCommand}" Margin="0,0,10,0" />
+              <TextBox Grid.Column="1" Watermark="Filter by resource, principal or operation" Text="{Binding AclFilter}" />
+            </Grid>
+            <Border DockPanel.Dock="Top" Classes="tableHeader">
+              <Grid ColumnDefinitions="90,2*,90,2*,120,100,80">
+                <TextBlock Grid.Column="0" Text="RESOURCE" />
+                <TextBlock Grid.Column="1" Text="NAME" />
+                <TextBlock Grid.Column="2" Text="PATTERN" />
+                <TextBlock Grid.Column="3" Text="PRINCIPAL" />
+                <TextBlock Grid.Column="4" Text="OPERATION" />
+                <TextBlock Grid.Column="5" Text="HOST" />
+                <TextBlock Grid.Column="6" Text="ALLOW?" />
+              </Grid>
+            </Border>
+            <ListBox Classes="rows" ItemsSource="{Binding Acls}">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="msg:AclEntry">
+                  <Grid ColumnDefinitions="90,2*,90,2*,120,100,80">
+                    <TextBlock Grid.Column="0" Text="{Binding ResourceType}" Classes="muted" />
+                    <TextBlock Grid.Column="1" Classes="mono" Text="{Binding ResourceName}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding ResourceName}" />
+                    <TextBlock Grid.Column="2" Text="{Binding PatternType}" Classes="muted" />
+                    <TextBlock Grid.Column="3" Classes="mono" Text="{Binding Principal}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Principal}" />
+                    <TextBlock Grid.Column="4" Text="{Binding Operation}" />
+                    <TextBlock Grid.Column="5" Classes="mono" Text="{Binding Host}" />
+                    <TextBlock Grid.Column="6" Text="{Binding Permission}" />
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </DockPanel>
+        </Border>
+      </TabItem>
+
+      <!-- ===== Schema Registry ===== -->
+      <TabItem Header="Schema Registry">
+        <Grid ColumnDefinitions="280,8,160,8,*">
+          <Border Grid.Column="0" Classes="pane">
+            <DockPanel>
+              <Button DockPanel.Dock="Top" Content="Load subjects" Classes="primary" Command="{Binding LoadSubjectsCommand}" Margin="0,0,0,8" />
+              <ListBox Classes="rows" ItemsSource="{Binding Subjects}" SelectedItem="{Binding SelectedSubject}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="x:String">
+                    <TextBlock Classes="mono" Text="{Binding}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding}" />
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
+          </Border>
+          <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="8" />
+          <Border Grid.Column="2" Classes="pane">
+            <DockPanel>
+              <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Text="Versions" Margin="0,0,0,8" />
+              <ListBox Classes="rows" ItemsSource="{Binding Versions}" SelectedItem="{Binding SelectedVersion}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:SchemaVersionRow">
+                    <TextBlock Classes="mono" Text="{Binding Version, StringFormat='v{0}'}" />
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
+          </Border>
+          <GridSplitter Grid.Column="3" ResizeDirection="Columns" Width="8" />
+          <Border Grid.Column="4" Classes="pane">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto">
+              <SelectableTextBlock Classes="code" Text="{Binding SchemaText}" />
+            </ScrollViewer>
+          </Border>
+        </Grid>
+      </TabItem>
+
+      <!-- ===== Kafka Connect ===== -->
+      <TabItem Header="Kafka Connect">
+        <Grid ColumnDefinitions="*,8,*">
+          <Border Grid.Column="0" Classes="pane">
+            <DockPanel>
+              <Button DockPanel.Dock="Top" Content="Load connectors" Classes="primary" Command="{Binding LoadConnectorsCommand}" Margin="0,0,0,8" />
+              <ListBox Classes="rows" ItemsSource="{Binding Connectors}" SelectedItem="{Binding SelectedConnector}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="sch:ConnectorInfo">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                      <Border Classes="badge" Classes.danger="{Binding IsFailed}"><TextBlock Text="{Binding State}" /></Border>
+                      <TextBlock Classes="mono" Text="{Binding Name}" VerticalAlignment="Center" />
+                      <TextBlock Classes="muted" Text="{Binding Type}" VerticalAlignment="Center" />
+                      <TextBlock Classes="muted" Text="{Binding Tasks.Count, StringFormat='{}{0} task(s)'}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
+          </Border>
+          <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="8" />
+          <Border Grid.Column="2" Classes="pane">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto">
+              <SelectableTextBlock Classes="code" Text="{Binding ConnectorDetail}" />
+            </ScrollViewer>
+          </Border>
+        </Grid>
+      </TabItem>
+
+      <!-- ===== Message rates ===== -->
+      <TabItem Header="Message rates">
+        <Border Classes="pane">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="0,0,0,8">
+              <Button Content="Start / stop sampling" Classes="primary" Command="{Binding ToggleRatesCommand}"
+                      ToolTip.Tip="Reads each topic's size every 5 seconds and shows how fast it grows" />
+              <TextBlock Classes="muted" VerticalAlignment="Center" Text="Sampling…" IsVisible="{Binding IsSampling}" />
+            </StackPanel>
+            <Border DockPanel.Dock="Top" Classes="tableHeader">
+              <Grid ColumnDefinitions="3*,*,*,*">
+                <TextBlock Grid.Column="0" Text="TOPIC" />
+                <TextBlock Grid.Column="1" Text="MESSAGES" />
+                <TextBlock Grid.Column="2" Text="NEW (LAST SAMPLE)" />
+                <TextBlock Grid.Column="3" Text="PER SECOND" />
+              </Grid>
+            </Border>
+            <ListBox Classes="rows" ItemsSource="{Binding Rates}">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="top:TopicRate">
+                  <Grid ColumnDefinitions="3*,*,*,*">
+                    <TextBlock Grid.Column="0" Classes="mono" Text="{Binding Topic}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="1" Classes="mono" Text="{Binding TotalMessages, StringFormat='{}{0:N0}'}" />
+                    <TextBlock Grid.Column="2" Classes="mono" Text="{Binding NewMessages, StringFormat='{}{0:N0}'}" />
+                    <TextBlock Grid.Column="3" Classes="mono" Text="{Binding MessagesPerSecond, StringFormat='{}{0:N1}'}" />
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </DockPanel>
+        </Border>
+      </TabItem>
+
+    </TabControl>
+  </Grid>
+</UserControl>

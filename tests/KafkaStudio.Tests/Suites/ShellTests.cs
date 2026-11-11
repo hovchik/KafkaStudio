@@ -60,7 +60,7 @@ public static class ShellTests
 
             Assert.True(main.NavigationItems.All(i => i.Group.Length > 0), "every item has a group");
             Assert.Equal(3, main.NavigationItems.Count(i => i.StartsGroup));
-            Assert.Equal(10, main.NavigationItems.Select(i => i.Key).Distinct().Count());
+            Assert.Equal(11, main.NavigationItems.Select(i => i.Key).Distinct().Count());
 
             await main.DisposeAsync();
         });

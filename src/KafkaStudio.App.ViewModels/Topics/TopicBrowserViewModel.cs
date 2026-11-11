@@ -869,7 +869,7 @@ public sealed class TopicBrowserViewModel : ObservableObject
         _messagesLoadCts = cts;
 
         if (SelectedConnection is null || SelectedTopic is null ||
-            !_state.Connections.TryGetValue(SelectedConnection, out var gateway))
+            !_state.TryGetReader(SelectedConnection, out var gateway))
         {
             IsLoadingMessages = false;
             return;
@@ -1048,7 +1048,7 @@ public sealed class TopicBrowserViewModel : ObservableObject
 
         var term = GlobalSearchTerm?.Trim();
         if (SelectedConnection is null || string.IsNullOrEmpty(term)) return;
-        if (!_state.Connections.TryGetValue(SelectedConnection, out var gateway)) return;
+        if (!_state.TryGetReader(SelectedConnection, out var gateway)) return;
         if (!MessageQuery.TryParse(term, null, out var query, out var queryError))
         {
             StatusMessage = $"Search: {queryError}";

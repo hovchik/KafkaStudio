@@ -177,10 +177,27 @@ public sealed class ProducerViewModel : ObservableObject
         Topic = message.Topic;
         Key = message.Key ?? "";
         IsTombstone = message.IsTombstone;
-        Value = message.IsTombstone ? "" : message.Value is not null ? message.PrettyValue : "";
+        var masked = message.Headers.ContainsKey(DisplayPipeline.MaskedHeader);
+        var decoded = message.Headers.ContainsKey(Core.Schemas.SchemaRegistryDecoder.SchemaHeader);
+        Value = message.IsTombstone || masked ? "" : message.Value is not null ? message.PrettyValue : "";
         Partition = null;
         Headers.Clear();
-        foreach (var (name, value) in message.Headers) Headers.Add(new HeaderEntryViewModel { Name = name, Value = value });
+        foreach (var (name, value) in message.Headers)
+        {
+            // Markers added by the display layer describe how the message was shown, not what Kafka holds.
+            if (name.StartsWith("x-kafkastudio-", StringComparison.OrdinalIgnoreCase)) continue;
+            Headers.Add(new HeaderEntryViewModel { Name = name, Value = value });
+        }
+        if (masked)
+        {
+            StatusMessage = $"Loaded {message.Topic}#{message.Partition}@{message.Offset} without its value: this connection hides fields on screen. Remove them from the connection's hidden fields to edit and resend.";
+            return;
+        }
+        if (decoded)
+        {
+            StatusMessage = $"Loaded {message.Topic}#{message.Partition}@{message.Offset} as decoded JSON. Sending produces this JSON as plain text, not Avro/Protobuf.";
+            return;
+        }
         StatusMessage = message.IsBinary
             ? $"Loaded {message.Topic}@{message.Offset} - its value is binary and can't be edited as text."
             : $"Loaded {message.Topic}#{message.Partition}@{message.Offset} - edit and Send.";

@@ -69,4 +69,31 @@ public interface IKafkaGateway : IAsyncDisposable
     /// </summary>
     Task ApplyOffsetResetAsync(string groupId, IReadOnlyList<OffsetChange> changes,
         CancellationToken cancellationToken = default);
+
+    // ---- administration (optional: a gateway that cannot do these throws NotSupportedException) ----
+
+    /// <summary>All configuration entries of a topic, sorted by name.</summary>
+    Task<IReadOnlyList<TopicConfigEntry>> GetTopicConfigAsync(string topic, CancellationToken cancellationToken = default) =>
+        Task.FromException<IReadOnlyList<TopicConfigEntry>>(new NotSupportedException("this connection cannot read topic configs"));
+
+    /// <summary>Sets topic-level overrides; a null value removes the override (back to the broker default).</summary>
+    Task AlterTopicConfigAsync(string topic, IReadOnlyDictionary<string, string?> changes,
+        CancellationToken cancellationToken = default) =>
+        Task.FromException(new NotSupportedException("this connection cannot change topic configs"));
+
+    /// <summary>Deletes a topic and all of its messages. Cannot be undone.</summary>
+    Task DeleteTopicAsync(string topic, CancellationToken cancellationToken = default) =>
+        Task.FromException(new NotSupportedException("this connection cannot delete topics"));
+
+    /// <summary>Raises a topic to <paramref name="totalPartitions"/> partitions (Kafka cannot reduce them).</summary>
+    Task CreatePartitionsAsync(string topic, int totalPartitions, CancellationToken cancellationToken = default) =>
+        Task.FromException(new NotSupportedException("this connection cannot add partitions"));
+
+    /// <summary>Deletes an empty consumer group and its committed offsets. Cannot be undone.</summary>
+    Task DeleteConsumerGroupAsync(string groupId, CancellationToken cancellationToken = default) =>
+        Task.FromException(new NotSupportedException("this connection cannot delete consumer groups"));
+
+    /// <summary>Every ACL on the cluster (read only).</summary>
+    Task<IReadOnlyList<AclEntry>> ListAclsAsync(CancellationToken cancellationToken = default) =>
+        Task.FromException<IReadOnlyList<AclEntry>>(new NotSupportedException("this connection cannot list ACLs"));
 }

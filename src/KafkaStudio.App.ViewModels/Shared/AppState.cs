@@ -4,6 +4,7 @@ using KafkaStudio.Automation.Rethrow;
 using KafkaStudio.Automation.Scheduling;
 using KafkaStudio.Core.Abstractions;
 using KafkaStudio.Core.Connections;
+using KafkaStudio.Core.Display;
 using KafkaStudio.Core.Testing;
 
 namespace KafkaStudio.App.ViewModels.Shared;
@@ -54,6 +55,44 @@ public sealed class AppState : IAsyncDisposable
 
     /// <summary>Why a persisted connection couldn't be reconnected at startup, by name.</summary>
     public ConcurrentDictionary<string, string> ConnectionErrors { get; } = new();
+
+    private readonly ConcurrentDictionary<string, DisplayPipeline> _pipelines = new();
+    private ValueFormat _displayFormat = ValueFormat.Auto;
+
+    /// <summary>How message values are shown on the read screens. Auto decodes Schema Registry values when
+    /// the connection has a registry. Display only: it never changes what is produced.</summary>
+    public ValueFormat DisplayFormat
+    {
+        get => _displayFormat;
+        set
+        {
+            if (_displayFormat == value) return;
+            _displayFormat = value;
+            DisplayFormatChanged?.Invoke();
+        }
+    }
+
+    public event Action? DisplayFormatChanged;
+
+    /// <summary>
+    /// The gateway the read screens (Topics, Consume, Find Data) should use for a connection: the same
+    /// connection, with messages decoded and masked for display. Scripts, rethrow rules and tasks keep
+    /// using <see cref="Connections"/> directly, so they always see and produce the real bytes.
+    /// </summary>
+    public bool TryGetReader(string? name, out IKafkaGateway gateway)
+    {
+        gateway = null!;
+        if (name is null || !Connections.TryGetValue(name, out var inner)) return false;
+        if (!ConnectionProfiles.TryGetValue(name, out var profile)) { gateway = inner; return true; }
+        var pipeline = _pipelines.GetOrAdd(name, _ => new DisplayPipeline(this, profile));
+        gateway = new DisplayKafkaGateway(inner, pipeline.TransformAsync);
+        return true;
+    }
+
+    private void DropPipeline(string name)
+    {
+        if (_pipelines.TryRemove(name, out var pipeline)) pipeline.Dispose();
+    }
 
     public AutomationScheduler Scheduler { get; } = new();
     public RethrowManager RethrowManager { get; } = new();
@@ -153,6 +192,7 @@ public sealed class AppState : IAsyncDisposable
 
     private void ReplaceGateway(string name, IKafkaGateway gateway)
     {
+        DropPipeline(name);
         if (Connections.TryGetValue(name, out var old) && !ReferenceEquals(old, gateway))
         {
             _ = DisposeQuietlyAsync(old);
@@ -164,6 +204,7 @@ public sealed class AppState : IAsyncDisposable
     {
         ConnectionProfiles.TryRemove(name, out _);
         ConnectionErrors.TryRemove(name, out _);
+        DropPipeline(name);
         PersistProfiles();
         if (Connections.TryRemove(name, out var gateway))
         {
