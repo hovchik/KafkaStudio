@@ -11,7 +11,7 @@ internal static class UiSettings
 {
     private const string FileName = "ui-settings.json";
 
-    private sealed record Model(string? Theme);
+    private sealed record Model(string? Theme, bool SidebarCollapsed = false);
 
     public static ThemeVariant LoadTheme()
     {
@@ -24,6 +24,15 @@ internal static class UiSettings
     public static void SaveTheme(ThemeVariant variant)
     {
         // Best effort: a preference that fails to save is not worth an error in the UI.
-        JsonFileStore.TrySave(FileName, new Model(variant == ThemeVariant.Light ? "light" : "dark"));
+        var saved = JsonFileStore.Load(FileName, new Model(null));
+        JsonFileStore.TrySave(FileName, saved with { Theme = variant == ThemeVariant.Light ? "light" : "dark" });
+    }
+
+    public static bool LoadSidebarCollapsed() => JsonFileStore.Load(FileName, new Model(null)).SidebarCollapsed;
+
+    public static void SaveSidebarCollapsed(bool collapsed)
+    {
+        var saved = JsonFileStore.Load(FileName, new Model(null));
+        JsonFileStore.TrySave(FileName, saved with { SidebarCollapsed = collapsed });
     }
 }

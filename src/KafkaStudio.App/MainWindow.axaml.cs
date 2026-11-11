@@ -18,6 +18,50 @@ public partial class MainWindow : Window
         ToggleThemeCommand = new RelayCommand(ToggleTheme);
         ActualThemeVariantChanged += (_, _) => UpdateThemeButton();
         UpdateThemeButton();
+        DataContextChanged += (_, _) => WireViewModel();
+        WireViewModel();
+    }
+
+    private MainWindowViewModel? _wired;
+
+    /// <summary>Restores the saved sidebar width, persists changes and adds the view-owned palette actions.</summary>
+    private void WireViewModel()
+    {
+        if (DataContext is not MainWindowViewModel vm || ReferenceEquals(vm, _wired)) return;
+        _wired = vm;
+        vm.IsSidebarCollapsed = UiSettings.LoadSidebarCollapsed();
+        vm.SidebarCollapsedChanged += UiSettings.SaveSidebarCollapsed;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainWindowViewModel.IsPaletteOpen) && vm.IsPaletteOpen)
+                Dispatcher.UIThread.Post(() => PaletteInput.Focus(), DispatcherPriority.Input);
+        };
+        vm.ExtraPaletteCommands = new[]
+        {
+            new PaletteCommand("Switch light / dark theme", "Ctrl+⇧+T", ToggleTheme)
+        };
+    }
+
+    private void OnPaletteBackdropPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm) vm.IsPaletteOpen = false;
+    }
+
+    private void OnPaletteItemActivated(object? sender, TappedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm) vm.RunPaletteCommand();
+    }
+
+    private void OnPaletteKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+        switch (e.Key)
+        {
+            case Key.Down: vm.MovePaletteSelection(1); e.Handled = true; break;
+            case Key.Up: vm.MovePaletteSelection(-1); e.Handled = true; break;
+            case Key.Enter: vm.RunPaletteCommand(); e.Handled = true; break;
+            case Key.Escape: vm.IsPaletteOpen = false; e.Handled = true; break;
+        }
     }
 
     /// <summary>Flips Dark/Light (Ctrl+Shift+T and the sidebar button).</summary>
@@ -28,10 +72,16 @@ public partial class MainWindow : Window
         base.OnKeyDown(e);
         if (e.Handled) return;
 
+        // Focus the palette's search box whenever it opens (handled in PropertyChanged below).
         // Esc closes the Connections flyout / dismisses a notification.
         if (e.Key == Key.Escape && DataContext is MainWindowViewModel vm)
         {
-            if (vm.IsConnectionsOpen)
+            if (vm.IsPaletteOpen)
+            {
+                vm.IsPaletteOpen = false;
+                e.Handled = true;
+            }
+            else if (vm.IsConnectionsOpen)
             {
                 vm.IsConnectionsOpen = false;
                 e.Handled = true;
