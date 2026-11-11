@@ -23,6 +23,7 @@
     <KeyBinding Gesture="Ctrl+D8" Command="{Binding NavigateCommand}" CommandParameter="qa" />
     <KeyBinding Gesture="Ctrl+D9" Command="{Binding NavigateCommand}" CommandParameter="brokers" />
     <KeyBinding Gesture="Ctrl+D0" Command="{Binding NavigateCommand}" CommandParameter="groups" />
+    <KeyBinding Gesture="Ctrl+Shift+L" Command="{Binding NavigateCommand}" CommandParameter="chain" />
     <KeyBinding Gesture="Ctrl+Shift+A" Command="{Binding NavigateCommand}" CommandParameter="admin" />
     <KeyBinding Gesture="Ctrl+K" Command="{Binding OpenPaletteCommand}" />
     <KeyBinding Gesture="Ctrl+Shift+K" Command="{Binding OpenConnectionsCommand}" />
