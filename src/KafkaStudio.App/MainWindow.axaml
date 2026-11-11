@@ -154,10 +154,10 @@
     <!-- Command palette (Ctrl+K): type to filter, Up/Down to move, Enter to run, Esc to close -->
     <Grid IsVisible="{Binding IsPaletteOpen}">
       <Border Background="{DynamicResource OverlayBrush}" PointerPressed="OnPaletteBackdropPressed" />
-      <Border Classes="palette" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,90,0,0" Width="560">
+      <Border x:Name="PaletteBox" Classes="palette" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,90,0,0" Width="560">
         <DockPanel>
           <TextBox x:Name="PaletteInput" DockPanel.Dock="Top" Classes="paletteInput" Watermark="Go to a screen or run an action…"
-                   Text="{Binding PaletteQuery}" KeyDown="OnPaletteKeyDown" />
+                   Text="{Binding PaletteQuery}" />
           <ListBox x:Name="PaletteList" Classes="paletteList" ItemsSource="{Binding PaletteResults}"
                    SelectedItem="{Binding SelectedPaletteCommand}" MaxHeight="340" DoubleTapped="OnPaletteItemActivated">
             <ListBox.ItemTemplate>

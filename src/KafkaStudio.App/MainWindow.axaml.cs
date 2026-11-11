@@ -18,6 +18,8 @@ public partial class MainWindow : Window
         ToggleThemeCommand = new RelayCommand(ToggleTheme);
         ActualThemeVariantChanged += (_, _) => UpdateThemeButton();
         UpdateThemeButton();
+        // Tunnel so Up/Down/Enter/Esc work whether focus is in the search box or in the results list.
+        PaletteBox.AddHandler(KeyDownEvent, OnPaletteKeyDown, RoutingStrategies.Tunnel);
         DataContextChanged += (_, _) => WireViewModel();
         WireViewModel();
     }
