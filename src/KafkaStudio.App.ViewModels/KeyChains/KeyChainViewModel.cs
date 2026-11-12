@@ -285,7 +285,7 @@ public sealed class KeyChainViewModel : ScanTabViewModel
             _verdictKind = result.Verdict;
             Verdict = result.VerdictText;
             LastRunComplete = result.Complete;
-            Status = Summary;
+            Status = result.Details; // the verdict banner already shows the verdict
             SelectedStep = (result.BrokenStep is { Found: true } b ? b : null) ?? Steps.FirstOrDefault(s => s.Found);
         }).ConfigureAwait(true);
     }
