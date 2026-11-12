@@ -140,6 +140,19 @@ public sealed record ChainResult
         }
     }
 
+    /// <summary>What <see cref="Summary"/> says beyond <see cref="VerdictText"/> (null when nothing): for a screen that
+    /// already shows the verdict on its own line.</summary>
+    public string? Details
+    {
+        get
+        {
+            var rest = Summary.StartsWith(VerdictText, StringComparison.Ordinal)
+                ? Summary[VerdictText.Length..] : Summary;
+            rest = rest.TrimStart('.', ';', ' ').Trim();
+            return rest.Length == 0 ? null : rest;
+        }
+    }
+
     public string Summary
     {
         get

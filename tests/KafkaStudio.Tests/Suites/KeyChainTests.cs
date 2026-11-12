@@ -115,6 +115,10 @@ public static class KeyChainTests
             var none = Run(("a", Array.Empty<double>()), ("b", Array.Empty<double>()));
             Assert.Equal(SequenceVerdict.NotFound, none.Verdict);
             Assert.Contains("Not found", none.VerdictText);
+            Assert.Null(none.Details, "nothing beyond the verdict to add");
+            Assert.True(missing.Details!.StartsWith("Found in 2 of 3", StringComparison.Ordinal), missing.Details);
+            Assert.False(missing.Details.Contains("Sequence broken"), "details do not repeat the verdict");
+            Assert.Null(ok.Details);
         });
 
         runner.Add("Key chain", "an unreadable topic is reported as such, not as missing", () =>
@@ -243,6 +247,7 @@ public static class KeyChainTests
             Assert.Equal(false, vm.LastRunComplete);
             Assert.Contains("Not found", vm.Summary ?? "");
             Assert.True(vm.IsNotFound);
+            Assert.Null(vm.Status, "the verdict is shown once, in the banner");
 
             // persisted: a new view model sees both chains
             Assert.Equal(2, new KeyChainViewModel(state).Chains.Count);
