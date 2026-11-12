@@ -43,8 +43,13 @@
           <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Text="Chain editor" Margin="0,12,0,6" />
           <TextBox DockPanel.Dock="Top" Text="{Binding ChainName}" Watermark="Chain name, e.g. Order flow" Margin="0,0,0,6" />
           <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
-            <ComboBox Grid.Column="0" HorizontalAlignment="Stretch" PlaceholderText="Add a topic…"
-                      ItemsSource="{Binding TopicNames}" SelectedItem="{Binding TopicToAdd}" />
+            <AutoCompleteBox x:Name="TopicBox" Grid.Column="0" HorizontalAlignment="Stretch" Watermark="Type to filter topics…"
+                             ItemsSource="{Binding TopicNames}" Text="{Binding TopicToAdd}" FilterMode="Contains"
+                             MinimumPrefixLength="0" GotFocus="OnTopicBoxGotFocus">
+              <AutoCompleteBox.KeyBindings>
+                <KeyBinding Gesture="Ctrl+Enter" Command="{Binding AddTopicCommand}" />
+              </AutoCompleteBox.KeyBindings>
+            </AutoCompleteBox>
             <Button Grid.Column="1" Content="Add" Command="{Binding AddTopicCommand}" Margin="6,0,0,0" />
           </Grid>
           <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">

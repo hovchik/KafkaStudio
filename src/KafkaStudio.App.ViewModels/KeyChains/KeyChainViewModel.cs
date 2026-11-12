@@ -133,6 +133,11 @@ public sealed class KeyChainViewModel : ScanTabViewModel
     {
         var topic = TopicToAdd?.Trim();
         if (string.IsNullOrEmpty(topic)) return;
+        if (TopicNames.Count > 0 && !TopicNames.Contains(topic))
+        {
+            Status = $"No topic named '{topic}' on this connection.";
+            return;
+        }
         if (ChainTopics.Contains(topic)) { Status = $"'{topic}' is already in the chain."; return; }
         ChainTopics.Add(topic);
         TopicToAdd = null;

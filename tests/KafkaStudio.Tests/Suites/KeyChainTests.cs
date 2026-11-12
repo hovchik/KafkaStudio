@@ -147,6 +147,10 @@ public static class KeyChainTests
             foreach (var t in new[] { "orders", "payments", "shipments" }) { vm.TopicToAdd = t; vm.AddTopicCommand.Execute(null); }
             vm.TopicToAdd = "orders"; vm.AddTopicCommand.Execute(null);
             Assert.Equal(3, vm.ChainTopics.Count, "no duplicate topics");
+            vm.TopicToAdd = "ord"; vm.AddTopicCommand.Execute(null);
+            Assert.Equal(3, vm.ChainTopics.Count, "a half-typed name is not a topic");
+            Assert.Contains("No topic named 'ord'", vm.Status ?? "");
+            vm.TopicToAdd = null;
             vm.MoveDownCommand.Execute("orders");
             Assert.Equal("payments,orders,shipments", string.Join(",", vm.ChainTopics));
             vm.MoveUpCommand.Execute("orders");
