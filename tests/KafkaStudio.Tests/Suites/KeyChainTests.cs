@@ -98,7 +98,13 @@ public static class KeyChainTests
             var result = await KeyChainAnalyzer.RunAsync(gateway, chain, "ORD-1", SearchRange.All);
             Assert.Equal("shipments,orders,payments", string.Join(",", result.Steps.Select(s => s.Topic)));
             Assert.True(result.Complete, result.Summary);
-            Assert.Equal(1, result.Steps[0].Count, "exact key match: ORD-1-other is not ORD-1");
+            Assert.Equal(2, result.Steps[0].Count, "matches any text: ORD-1-other contains ORD-1 too");
+            var viaValue = await KeyChainAnalyzer.RunAsync(gateway, chain, "\"k\":\"ORD-2", SearchRange.All);
+            Assert.Equal(2, viaValue.FoundCount, "text inside the value is found");
+            var lower = await KeyChainAnalyzer.RunAsync(gateway, chain, "ord-2", SearchRange.All);
+            Assert.Equal(2, lower.FoundCount, "case-insensitive by default");
+            var exactCase = await KeyChainAnalyzer.RunAsync(gateway, chain, "ord-2", SearchRange.All, caseSensitive: true);
+            Assert.Equal(0, exactCase.FoundCount);
             // chain order is shipments first, but it was produced last -> out of order
             Assert.True(result.Steps[1].SincePrevious!.Value < TimeSpan.Zero);
             Assert.True(result.Steps.Skip(1).Any(s => s.OutOfOrder));
@@ -116,6 +122,17 @@ public static class KeyChainTests
             var total = 0;
             await TopicScanner.ScanAsync(gateway, new[] { "orders", "payments", "shipments" }, SearchRange.All, (_, _) => { Interlocked.Increment(ref total); return ScanDecision.Continue; });
             Assert.Equal(6, total);
+        });
+
+        runner.Add("Key chain", "text matches the key, a header name or value, or the value", () =>
+        {
+            var m = new KafkaMessage { Topic = "t", Partition = 0, Offset = 0, Key = "ORD-9", Value = "shipped to Berlin", Timestamp = T0, Headers = new Dictionary<string, string> { ["source"] = "billing" } };
+            Assert.True(KeyChainAnalyzer.Matches(m, "ord-9"));
+            Assert.True(KeyChainAnalyzer.Matches(m, "berlin"));
+            Assert.True(KeyChainAnalyzer.Matches(m, "billing"));
+            Assert.True(KeyChainAnalyzer.Matches(m, "source"));
+            Assert.False(KeyChainAnalyzer.Matches(m, "paris"));
+            Assert.False(KeyChainAnalyzer.Matches(m, "berlin", StringComparison.Ordinal));
         });
 
         runner.Add("Key chain", "saved chains round-trip through the store", () =>
@@ -147,6 +164,10 @@ public static class KeyChainTests
             foreach (var t in new[] { "orders", "payments", "shipments" }) { vm.TopicToAdd = t; vm.AddTopicCommand.Execute(null); }
             vm.TopicToAdd = "orders"; vm.AddTopicCommand.Execute(null);
             Assert.Equal(3, vm.ChainTopics.Count, "no duplicate topics");
+            vm.TopicToAdd = "ord"; vm.AddTopicCommand.Execute(null);
+            Assert.Equal(3, vm.ChainTopics.Count, "a half-typed name is not a topic");
+            Assert.Contains("No topic named 'ord'", vm.Status ?? "");
+            vm.TopicToAdd = null;
             vm.MoveDownCommand.Execute("orders");
             Assert.Equal("payments,orders,shipments", string.Join(",", vm.ChainTopics));
             vm.MoveUpCommand.Execute("orders");

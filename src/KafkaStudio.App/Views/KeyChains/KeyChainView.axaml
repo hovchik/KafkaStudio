@@ -16,7 +16,7 @@
           <PathIcon Data="{StaticResource Icon.refresh}" />
         </Button>
         <TextBlock Grid.Column="2" Classes="muted" TextTrimming="CharacterEllipsis" Margin="0"
-                   Text="Follows a message key through a chain of topics. Read-only - nothing is produced." />
+                   Text="Follows a message key (or any text) through a chain of topics. Read-only - nothing is produced." />
       </Grid>
     </Border>
 
@@ -43,8 +43,13 @@
           <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Text="Chain editor" Margin="0,12,0,6" />
           <TextBox DockPanel.Dock="Top" Text="{Binding ChainName}" Watermark="Chain name, e.g. Order flow" Margin="0,0,0,6" />
           <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
-            <ComboBox Grid.Column="0" HorizontalAlignment="Stretch" PlaceholderText="Add a topic…"
-                      ItemsSource="{Binding TopicNames}" SelectedItem="{Binding TopicToAdd}" />
+            <AutoCompleteBox x:Name="TopicBox" Grid.Column="0" HorizontalAlignment="Stretch" Watermark="Type to filter topics…"
+                             ItemsSource="{Binding TopicNames}" Text="{Binding TopicToAdd}" FilterMode="Contains"
+                             MinimumPrefixLength="0" GotFocus="OnTopicBoxGotFocus">
+              <AutoCompleteBox.KeyBindings>
+                <KeyBinding Gesture="Ctrl+Enter" Command="{Binding AddTopicCommand}" />
+              </AutoCompleteBox.KeyBindings>
+            </AutoCompleteBox>
             <Button Grid.Column="1" Content="Add" Command="{Binding AddTopicCommand}" Margin="6,0,0,0" />
           </Grid>
           <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
@@ -81,16 +86,17 @@
       <!-- Analysis -->
       <Border Grid.Column="2" Classes="pane">
         <DockPanel>
-          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto,Auto">
-            <TextBox Grid.Column="0" Text="{Binding Key}" FontFamily="{DynamicResource MonoFont}" Watermark="Message key to look for, e.g. ORD-1042">
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto,Auto,Auto">
+            <TextBox Grid.Column="0" Text="{Binding Key}" FontFamily="{DynamicResource MonoFont}" Watermark="Text to look for - a key, id or any word in the message, e.g. ORD-1042">
               <TextBox.KeyBindings>
                 <KeyBinding Gesture="Enter" Command="{Binding AnalyzeCommand}" />
               </TextBox.KeyBindings>
             </TextBox>
             <ComboBox Grid.Column="1" Width="150" Margin="6,0,0,0" ItemsSource="{Binding RangeChoices}" SelectedItem="{Binding SelectedRange}"
                       ToolTip.Tip="How far back to read each topic" />
-            <Button Grid.Column="2" Classes="primary" Content="Start Analyze" Command="{Binding AnalyzeCommand}" Margin="6,0,0,0" />
-            <Button Grid.Column="3" Classes="ghost" Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" />
+            <CheckBox Grid.Column="2" Content="Match case" IsChecked="{Binding CaseSensitive}" Margin="6,0,0,0" />
+            <Button Grid.Column="3" Classes="primary" Content="Start Analyze" Command="{Binding AnalyzeCommand}" Margin="6,0,0,0" />
+            <Button Grid.Column="4" Classes="ghost" Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" />
           </Grid>
 
           <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="2,8,0,6">
@@ -121,7 +127,7 @@
             <StackPanel Classes="emptyState" IsVisible="{Binding !Steps.Count}">
               <PathIcon Data="{StaticResource Icon.chain}" />
               <TextBlock Classes="emptyTitle" Text="Nothing analysed yet" />
-              <TextBlock Classes="emptyHint" Text="Pick or build a chain, enter a key and press Start Analyze." />
+              <TextBlock Classes="emptyHint" Text="Pick or build a chain, enter text and press Start Analyze." />
             </StackPanel>
             <ListBox Classes="rows" ItemsSource="{Binding Steps}" SelectedItem="{Binding SelectedStep}">
               <ListBox.ItemTemplate>
@@ -136,7 +142,7 @@
                     </StackPanel>
                     <StackPanel Grid.Column="3" Orientation="Horizontal" Width="128" VerticalAlignment="Center">
                       <TextBlock Classes="muted mono" FontSize="11" Text="{Binding TimeText}" />
-                      <TextBlock Classes="muted" FontSize="11" Margin="4,0,0,0" Text="{Binding CountText}" ToolTip.Tip="Several messages with this key - the earliest is shown" />
+                      <TextBlock Classes="muted" FontSize="11" Margin="4,0,0,0" Text="{Binding CountText}" ToolTip.Tip="Several messages match - the earliest is shown" />
                     </StackPanel>
                     <TextBlock Grid.Column="4" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" Text="{Binding SincePreviousText}"
                                ToolTip.Tip="Negative: the key reached this topic before the previous one - out of the chain's order" />

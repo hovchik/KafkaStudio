@@ -113,7 +113,7 @@ public sealed record ChainResult
 }
 
 /// <summary>
-/// Checks, topic by topic along a <see cref="KeyChain"/>, whether a message with a given key exists and when it
+/// Checks, topic by topic along a <see cref="KeyChain"/>, whether a message containing some text (a key, an id, any word) exists and when it
 /// arrived. Strictly read-only: it only consumes (with throwaway consumer groups, see <see cref="TopicScanner"/>).
 /// </summary>
 public static class KeyChainAnalyzer
@@ -127,21 +127,36 @@ public static class KeyChainAnalyzer
         SearchRange range,
         CancellationToken cancellationToken = default,
         ScanProgress? progress = null,
-        DateTimeOffset? now = null)
+        DateTimeOffset? now = null,
+        bool caseSensitive = false)
     {
         var topics = chain.Topics.Distinct(StringComparer.Ordinal).ToList();
         var found = new ConcurrentDictionary<string, ConcurrentBag<KafkaMessage>>(StringComparer.Ordinal);
+        var comparison = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
         foreach (var t in topics) found[t] = new ConcurrentBag<KafkaMessage>();
 
         var scan = await TopicScanner.ScanAsync(gateway, topics, range, (topic, message) =>
         {
-            if (!string.Equals(message.Key, key, StringComparison.Ordinal)) return ScanDecision.Continue;
+            if (!Matches(message, key, comparison)) return ScanDecision.Continue;
             var bag = found[topic];
             bag.Add(message);
             return bag.Count >= MaxMatchesPerTopic ? ScanDecision.StopTopic : ScanDecision.Continue;
         }, cancellationToken, progress, now: now).ConfigureAwait(false);
 
         return Build(chain.Name, key, topics, found.ToDictionary(p => p.Key, p => (IReadOnlyCollection<KafkaMessage>)p.Value), scan);
+    }
+
+    /// <summary>True when <paramref name="text"/> appears anywhere in the message: its key, any header
+    /// (name or value) or its value.</summary>
+    public static bool Matches(KafkaMessage message, string text, StringComparison comparison = StringComparison.OrdinalIgnoreCase)
+    {
+        if (message.Key?.Contains(text, comparison) == true) return true;
+        if (message.Value?.Contains(text, comparison) == true) return true;
+        foreach (var header in message.Headers)
+        {
+            if (header.Key.Contains(text, comparison) || header.Value?.Contains(text, comparison) == true) return true;
+        }
+        return false;
     }
 
     /// <summary>Turns the per-topic matches into the ordered step results with their time deltas.</summary>
