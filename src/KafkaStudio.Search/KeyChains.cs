@@ -57,10 +57,15 @@ public sealed record ChainStepResult
     /// <summary>Time since the first topic of the chain that had the key.</summary>
     public TimeSpan? SinceStart { get; init; }
 
-    /// <summary>The key reached this topic earlier than the previous one - the pipeline order isn't what the chain says.</summary>
-    public bool OutOfOrder => SincePrevious is { } d && d < TimeSpan.Zero;
+    /// <summary>No message in this topic is at or after the message that satisfied the earlier steps - the pipeline
+    /// order isn't what the chain says.</summary>
+    public bool OutOfOrder { get; init; }
 
-    public KafkaMessage? First => Matches.Count > 0 ? Matches[0] : null;
+    /// <summary>The message that represents this step: the earliest match at or after the previous step's message
+    /// (so an early duplicate or retry in an upstream topic doesn't break the order), or the earliest match when none is.</summary>
+    public KafkaMessage? Chosen { get; init; }
+
+    public KafkaMessage? First => Chosen ?? (Matches.Count > 0 ? Matches[0] : null);
     public int Count => Matches.Count;
     public bool Found => Status == ChainStepStatus.Found;
     public bool IsMissing => Status == ChainStepStatus.Missing;
@@ -80,6 +85,16 @@ public sealed record ChainStepResult
     public string CountText => Matches.Count > 1 ? $"×{Matches.Count}" : "";
 }
 
+public enum SequenceVerdict
+{
+    /// <summary>The text was found in no topic at all.</summary>
+    NotFound,
+    /// <summary>Found in every topic, each no earlier than the one before it in the chain.</summary>
+    Ok,
+    /// <summary>A topic is missing, unreadable, or saw the text before an earlier topic of the chain did.</summary>
+    Broken
+}
+
 public sealed record ChainResult
 {
     public required string ChainName { get; init; }
@@ -96,17 +111,49 @@ public sealed record ChainResult
     /// <summary>First found topic to last found topic.</summary>
     public TimeSpan? EndToEnd => Steps.LastOrDefault(s => s.Found)?.SinceStart;
 
-    public string Summary
+    /// <summary>The first step that breaks the chain's order: a topic without the text, or one that saw it before the previous one.</summary>
+    public ChainStepResult? BrokenStep => FoundCount == 0 ? null : Steps.FirstOrDefault(s => !s.Found || s.OutOfOrder);
+
+    public SequenceVerdict Verdict => Steps.Count == 0 || FoundCount == 0 ? SequenceVerdict.NotFound
+        : BrokenStep is null ? SequenceVerdict.Ok : SequenceVerdict.Broken;
+
+    /// <summary>The one-line answer: "Sequence OK" / "Sequence broken at step 3 (shipments): ..." / "Not found".</summary>
+    public string VerdictText
     {
         get
         {
             if (Steps.Count == 0) return "The chain has no topics.";
-            if (FoundCount == 0) return $"'{Key}' was not found in any of the {Steps.Count} topic(s) of '{ChainName}'.{Scan.FailedSuffix}";
-            var text = Complete
-                ? $"'{Key}' went through all {Steps.Count} topic(s) of '{ChainName}'"
-                : $"'{Key}' is in {FoundCount} of {Steps.Count} topic(s) of '{ChainName}' - missing from {string.Join(", ", Steps.Where(s => !s.Found).Select(s => s.Topic))}";
-            if (EndToEnd is { } span && FoundCount > 1) text += $"; first to last took {TraceHop.FormatSpan(span)}";
-            if (Steps.Any(s => s.OutOfOrder)) text += "; some topics saw it out of order";
+            if (Verdict == SequenceVerdict.NotFound) return $"Not found - '{Key}' is in none of the {Steps.Count} topic(s) of '{ChainName}'.";
+            if (BrokenStep is not { } step)
+            {
+                var text = $"Sequence OK - '{Key}' reached all {Steps.Count} topic(s) of '{ChainName}' in order";
+                return Steps.Count > 1 && EndToEnd is { } span ? text + $", first to last in {TraceHop.FormatSpan(span)}" : text;
+            }
+            var before = step.Index > 0 ? $" after step {step.Index} ({Steps[step.Index - 1].Topic})" : "";
+            var why = step.Status switch
+            {
+                ChainStepStatus.Missing => $"not found in {step.Topic}",
+                ChainStepStatus.Unreadable => $"{step.Topic} could not be read",
+                _ => $"seen in {step.Topic} {TraceHop.FormatSpan(step.SincePrevious ?? TimeSpan.Zero).TrimStart('-')} before it reached {Steps.Take(step.Index).Last(s => s.Found).Topic}"
+            };
+            return $"Sequence broken at step {step.Index + 1} ({step.Topic}) - {why}{(step.Status == ChainStepStatus.Found ? "" : before)}";
+        }
+    }
+
+    public string Summary
+    {
+        get
+        {
+            if (Steps.Count == 0 || FoundCount == 0) return VerdictText + Scan.FailedSuffix;
+            var text = VerdictText;
+            if (Verdict == SequenceVerdict.Broken)
+            {
+                text += $". Found in {FoundCount} of {Steps.Count} topic(s)";
+                var missing = Steps.Where(s => !s.Found).Select(s => s.Topic).ToList();
+                if (missing.Count > 0) text += $"; missing from {string.Join(", ", missing)}";
+                if (EndToEnd is { } span && FoundCount > 1) text += $"; first to last took {TraceHop.FormatSpan(span)}";
+                if (Steps.Any(s => s.OutOfOrder)) text += "; some topics saw it out of order";
+            }
             return text + "." + Scan.FailedSuffix;
         }
     }
@@ -164,7 +211,7 @@ public static class KeyChainAnalyzer
         IReadOnlyDictionary<string, IReadOnlyCollection<KafkaMessage>> matches, ScanSummary scan)
     {
         var steps = new List<ChainStepResult>(topics.Count);
-        KafkaMessage? start = null, previous = null;
+        KafkaMessage? start = null, previous = null, watermark = null;
         for (var i = 0; i < topics.Count; i++)
         {
             var topic = topics[i];
@@ -182,15 +229,20 @@ public static class KeyChainAnalyzer
                 continue;
             }
 
-            var first = list[0];
+            // Earliest match at or after the last message that kept the sequence intact; if there is none this
+            // topic saw the text too early and the sequence is broken here.
+            var inOrder = watermark is null ? list[0] : list.FirstOrDefault(x => x.Timestamp >= watermark.Timestamp);
+            var chosen = inOrder ?? list[0];
             steps.Add(new ChainStepResult
             {
-                Index = i, Topic = topic, Status = ChainStepStatus.Found, Matches = list,
-                SincePrevious = previous is null ? null : first.Timestamp - previous.Timestamp,
-                SinceStart = start is null ? TimeSpan.Zero : first.Timestamp - start.Timestamp
+                Index = i, Topic = topic, Status = ChainStepStatus.Found, Matches = list, Chosen = chosen,
+                OutOfOrder = inOrder is null,
+                SincePrevious = previous is null ? null : chosen.Timestamp - previous.Timestamp,
+                SinceStart = start is null ? TimeSpan.Zero : chosen.Timestamp - start.Timestamp
             });
-            start ??= first;
-            previous = first;
+            start ??= chosen;
+            previous = chosen;
+            if (inOrder is not null) watermark = chosen;
         }
         return new ChainResult { ChainName = chainName, Key = key, Steps = steps, Scan = scan };
     }
