@@ -280,6 +280,10 @@ public static class KeyChainTests
             vm.ChainName = "Flow";
             foreach (var t in new[] { "orders", "payments" }) { vm.TopicToAdd = t; vm.AddTopicCommand.Execute(null); }
             vm.SaveChainCommand.Execute(null);
+            Assert.Equal("1 orders, 2 payments", string.Join(", ", vm.ChainRows.Select(r => $"{r.Number} {r.Topic}")));
+            vm.MoveDownCommand.Execute("orders");
+            Assert.Equal("1 payments, 2 orders", string.Join(", ", vm.ChainRows.Select(r => $"{r.Number} {r.Topic}")), "rows are renumbered after a move");
+            vm.MoveUpCommand.Execute("orders");
             Assert.Equal("orders → payments", vm.Chains[0].PathText);
             Assert.Equal("2 topics", vm.Chains[0].CountText);
 

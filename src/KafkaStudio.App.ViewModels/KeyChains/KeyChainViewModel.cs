@@ -7,6 +7,9 @@ using KafkaStudio.Search;
 
 namespace KafkaStudio.App.ViewModels.KeyChains;
 
+/// <summary>One numbered row of the chain editor's topic list.</summary>
+public sealed record ChainStepRow(int Number, string Topic);
+
 /// <summary>
 /// The Key Chain screen: define named chains (an ordered list of topics), then enter a message key and
 /// press Start Analyze - each topic of the chain is read, in order, for a message with that key, and the
@@ -20,6 +23,9 @@ public sealed class KeyChainViewModel : ScanTabViewModel
 
     /// <summary>The topics of the chain being edited, in order.</summary>
     public ObservableCollection<string> ChainTopics { get; } = new();
+
+    /// <summary>The topics of the chain being edited with their step numbers (what the editor list shows).</summary>
+    public ObservableCollection<ChainStepRow> ChainRows { get; } = new();
 
     public ObservableCollection<ChainStepResult> Steps { get; } = new();
 
@@ -79,6 +85,8 @@ public sealed class KeyChainViewModel : ScanTabViewModel
             AnalyzeCommand.RaiseCanExecuteChanged();
             SaveChainCommand.RaiseCanExecuteChanged();
             OnPropertyChanged(nameof(HasTopics));
+            ChainRows.Clear();
+            for (var i = 0; i < ChainTopics.Count; i++) ChainRows.Add(new ChainStepRow(i + 1, ChainTopics[i]));
         };
 
         foreach (var chain in KeyChainStore.Load()) Chains.Add(chain);
