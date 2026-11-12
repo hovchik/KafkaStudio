@@ -294,6 +294,45 @@ public static class KeyChainTests
             KeyChainStore.Save(Array.Empty<KeyChain>());
         });
 
+        runner.Add("Key chain", "the preview acts on the analysed connection and explains steps without a message", async () =>
+        {
+            KeyChainStore.Save(Array.Empty<KeyChain>());
+            var state = await Seeded();
+            state.AddDemoConnection("other");
+            var vm = new KeyChainViewModel(state);
+            await WaitUntil(() => vm.TopicNames.Count == 3);
+            vm.SelectedConnection = "local";
+            await WaitUntil(() => vm.TopicNames.Count == 3);
+            vm.ChainName = "c";
+            foreach (var t in new[] { "orders", "nope", "payments" }) { vm.TopicToAdd = t; vm.AddTopicCommand.Execute(null); }
+            Assert.Equal(2, vm.ChainTopics.Count, "unknown topic refused");
+            vm.TopicToAdd = "shipments"; vm.AddTopicCommand.Execute(null);
+            vm.Key = "ORD-2";
+            await vm.AnalyzeCommand.ExecuteAsync();
+
+            // switching the picker afterwards must not retarget Edit in Producer / Trace key
+            string? seen = null;
+            state.EditInProducerRequested += (connection, _) => seen = connection;
+            vm.SelectedConnection = "other";
+            vm.Actions.EditInProducerCommand.Execute(vm.Steps[0].First);
+            Assert.Equal("local", seen);
+
+            var missing = vm.Steps.Single(s => s.Topic == "shipments");
+            vm.SelectedStep = missing;
+            Assert.Null(vm.SelectedMessage);
+            Assert.Contains("No message containing 'ORD-2' in shipments", vm.StepNotice ?? "");
+            vm.SelectedStep = vm.Steps[0];
+            Assert.Null(vm.StepNotice);
+        });
+
+        runner.Add("Key chain", "an unreadable step shows its error", () =>
+        {
+            var result = KeyChainAnalyzer.Build("c", "K", new[] { "a", "b" },
+                new Dictionary<string, IReadOnlyCollection<KafkaMessage>> { ["a"] = new[] { Msg("a", "K", 0) } },
+                Scan(new() { ["b"] = "authorization failed" }));
+            Assert.Equal("authorization failed", result.Steps[1].Error);
+        });
+
         runner.Add("Key chain", "appears in the Data group of the sidebar", async () =>
         {
             var main = new MainWindowViewModel(await Seeded());

@@ -185,6 +185,8 @@
             <Button Grid.Column="2" Classes="small" Content="▶" ToolTip.Tip="Next matching message in this topic"
                     Command="{Binding NextMatchCommand}" IsVisible="{Binding HasSeveralMatches}" />
           </Grid>
+          <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,8" Foreground="{DynamicResource WarningBrush}"
+                     Text="{Binding StepNotice}" IsVisible="{Binding StepNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           <shared:MessageDetailView Message="{Binding SelectedMessage}" Actions="{Binding Actions}" />
         </DockPanel>
       </Border>

@@ -68,7 +68,7 @@ public sealed class KeyChainViewModel : ScanTabViewModel
         DuplicateChainCommand = new RelayCommand(DuplicateChain, () => SelectedChain is not null);
         PreviousMatchCommand = new RelayCommand(() => StepMatch(-1), () => _shown > 0);
         NextMatchCommand = new RelayCommand(() => StepMatch(1), () => SelectedStep is { } st && _shown < st.Count - 1);
-        Actions = new MessageActions(state, () => _scope.SelectedConnection, status => Status = status);
+        Actions = new MessageActions(state, () => _analysisConnection ?? _scope.SelectedConnection, status => Status = status);
         AddTopicCommand = new RelayCommand(AddTopic, () => !string.IsNullOrWhiteSpace(TopicToAdd));
         RemoveTopicCommand = new RelayCommand<string>(t => { if (t is not null) ChainTopics.Remove(t); });
         MoveUpCommand = new RelayCommand<string>(t => Move(t, -1));
@@ -262,6 +262,20 @@ public sealed class KeyChainViewModel : ScanTabViewModel
 
     private int _shown;
 
+    // The connection the shown results were read from; the picker may point elsewhere by now, and Edit in
+    // Producer / Find similar / Trace key must act on the cluster the message came from.
+    private string? _analysisConnection;
+
+    /// <summary>Why the selected step has no message to preview ("couldn't be read: ...", "no message containing ...").</summary>
+    public string? StepNotice => SelectedStep switch
+    {
+        { Status: ChainStepStatus.Unreadable } s => $"{s.Topic} could not be read: {s.Error}",
+        { Status: ChainStepStatus.Missing } s => $"No message containing '{_analysisKey}' in {s.Topic}.",
+        _ => null
+    };
+
+    private string? _analysisKey;
+
     /// <summary>The message in the preview: the selected step's chosen message, or another match of the same topic (Prev/Next).</summary>
     public KafkaMessage? SelectedMessage =>
         SelectedStep is { Found: true } step ? step.Matches.ElementAtOrDefault(_shown) ?? step.First : null;
@@ -284,6 +298,7 @@ public sealed class KeyChainViewModel : ScanTabViewModel
     private void RaiseMatchChanged()
     {
         OnPropertyChanged(nameof(SelectedMessage));
+        OnPropertyChanged(nameof(StepNotice));
         OnPropertyChanged(nameof(HasSeveralMatches));
         OnPropertyChanged(nameof(MatchPosition));
         PreviousMatchCommand?.RaiseCanExecuteChanged();
@@ -319,6 +334,8 @@ public sealed class KeyChainViewModel : ScanTabViewModel
         var range = SelectedRange.Value is { } last ? SearchRange.LastPeriod(last) : SearchRange.All;
 
         ClearResult();
+        _analysisConnection = SelectedConnection;
+        _analysisKey = key;
         Status = $"Looking for '{key}' in {chain.Topics.Count} topic(s)…";
         await RunScanAsync(chain.Topics.Count, async (token, progress) =>
         {
