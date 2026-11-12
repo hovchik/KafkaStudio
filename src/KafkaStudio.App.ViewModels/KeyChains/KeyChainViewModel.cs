@@ -199,6 +199,9 @@ public sealed class KeyChainViewModel : ScanTabViewModel
         set { if (SetProperty(ref _key, value)) AnalyzeCommand?.RaiseCanExecuteChanged(); }
     }
 
+    private bool _caseSensitive;
+    public bool CaseSensitive { get => _caseSensitive; set => SetProperty(ref _caseSensitive, value); }
+
     private Choice<TimeSpan?> _selectedRange;
     public Choice<TimeSpan?> SelectedRange
     {
@@ -227,9 +230,9 @@ public sealed class KeyChainViewModel : ScanTabViewModel
         {
             if (SelectedStep is not { } step) return null;
             if (step.First is not { } m)
-                return step.Status == ChainStepStatus.Unreadable ? $"{step.Topic}: couldn't be read - {step.Error}" : $"{step.Topic}: no message with key '{Key?.Trim()}'.";
+                return step.Status == ChainStepStatus.Unreadable ? $"{step.Topic}: couldn't be read - {step.Error}" : $"{step.Topic}: no message containing '{Key?.Trim()}'.";
             var header = $"{m.Topic}  #{m.Partition}@{m.Offset}  {m.Timestamp.ToLocalTime():yyyy-MM-dd HH:mm:ss.fff}" +
-                         (step.Count > 1 ? $"   (+{step.Count - 1} more with this key)" : "");
+                         (step.Count > 1 ? $"   (+{step.Count - 1} more)" : "");
             var headers = m.Headers.Count == 0 ? "" : "\n" + string.Join("\n", m.Headers.Select(h => $"{h.Key}: {h.Value}"));
             return header + headers + "\n\n" + (m.IsTombstone ? "(tombstone)" : m.PrettyValue);
         }
@@ -250,7 +253,7 @@ public sealed class KeyChainViewModel : ScanTabViewModel
     public async Task AnalyzeAsync()
     {
         var key = Key?.Trim();
-        if (string.IsNullOrEmpty(key)) { Status = "Enter the message key to look for."; return; }
+        if (string.IsNullOrEmpty(key)) { Status = "Enter the text to look for (a key, an id, any word in the message)."; return; }
         if (ChainTopics.Count == 0) { Status = "Add at least one topic to the chain."; return; }
         if (SelectedConnection is null || !State.Connections.TryGetValue(SelectedConnection, out var gateway))
         {
@@ -262,10 +265,10 @@ public sealed class KeyChainViewModel : ScanTabViewModel
         var range = SelectedRange.Value is { } last ? SearchRange.LastPeriod(last) : SearchRange.All;
 
         ClearResult();
-        Status = $"Looking for key '{key}' in {chain.Topics.Count} topic(s)…";
+        Status = $"Looking for '{key}' in {chain.Topics.Count} topic(s)…";
         await RunScanAsync(chain.Topics.Count, async (token, progress) =>
         {
-            var result = await Task.Run(() => KeyChainAnalyzer.RunAsync(gateway, chain, key, range, token, progress), token).ConfigureAwait(true);
+            var result = await Task.Run(() => KeyChainAnalyzer.RunAsync(gateway, chain, key, range, token, progress, caseSensitive: CaseSensitive), token).ConfigureAwait(true);
             foreach (var step in result.Steps) Steps.Add(step);
             Summary = result.Summary;
             LastRunComplete = result.Complete;
