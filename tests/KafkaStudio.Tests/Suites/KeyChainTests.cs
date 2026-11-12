@@ -238,7 +238,23 @@ public static class KeyChainTests
             Assert.True(vm.Steps.All(s => s.Found));
             Assert.True(vm.IsSequenceOk, vm.Verdict ?? "");
             Assert.Equal(vm.Steps[0], vm.SelectedStep);
-            Assert.Contains("ORD-1", vm.Detail ?? "");
+            Assert.Equal("ORD-1", vm.SelectedMessage?.Key);
+            Assert.False(vm.HasSeveralMatches);
+
+            // several matches in one topic can be paged through in the preview
+            vm.SelectedChain = vm.Chains[0];
+            vm.Key = "ORD-";
+            await vm.AnalyzeCommand.ExecuteAsync();
+            vm.SelectedStep = vm.Steps[0];
+            Assert.True(vm.HasSeveralMatches, "orders holds ORD-1 and ORD-2");
+            var firstShown = vm.SelectedMessage!.Key;
+            Assert.Contains("of 2 matching messages in orders", vm.MatchPosition ?? "");
+            vm.NextMatchCommand.Execute(null);
+            Assert.NotEqual(firstShown, vm.SelectedMessage!.Key);
+            Assert.False(vm.NextMatchCommand.CanExecute(null));
+            vm.PreviousMatchCommand.Execute(null);
+            Assert.Equal(firstShown, vm.SelectedMessage!.Key);
+            vm.Key = "ORD-1";
 
             vm.SelectedChain = vm.Chains[1];
             Assert.Equal(0, vm.Steps.Count, "switching chains clears the previous result");
@@ -255,6 +271,66 @@ public static class KeyChainTests
             Assert.Equal(1, vm.Chains.Count);
             Assert.Equal(1, KeyChainStore.Load().Count);
             KeyChainStore.Save(Array.Empty<KeyChain>());
+        });
+
+        runner.Add("Key chain", "chains list their topic path, and can be duplicated without clobbering names", async () =>
+        {
+            KeyChainStore.Save(Array.Empty<KeyChain>());
+            var vm = new KeyChainViewModel(await Seeded());
+            vm.ChainName = "Flow";
+            foreach (var t in new[] { "orders", "payments" }) { vm.TopicToAdd = t; vm.AddTopicCommand.Execute(null); }
+            vm.SaveChainCommand.Execute(null);
+            Assert.Equal("orders → payments", vm.Chains[0].PathText);
+            Assert.Equal("2 topics", vm.Chains[0].CountText);
+
+            vm.DuplicateChainCommand.Execute(null);
+            vm.DuplicateChainCommand.Execute(null);
+            Assert.Equal("Flow,Flow (copy),Flow (copy 2)", string.Join(",", vm.Chains.Select(c => c.Name)));
+            Assert.Equal("Flow (copy 2)", vm.ChainName);
+            Assert.Equal("orders → payments", vm.Chains[2].PathText);
+
+            // the derived text is not written to the file
+            Assert.False(System.IO.File.ReadAllText(KafkaStudio.Core.Persistence.JsonFileStore.PathFor("key-chains.json")).Contains("PathText"));
+            KeyChainStore.Save(Array.Empty<KeyChain>());
+        });
+
+        runner.Add("Key chain", "the preview acts on the analysed connection and explains steps without a message", async () =>
+        {
+            KeyChainStore.Save(Array.Empty<KeyChain>());
+            var state = await Seeded();
+            state.AddDemoConnection("other");
+            var vm = new KeyChainViewModel(state);
+            await WaitUntil(() => vm.TopicNames.Count == 3);
+            vm.SelectedConnection = "local";
+            await WaitUntil(() => vm.TopicNames.Count == 3);
+            vm.ChainName = "c";
+            foreach (var t in new[] { "orders", "nope", "payments" }) { vm.TopicToAdd = t; vm.AddTopicCommand.Execute(null); }
+            Assert.Equal(2, vm.ChainTopics.Count, "unknown topic refused");
+            vm.TopicToAdd = "shipments"; vm.AddTopicCommand.Execute(null);
+            vm.Key = "ORD-2";
+            await vm.AnalyzeCommand.ExecuteAsync();
+
+            // switching the picker afterwards must not retarget Edit in Producer / Trace key
+            string? seen = null;
+            state.EditInProducerRequested += (connection, _) => seen = connection;
+            vm.SelectedConnection = "other";
+            vm.Actions.EditInProducerCommand.Execute(vm.Steps[0].First);
+            Assert.Equal("local", seen);
+
+            var missing = vm.Steps.Single(s => s.Topic == "shipments");
+            vm.SelectedStep = missing;
+            Assert.Null(vm.SelectedMessage);
+            Assert.Contains("No message containing 'ORD-2' in shipments", vm.StepNotice ?? "");
+            vm.SelectedStep = vm.Steps[0];
+            Assert.Null(vm.StepNotice);
+        });
+
+        runner.Add("Key chain", "an unreadable step shows its error", () =>
+        {
+            var result = KeyChainAnalyzer.Build("c", "K", new[] { "a", "b" },
+                new Dictionary<string, IReadOnlyCollection<KafkaMessage>> { ["a"] = new[] { Msg("a", "K", 0) } },
+                Scan(new() { ["b"] = "authorization failed" }));
+            Assert.Equal("authorization failed", result.Steps[1].Error);
         });
 
         runner.Add("Key chain", "appears in the Data group of the sidebar", async () =>

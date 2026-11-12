@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using KafkaStudio.App.ViewModels.DataSearch;
 using KafkaStudio.App.ViewModels.Mvvm;
 using KafkaStudio.App.ViewModels.Shared;
+using KafkaStudio.Core.Messaging;
 using KafkaStudio.Search;
 
 namespace KafkaStudio.App.ViewModels.KeyChains;
@@ -38,6 +39,8 @@ public sealed class KeyChainViewModel : ScanTabViewModel
     public RelayCommand NewChainCommand { get; }
     public RelayCommand SaveChainCommand { get; }
     public RelayCommand DeleteChainCommand { get; }
+    public RelayCommand DuplicateChainCommand { get; }
+    public MessageActions Actions { get; }
     public RelayCommand AddTopicCommand { get; }
     public RelayCommand<string> RemoveTopicCommand { get; }
     public RelayCommand<string> MoveUpCommand { get; }
@@ -62,6 +65,10 @@ public sealed class KeyChainViewModel : ScanTabViewModel
         NewChainCommand = new RelayCommand(NewChain);
         SaveChainCommand = new RelayCommand(SaveChain, () => !string.IsNullOrWhiteSpace(ChainName) && ChainTopics.Count > 0);
         DeleteChainCommand = new RelayCommand(DeleteChain, () => SelectedChain is not null);
+        DuplicateChainCommand = new RelayCommand(DuplicateChain, () => SelectedChain is not null);
+        PreviousMatchCommand = new RelayCommand(() => StepMatch(-1), () => _shown > 0);
+        NextMatchCommand = new RelayCommand(() => StepMatch(1), () => SelectedStep is { } st && _shown < st.Count - 1);
+        Actions = new MessageActions(state, () => _analysisConnection ?? _scope.SelectedConnection, status => Status = status);
         AddTopicCommand = new RelayCommand(AddTopic, () => !string.IsNullOrWhiteSpace(TopicToAdd));
         RemoveTopicCommand = new RelayCommand<string>(t => { if (t is not null) ChainTopics.Remove(t); });
         MoveUpCommand = new RelayCommand<string>(t => Move(t, -1));
@@ -96,6 +103,7 @@ public sealed class KeyChainViewModel : ScanTabViewModel
         {
             if (!SetProperty(ref _selectedChain, value)) return;
             DeleteChainCommand?.RaiseCanExecuteChanged();
+            DuplicateChainCommand?.RaiseCanExecuteChanged();
             if (value is null) return;
             ChainName = value.Name;
             ChainTopics.Clear();
@@ -123,6 +131,7 @@ public sealed class KeyChainViewModel : ScanTabViewModel
         _selectedChain = null;
         OnPropertyChanged(nameof(SelectedChain));
         DeleteChainCommand.RaiseCanExecuteChanged();
+        DuplicateChainCommand.RaiseCanExecuteChanged();
         ChainName = "";
         ChainTopics.Clear();
         ClearResult();
@@ -171,7 +180,21 @@ public sealed class KeyChainViewModel : ScanTabViewModel
         _selectedChain = chain;
         OnPropertyChanged(nameof(SelectedChain));
         DeleteChainCommand.RaiseCanExecuteChanged();
+        DuplicateChainCommand.RaiseCanExecuteChanged();
         Persist($"Saved chain '{name}'.");
+    }
+
+    private void DuplicateChain()
+    {
+        if (SelectedChain is not { } chain) return;
+        // Duplicating a copy numbers it ("Flow (copy 2)") instead of piling up suffixes.
+        var baseName = System.Text.RegularExpressions.Regex.Replace(chain.Name, @" \(copy( \d+)?\)$", "");
+        var name = $"{baseName} (copy)";
+        for (var n = 2; Chains.Any(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)); n++) name = $"{baseName} (copy {n})";
+        var copy = new KeyChain { Name = name, Topics = chain.Topics.ToList() };
+        Chains.Add(copy);
+        SelectedChain = copy;
+        Persist($"Duplicated '{chain.Name}' as '{name}' - rename it and save to keep your edits.");
     }
 
     private void DeleteChain()
@@ -229,22 +252,57 @@ public sealed class KeyChainViewModel : ScanTabViewModel
     public ChainStepResult? SelectedStep
     {
         get => _selectedStep;
-        set { if (SetProperty(ref _selectedStep, value)) OnPropertyChanged(nameof(Detail)); }
+        set
+        {
+            if (!SetProperty(ref _selectedStep, value)) return;
+            _shown = value is { Found: true } ? Math.Max(0, value.Matches.ToList().IndexOf(value.First!)) : 0;
+            RaiseMatchChanged();
+        }
     }
 
-    /// <summary>The first matching message of the selected step, spelled out.</summary>
-    public string? Detail
+    private int _shown;
+
+    // The connection the shown results were read from; the picker may point elsewhere by now, and Edit in
+    // Producer / Find similar / Trace key must act on the cluster the message came from.
+    private string? _analysisConnection;
+
+    /// <summary>Why the selected step has no message to preview ("couldn't be read: ...", "no message containing ...").</summary>
+    public string? StepNotice => SelectedStep switch
     {
-        get
-        {
-            if (SelectedStep is not { } step) return null;
-            if (step.First is not { } m)
-                return step.Status == ChainStepStatus.Unreadable ? $"{step.Topic}: couldn't be read - {step.Error}" : $"{step.Topic}: no message containing '{Key?.Trim()}'.";
-            var header = $"{m.Topic}  #{m.Partition}@{m.Offset}  {m.Timestamp.ToLocalTime():yyyy-MM-dd HH:mm:ss.fff}" +
-                         (step.Count > 1 ? $"   (+{step.Count - 1} more)" : "");
-            var headers = m.Headers.Count == 0 ? "" : "\n" + string.Join("\n", m.Headers.Select(h => $"{h.Key}: {h.Value}"));
-            return header + headers + "\n\n" + (m.IsTombstone ? "(tombstone)" : m.PrettyValue);
-        }
+        { Status: ChainStepStatus.Unreadable } s => $"{s.Topic} could not be read: {s.Error}",
+        { Status: ChainStepStatus.Missing } s => $"No message containing '{_analysisKey}' in {s.Topic}.",
+        _ => null
+    };
+
+    private string? _analysisKey;
+
+    /// <summary>The message in the preview: the selected step's chosen message, or another match of the same topic (Prev/Next).</summary>
+    public KafkaMessage? SelectedMessage =>
+        SelectedStep is { Found: true } step ? step.Matches.ElementAtOrDefault(_shown) ?? step.First : null;
+
+    public bool HasSeveralMatches => SelectedStep is { Count: > 1 };
+
+    /// <summary>"2 of 3 matching messages in payments".</summary>
+    public string? MatchPosition => SelectedStep is { Count: > 1 } step ? $"{_shown + 1} of {step.Count} matching messages in {step.Topic}" : null;
+
+    public RelayCommand PreviousMatchCommand { get; }
+    public RelayCommand NextMatchCommand { get; }
+
+    private void StepMatch(int delta)
+    {
+        if (SelectedStep is not { } step) return;
+        _shown = Math.Clamp(_shown + delta, 0, Math.Max(0, step.Count - 1));
+        RaiseMatchChanged();
+    }
+
+    private void RaiseMatchChanged()
+    {
+        OnPropertyChanged(nameof(SelectedMessage));
+        OnPropertyChanged(nameof(StepNotice));
+        OnPropertyChanged(nameof(HasSeveralMatches));
+        OnPropertyChanged(nameof(MatchPosition));
+        PreviousMatchCommand?.RaiseCanExecuteChanged();
+        NextMatchCommand?.RaiseCanExecuteChanged();
     }
 
     private bool CanAnalyze() => !IsRunning && !string.IsNullOrWhiteSpace(Key) && ChainTopics.Count > 0 && SelectedConnection is not null;
@@ -276,6 +334,8 @@ public sealed class KeyChainViewModel : ScanTabViewModel
         var range = SelectedRange.Value is { } last ? SearchRange.LastPeriod(last) : SearchRange.All;
 
         ClearResult();
+        _analysisConnection = SelectedConnection;
+        _analysisKey = key;
         Status = $"Looking for '{key}' in {chain.Topics.Count} topic(s)…";
         await RunScanAsync(chain.Topics.Count, async (token, progress) =>
         {

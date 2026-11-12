@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:KafkaStudio.App.ViewModels.KeyChains"
              xmlns:search="using:KafkaStudio.Search"
+             xmlns:shared="using:KafkaStudio.App.Views.Shared"
              x:Class="KafkaStudio.App.Views.KeyChains.KeyChainView"
              x:DataType="vm:KeyChainViewModel"
              x:CompileBindings="True">
@@ -20,7 +21,7 @@
       </Grid>
     </Border>
 
-    <Grid Grid.Row="1" ColumnDefinitions="340,8,*" Margin="0,8,0,0">
+    <Grid Grid.Row="1" ColumnDefinitions="340,8,*,8,420" Margin="0,8,0,0">
 
       <!-- Chains: pick one, or build a new one -->
       <Border Grid.Column="0" Classes="pane">
@@ -29,16 +30,24 @@
             <TextBlock Grid.Column="0" Classes="paneTitle" Text="Chains" VerticalAlignment="Center" />
             <Button Grid.Column="1" Classes="small" Content="New chain" Command="{Binding NewChainCommand}" />
           </Grid>
-          <ListBox DockPanel.Dock="Top" Classes="rows" MaxHeight="120" ItemsSource="{Binding Chains}" SelectedItem="{Binding SelectedChain}">
-            <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="search:KeyChain">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
-                  <TextBlock Classes="muted" Text="{Binding Topics.Count, StringFormat='{}{0} topics'}" />
-                </StackPanel>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
+          <Panel DockPanel.Dock="Top">
+            <TextBlock Classes="hint" Margin="2,2,0,4" Text="No saved chains yet - build one below and press Save chain."
+                       IsVisible="{Binding !Chains.Count}" TextWrapping="Wrap" />
+            <ListBox Classes="rows" MaxHeight="210" ItemsSource="{Binding Chains}" SelectedItem="{Binding SelectedChain}">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="search:KeyChain">
+                  <StackPanel Spacing="2" Margin="0,2">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Grid.Column="1" Classes="muted" FontSize="11" Text="{Binding CountText}" />
+                    </Grid>
+                    <TextBlock Classes="muted mono" FontSize="11" Text="{Binding PathText}" TextWrapping="Wrap" MaxLines="3"
+                               TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding PathText}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Panel>
 
           <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Text="Chain editor" Margin="0,12,0,6" />
           <TextBox DockPanel.Dock="Top" Text="{Binding ChainName}" Watermark="Chain name, e.g. Order flow" Margin="0,0,0,6" />
@@ -54,6 +63,7 @@
           </Grid>
           <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
             <Button Classes="primary" Content="Save chain" Command="{Binding SaveChainCommand}" />
+            <Button Content="Duplicate" ToolTip.Tip="Save a copy of the selected chain under a new name" Command="{Binding DuplicateChainCommand}" />
             <Button Classes="danger" Content="Delete" Command="{Binding DeleteChainCommand}" />
           </StackPanel>
           <Panel>
@@ -126,13 +136,6 @@
             </Grid>
           </Border>
 
-          <Border DockPanel.Dock="Bottom" Classes="code" MinHeight="90" MaxHeight="200" Margin="0,8,0,0"
-                  IsVisible="{Binding Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-            <ScrollViewer>
-              <SelectableTextBlock Classes="mono" TextWrapping="Wrap" Text="{Binding Detail}" />
-            </ScrollViewer>
-          </Border>
-
           <Panel>
             <StackPanel Classes="emptyState" IsVisible="{Binding !Steps.Count}">
               <PathIcon Data="{StaticResource Icon.chain}" />
@@ -163,6 +166,28 @@
               </ListBox.ItemTemplate>
             </ListBox>
           </Panel>
+        </DockPanel>
+      </Border>
+
+      <GridSplitter Grid.Column="3" ResizeDirection="Columns" Width="8" />
+
+      <!-- Preview of the selected topic's matching message (same inspector as Find Data / Consume) -->
+      <Border Grid.Column="4" Classes="pane">
+        <DockPanel>
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,8">
+            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+              <TextBlock Classes="paneTitle" Text="Message" />
+              <TextBlock Classes="muted" FontSize="11" Text="{Binding MatchPosition}"
+                         IsVisible="{Binding HasSeveralMatches}" />
+            </StackPanel>
+            <Button Grid.Column="1" Classes="small" Content="◀" ToolTip.Tip="Previous matching message in this topic"
+                    Command="{Binding PreviousMatchCommand}" IsVisible="{Binding HasSeveralMatches}" Margin="0,0,4,0" />
+            <Button Grid.Column="2" Classes="small" Content="▶" ToolTip.Tip="Next matching message in this topic"
+                    Command="{Binding NextMatchCommand}" IsVisible="{Binding HasSeveralMatches}" />
+          </Grid>
+          <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,8" Foreground="{DynamicResource WarningBrush}"
+                     Text="{Binding StepNotice}" IsVisible="{Binding StepNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <shared:MessageDetailView Message="{Binding SelectedMessage}" Actions="{Binding Actions}" />
         </DockPanel>
       </Border>
     </Grid>
