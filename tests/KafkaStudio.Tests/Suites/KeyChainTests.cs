@@ -80,6 +80,43 @@ public static class KeyChainTests
             Assert.Contains("out of order", result.Summary);
         });
 
+        runner.Add("Key chain", "the verdict says whether the topics saw the text in exactly the chain's order", () =>
+        {
+            ChainResult Run(params (string topic, double[] at)[] data) => KeyChainAnalyzer.Build("flow", "K",
+                data.Select(d => d.topic).ToList(),
+                data.ToDictionary(d => d.topic, d => (IReadOnlyCollection<KafkaMessage>)d.at.Select((t, i) => Msg(d.topic, "K", t, i)).ToList()), Scan());
+
+            var ok = Run(("a", new[] { 0.0 }), ("b", new[] { 1.0 }), ("c", new[] { 3.0 }));
+            Assert.Equal(SequenceVerdict.Ok, ok.Verdict);
+            Assert.Null(ok.BrokenStep);
+            Assert.Contains("Sequence OK", ok.VerdictText);
+
+            var sameInstant = Run(("a", new[] { 1.0 }), ("b", new[] { 1.0 }));
+            Assert.Equal(SequenceVerdict.Ok, sameInstant.Verdict, "equal timestamps keep the order");
+
+            var wrong = Run(("a", new[] { 0.0 }), ("b", new[] { 5.0 }), ("c", new[] { 2.0 }), ("d", new[] { 9.0 }));
+            Assert.Equal(SequenceVerdict.Broken, wrong.Verdict);
+            Assert.Equal("c", wrong.BrokenStep!.Topic);
+            Assert.Contains("Sequence broken at step 3 (c)", wrong.VerdictText);
+            Assert.Contains("before it reached b", wrong.VerdictText);
+
+            // an early duplicate upstream does not break the order: the later copy is the one that counts
+            var retry = Run(("a", new[] { 0.0, 4.0 }), ("b", new[] { 5.0 }));
+            Assert.Equal(SequenceVerdict.Ok, retry.Verdict);
+            var late = Run(("a", new[] { 0.0, 6.0 }), ("b", new[] { 5.0 }), ("c", new[] { 7.0 }));
+            Assert.Equal(SequenceVerdict.Ok, late.Verdict, "a (0) -> b (5) -> c (7) is a valid path despite a retry at 6");
+            Assert.Equal(5.0, (late.Steps[1].First!.Timestamp - T0).TotalSeconds);
+
+            var missing = Run(("a", new[] { 0.0 }), ("b", Array.Empty<double>()), ("c", new[] { 3.0 }));
+            Assert.Equal(SequenceVerdict.Broken, missing.Verdict, "a missing step breaks the sequence");
+            Assert.Equal("b", missing.BrokenStep!.Topic);
+            Assert.Contains("Sequence broken at step 2 (b) - not found in b", missing.VerdictText);
+
+            var none = Run(("a", Array.Empty<double>()), ("b", Array.Empty<double>()));
+            Assert.Equal(SequenceVerdict.NotFound, none.Verdict);
+            Assert.Contains("Not found", none.VerdictText);
+        });
+
         runner.Add("Key chain", "an unreadable topic is reported as such, not as missing", () =>
         {
             var result = KeyChainAnalyzer.Build("c", "K", new[] { "a", "b" },
@@ -108,6 +145,7 @@ public static class KeyChainTests
             // chain order is shipments first, but it was produced last -> out of order
             Assert.True(result.Steps[1].SincePrevious!.Value < TimeSpan.Zero);
             Assert.True(result.Steps.Skip(1).Any(s => s.OutOfOrder));
+            Assert.Equal(SequenceVerdict.Broken, result.Verdict, "shipments was produced last but is first in this chain");
 
             var partial = await KeyChainAnalyzer.RunAsync(gateway, new KeyChain { Name = "f", Topics = { "orders", "payments", "shipments" } }, "ORD-2", SearchRange.All);
             Assert.Equal(2, partial.FoundCount);
@@ -116,7 +154,7 @@ public static class KeyChainTests
 
             var none = await KeyChainAnalyzer.RunAsync(gateway, chain, "nope", SearchRange.All);
             Assert.Equal(0, none.FoundCount);
-            Assert.Contains("not found in any", none.Summary);
+            Assert.Contains("Not found", none.Summary);
 
             // nothing was produced by the analysis
             var total = 0;
@@ -194,6 +232,7 @@ public static class KeyChainTests
             Assert.Equal(3, vm.Steps.Count);
             Assert.Equal(true, vm.LastRunComplete, vm.Status ?? "");
             Assert.True(vm.Steps.All(s => s.Found));
+            Assert.True(vm.IsSequenceOk, vm.Verdict ?? "");
             Assert.Equal(vm.Steps[0], vm.SelectedStep);
             Assert.Contains("ORD-1", vm.Detail ?? "");
 
@@ -202,7 +241,8 @@ public static class KeyChainTests
             vm.Key = "ORD-404";
             await vm.AnalyzeCommand.ExecuteAsync();
             Assert.Equal(false, vm.LastRunComplete);
-            Assert.Contains("not found in any", vm.Summary ?? "");
+            Assert.Contains("Not found", vm.Summary ?? "");
+            Assert.True(vm.IsNotFound);
 
             // persisted: a new view model sees both chains
             Assert.Equal(2, new KeyChainViewModel(state).Chains.Count);

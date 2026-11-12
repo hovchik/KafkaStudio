@@ -212,6 +212,15 @@ public sealed class KeyChainViewModel : ScanTabViewModel
     private string? _summary;
     public string? Summary { get => _summary; private set => SetProperty(ref _summary, value); }
 
+    private string? _verdict;
+    /// <summary>"Sequence OK ..." / "Sequence broken at step N (topic) ..." / "Not found ..." for the last run.</summary>
+    public string? Verdict { get => _verdict; private set { if (SetProperty(ref _verdict, value)) { OnPropertyChanged(nameof(IsSequenceOk)); OnPropertyChanged(nameof(IsSequenceBroken)); OnPropertyChanged(nameof(IsNotFound)); } } }
+
+    private SequenceVerdict? _verdictKind;
+    public bool IsSequenceOk => _verdictKind == SequenceVerdict.Ok;
+    public bool IsSequenceBroken => _verdictKind == SequenceVerdict.Broken;
+    public bool IsNotFound => _verdictKind == SequenceVerdict.NotFound;
+
     private bool? _complete;
     /// <summary>True when the key was found in every topic, false when something is missing, null before a run.</summary>
     public bool? LastRunComplete { get => _complete; private set => SetProperty(ref _complete, value); }
@@ -247,6 +256,8 @@ public sealed class KeyChainViewModel : ScanTabViewModel
         Steps.Clear();
         SelectedStep = null;
         Summary = null;
+        _verdictKind = null;
+        Verdict = null;
         LastRunComplete = null;
     }
 
@@ -271,9 +282,11 @@ public sealed class KeyChainViewModel : ScanTabViewModel
             var result = await Task.Run(() => KeyChainAnalyzer.RunAsync(gateway, chain, key, range, token, progress, caseSensitive: CaseSensitive), token).ConfigureAwait(true);
             foreach (var step in result.Steps) Steps.Add(step);
             Summary = result.Summary;
+            _verdictKind = result.Verdict;
+            Verdict = result.VerdictText;
             LastRunComplete = result.Complete;
             Status = Summary;
-            SelectedStep = Steps.FirstOrDefault(s => s.Found);
+            SelectedStep = (result.BrokenStep is { Found: true } b ? b : null) ?? Steps.FirstOrDefault(s => s.Found);
         }).ConfigureAwait(true);
     }
 }

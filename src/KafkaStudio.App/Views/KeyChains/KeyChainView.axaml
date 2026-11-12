@@ -104,6 +104,16 @@
             <TextBlock Classes="muted" Text="{Binding Progress}" IsVisible="{Binding IsRunning}" />
           </StackPanel>
 
+          <Border DockPanel.Dock="Top" Classes="badge ok" HorizontalAlignment="Left" Margin="0,0,0,6" IsVisible="{Binding IsSequenceOk}">
+            <TextBlock Text="{Binding Verdict}" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" />
+          </Border>
+          <Border DockPanel.Dock="Top" Classes="badge bad" HorizontalAlignment="Left" Margin="0,0,0,6" IsVisible="{Binding IsSequenceBroken}">
+            <TextBlock Text="{Binding Verdict}" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" />
+          </Border>
+          <Border DockPanel.Dock="Top" Classes="badge warn" HorizontalAlignment="Left" Margin="0,0,0,6" IsVisible="{Binding IsNotFound}">
+            <TextBlock Text="{Binding Verdict}" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" />
+          </Border>
+
           <Border DockPanel.Dock="Top" Classes="tableHeader">
             <Grid ColumnDefinitions="28,*,90,Auto,80,80,Auto">
               <TextBlock Grid.Column="0" Text="#" />
