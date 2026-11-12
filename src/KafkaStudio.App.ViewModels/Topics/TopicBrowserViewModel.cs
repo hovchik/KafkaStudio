@@ -19,6 +19,18 @@ public sealed class TopicRowViewModel : ObservableObject
     public long? TotalMessageCount { get => _totalMessageCount; set => SetProperty(ref _totalMessageCount, value); }
 }
 
+/// <summary>One partition of the selected topic, as shown in the "Topic" tab of the detail pane.</summary>
+public sealed class PartitionRowViewModel
+{
+    public required int Id { get; init; }
+    public required int Leader { get; init; }
+    public required long Earliest { get; init; }
+    public required long Latest { get; init; }
+    public required long Messages { get; init; }
+    /// <summary>This partition's share of the topic's messages, 0-100, for the little bar.</summary>
+    public required double Share { get; init; }
+}
+
 /// <summary>A message found by <see cref="TopicBrowserViewModel.GlobalSearchCommand"/>, tagged with the
 /// topic it came from so mixed-topic results are still identifiable in a single list.</summary>
 public sealed class GlobalSearchHit
@@ -123,6 +135,10 @@ public sealed class TopicBrowserViewModel : ObservableObject
         }
     }
 
+    private bool _isSearchToolsOpen;
+    /// <summary>Shows the "search all topics / saved filters / topic sets" panel under the toolbar.</summary>
+    public bool IsSearchToolsOpen { get => _isSearchToolsOpen; set => SetProperty(ref _isSearchToolsOpen, value); }
+
     private string? _topicFilter;
     /// <summary>Case-insensitive "contains" filter applied to <see cref="Topics"/> against the full set
     /// of loaded topic names.</summary>
@@ -167,7 +183,90 @@ public sealed class TopicBrowserViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(SelectedTopic));
                 ScanCommand.RaiseCanExecuteChanged();
+                _ = LoadTopicInfoAsync(value);
             }
+        }
+    }
+
+    // ------------------------------------------------------------------ topic info (detail "Topic" tab) ----
+
+    private CancellationTokenSource? _infoCts;
+
+    /// <summary>Partitions of the selected topic (read-only metadata: leader, offsets, message counts).</summary>
+    public ObservableCollection<PartitionRowViewModel> Partitions { get; } = new();
+
+    private string? _infoTopic;
+    /// <summary>The topic the "Topic" tab describes, or null when nothing is selected.</summary>
+    public string? InfoTopic { get => _infoTopic; private set { if (SetProperty(ref _infoTopic, value)) OnPropertyChanged(nameof(HasTopicInfo)); } }
+    public bool HasTopicInfo => InfoTopic is not null;
+
+    private bool _isLoadingInfo;
+    public bool IsLoadingInfo { get => _isLoadingInfo; private set => SetProperty(ref _isLoadingInfo, value); }
+
+    private string? _infoError;
+    public string? InfoError { get => _infoError; private set => SetProperty(ref _infoError, value); }
+
+    private int _infoReplication;
+    public int InfoReplication { get => _infoReplication; private set => SetProperty(ref _infoReplication, value); }
+
+    private long _infoTotalMessages;
+    public long InfoTotalMessages { get => _infoTotalMessages; private set => SetProperty(ref _infoTotalMessages, value); }
+
+    private string _infoCleanupPolicy = "…";
+    /// <summary>"compact" or "delete", as far as the gateway can tell.</summary>
+    public string InfoCleanupPolicy { get => _infoCleanupPolicy; private set => SetProperty(ref _infoCleanupPolicy, value); }
+
+    /// <summary>Fetches metadata for the selected topic (one describe call plus one compaction check, both
+    /// read-only). A newer selection cancels the previous fetch.</summary>
+    private async Task LoadTopicInfoAsync(TopicRowViewModel? row)
+    {
+        _infoCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _infoCts = cts;
+        Partitions.Clear();
+        InfoError = null;
+        InfoTopic = row?.Name;
+        if (row is null || SelectedConnection is null || !_state.TryGetReader(SelectedConnection, out var gateway))
+        {
+            IsLoadingInfo = false;
+            return;
+        }
+
+        IsLoadingInfo = true;
+        InfoCleanupPolicy = "…";
+        try
+        {
+            var metadata = await gateway.DescribeTopicAsync(row.Name, cts.Token).ConfigureAwait(true);
+            if (cts.IsCancellationRequested) return;
+            var total = Math.Max(1, metadata.TotalMessageCount);
+            foreach (var p in metadata.Partitions.OrderBy(p => p.Id))
+            {
+                Partitions.Add(new PartitionRowViewModel
+                {
+                    Id = p.Id, Leader = p.LeaderBrokerId, Earliest = p.EarliestOffset, Latest = p.LatestOffset,
+                    Messages = p.MessageCount, Share = 100.0 * p.MessageCount / total
+                });
+            }
+            InfoReplication = metadata.ReplicationFactor;
+            InfoTotalMessages = metadata.TotalMessageCount;
+            row.PartitionCount = metadata.Partitions.Count;
+            row.TotalMessageCount = metadata.TotalMessageCount;
+
+            try
+            {
+                var compacted = await gateway.IsTopicCompactedAsync(row.Name, cts.Token).ConfigureAwait(true);
+                if (!cts.IsCancellationRequested) InfoCleanupPolicy = compacted ? "compact" : "delete";
+            }
+            catch (Exception) when (!cts.IsCancellationRequested) { InfoCleanupPolicy = "unknown"; }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            if (!cts.IsCancellationRequested) InfoError = ex.Message;
+        }
+        finally
+        {
+            if (ReferenceEquals(_infoCts, cts)) IsLoadingInfo = false;
         }
     }
 

@@ -18,10 +18,11 @@
 
   <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
 
-    <!-- Primary toolbar: everything needed for day to day browsing. -->
+    <!-- Primary toolbar: cluster-level actions only. Topic filter lives in the topic list, message
+         controls live above the message table. -->
     <Border Grid.Row="0" Classes="toolbar">
-      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto,2*,Auto,Auto,Auto">
-        <ComboBox Grid.Column="0" Width="170" PlaceholderText="Connection…"
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*">
+        <ComboBox Grid.Column="0" Width="200" PlaceholderText="Connection…"
                   ItemsSource="{Binding ConnectionNames}" SelectedItem="{Binding SelectedConnection}"
                   ToolTip.Tip="Connection" />
         <Button Grid.Column="1" Classes="icon" ToolTip.Tip="Refresh topics (Ctrl+R)" Command="{Binding RefreshTopicsCommand}">
@@ -31,30 +32,10 @@
 
         <Border Grid.Column="3" Classes="sep" />
 
-        <TextBox Grid.Column="4" MinWidth="120" Text="{Binding TopicFilter}" Watermark="Filter topics"
-                 ToolTip.Tip="Filter the topic list (contains)" />
-
-        <TextBlock Grid.Column="5" Text="Newest" Classes="muted" />
-        <TextBox Grid.Column="6" Width="64" Text="{Binding ScanLimit, TargetNullValue=''}" Watermark="all"
-                 ToolTip.Tip="How many of the newest messages to load (empty = the whole topic)" />
-        <Button Grid.Column="7" Content="Load" Classes="primary" Command="{Binding ScanCommand}"
-                ToolTip.Tip="Load the selected topic's newest messages (F5)" />
-        <Button Grid.Column="8" Classes="ghost" Content="Cancel" Command="{Binding CancelLoadCommand}" IsVisible="{Binding IsLoadingMessages}"
-                ToolTip.Tip="Stop loading (Esc)" />
-
-        <Border Grid.Column="9" Classes="sep" />
-
-        <TextBox Grid.Column="10" MinWidth="140" Text="{Binding MessageFilter}"
-                 Watermark="Filter loaded messages - text, or $.status = FAILED"
-                 ToolTip.Tip="Plain text: contains, in key, value or headers. Or a query: $.amount &gt; 100 and key starts with ORD- (see Find Data for the full syntax)" />
-
-        <TextBlock Grid.Column="11" VerticalAlignment="Center" Classes="muted" ToolTip.Tip="shown / loaded">
-          <Run Text="{Binding MatchedMessageCount}" /><Run Text=" / " /><Run Text="{Binding TotalMessageCount}" />
-        </TextBlock>
-        <Button Grid.Column="12" Content="Export" Command="{Binding ExportMessagesCommand}"
-                ToolTip.Tip="Save the shown messages to a JSON file" />
-        <Button Grid.Column="13" Content="CSV" Command="{Binding ExportMessagesCsvCommand}" Margin="0"
-                ToolTip.Tip="Save the shown messages to a CSV file" />
+        <ToggleButton Grid.Column="4" Content="Search all topics" IsChecked="{Binding IsSearchToolsOpen}"
+                      ToolTip.Tip="Search every topic at once, with saved filters and topic sets" />
+        <TextBlock Grid.Column="5" Classes="muted" HorizontalAlignment="Right" Margin="0" TextTrimming="CharacterEllipsis"
+                   Text="Enter opens a topic · F5 loads · Ctrl+R refreshes" />
       </Grid>
     </Border>
 
@@ -72,10 +53,9 @@
       </Grid>
     </Border>
 
-    <!-- Occasionally used tools live behind one collapsed expander. -->
-    <Expander Grid.Row="2" Header="Search all topics · saved filters · topic sets" Margin="0,4,0,0"
-              HorizontalAlignment="Stretch">
-      <Border Classes="toolbar" Margin="0,4,0,0">
+    <!-- Occasionally used tools: shown from the "Search all topics" toggle in the toolbar. -->
+    <Border Grid.Row="2" Classes="toolbar" Margin="0,4,0,0" IsVisible="{Binding IsSearchToolsOpen}">
+      <Border>
         <StackPanel Spacing="6">
           <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
             <TextBlock Grid.Column="0" Text="Find anywhere" VerticalAlignment="Center" Classes="muted" Width="90" />
@@ -124,21 +104,23 @@
           </TextBlock>
         </StackPanel>
       </Border>
-    </Expander>
+    </Border>
 
     <!-- Data area: topic list | messages (or search results) | message detail. -->
     <Grid Grid.Row="3" Margin="0,8,0,0" ColumnDefinitions="220,8,1.7*,8,*">
 
       <Border Grid.Column="0" Classes="pane">
         <DockPanel>
-          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
-            <TextBlock Grid.Column="0" Classes="paneTitle">
-              <Run Text="Topics" /><Run Text=" " /><Run Text="{Binding Topics.Count}" Foreground="{DynamicResource TextMutedBrush}" />
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+            <TextBlock Grid.Column="0" Classes="paneTitle" VerticalAlignment="Center">
+              <Run Text="Topics" /><Run Text="  " /><Run Text="{Binding Topics.Count}" Foreground="{DynamicResource TextMutedBrush}" />
             </TextBlock>
             <ProgressBar Grid.Column="1" Classes="busy" IsVisible="{Binding IsLoadingTopics}" />
           </Grid>
+          <TextBox DockPanel.Dock="Top" Text="{Binding TopicFilter}" Watermark="Filter topics" Margin="0,0,0,6"
+                   ToolTip.Tip="Filter the topic list (contains)" />
           <TextBlock DockPanel.Dock="Bottom" Classes="hint" Margin="0,6,0,0"
-                     Text="Double-click or press Enter to open a topic." />
+                     Text="Double-click or press Enter to load a topic." />
           <Panel>
             <StackPanel Classes="emptyState" IsVisible="{Binding SelectedConnection, Converter={x:Static ObjectConverters.IsNull}}">
               <PathIcon Data="{StaticResource Icon.topics}" />
@@ -180,14 +162,46 @@
         <!-- Messages of the loaded topic -->
         <Border Grid.Row="0" Classes="pane" IsVisible="{Binding !IsGlobalSearchActive}">
           <DockPanel>
-            <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,0,0,8">
-              <TextBlock Grid.Column="0" Classes="paneTitle" Text="Messages" Margin="0,0,8,0" />
-              <TextBlock Grid.Column="1" Classes="muted" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+            <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,6">
+              <TextBlock Grid.Column="0" Classes="paneTitle" Text="Messages" Margin="0,0,8,0" VerticalAlignment="Center" />
+              <TextBlock Grid.Column="1" Classes="accent mono" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                          Text="{Binding LoadedTopic, TargetNullValue='(no topic loaded)'}" />
-              <ProgressBar Grid.Column="2" Classes="busy" IsVisible="{Binding IsLoadingMessages}" Margin="0,0,8,0" />
-              <Button Grid.Column="3" Classes="small" Content="Compare" ToolTip.Tip="Pin the selected message for side-by-side comparison"
-                      Command="{Binding AddSelectedToComparisonCommand}" />
+              <ProgressBar Grid.Column="2" Classes="busy" IsVisible="{Binding IsLoadingMessages}" />
             </Grid>
+            <!-- Message controls: how many to load, what to show, what to do with them. -->
+            <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,64,Auto,Auto,*,Auto,Auto,Auto,Auto" Margin="0,0,0,6">
+              <Grid.Styles>
+                <Style Selector="TextBox, Button">
+                  <Setter Property="MinHeight" Value="28" />
+                  <Setter Property="Height" Value="28" />
+                  <Setter Property="Margin" Value="0,0,6,0" />
+                  <Setter Property="VerticalAlignment" Value="Center" />
+                </Style>
+                <Style Selector="TextBlock">
+                  <Setter Property="VerticalAlignment" Value="Center" />
+                  <Setter Property="Margin" Value="0,0,6,0" />
+                </Style>
+              </Grid.Styles>
+              <TextBlock Grid.Column="0" Text="Newest" Classes="muted" />
+              <TextBox Grid.Column="1" Text="{Binding ScanLimit, TargetNullValue=''}" Watermark="all"
+                       ToolTip.Tip="How many of the newest messages to load (empty = the whole topic)" />
+              <Button Grid.Column="2" Content="Load" Classes="primary" Margin="0,0,6,0" Command="{Binding ScanCommand}"
+                      ToolTip.Tip="Load the selected topic's newest messages (F5)" />
+              <Button Grid.Column="3" Classes="ghost" Content="Cancel" Command="{Binding CancelLoadCommand}" IsVisible="{Binding IsLoadingMessages}"
+                      ToolTip.Tip="Stop loading (Esc)" />
+              <TextBlock Grid.Column="5" VerticalAlignment="Center" Classes="muted mono" HorizontalAlignment="Right" Margin="0,0,10,0" ToolTip.Tip="shown / loaded">
+                <Run Text="{Binding MatchedMessageCount}" /><Run Text=" / " /><Run Text="{Binding TotalMessageCount}" />
+              </TextBlock>
+              <Button Grid.Column="6" Content="Compare" ToolTip.Tip="Pin the selected message for side-by-side comparison"
+                      Command="{Binding AddSelectedToComparisonCommand}" />
+              <Button Grid.Column="7" Content="Export" Command="{Binding ExportMessagesCommand}"
+                      ToolTip.Tip="Save the shown messages to a JSON file" />
+              <Button Grid.Column="8" Content="CSV" Command="{Binding ExportMessagesCsvCommand}" Margin="0"
+                      ToolTip.Tip="Save the shown messages to a CSV file" />
+            </Grid>
+              <TextBox DockPanel.Dock="Top" Margin="0,0,0,8" Height="28" MinHeight="28" Text="{Binding MessageFilter}"
+                       Watermark="Filter loaded messages - text, or $.status = FAILED"
+                       ToolTip.Tip="Plain text: contains, in key, value or headers. Or a query: $.amount &gt; 100 and key starts with ORD- (see Find Data for the full syntax)" />
             <TextBlock DockPanel.Dock="Top" Classes="error" Margin="0,0,0,6"
                        Text="{Binding MessageFilterError, StringFormat='Filter: {0} - showing every message'}"
                        IsVisible="{Binding MessageFilterError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
@@ -363,29 +377,85 @@
 
       <GridSplitter Grid.Column="3" ResizeDirection="Columns" Width="8" />
 
-      <!-- Detail of the selected message -->
+      <!-- Detail: the selected message, or the selected topic's partitions. -->
       <Border Grid.Column="4" Classes="pane">
-        <DockPanel>
-          <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Text="Message" Margin="0,0,0,8" />
-          <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-            <Button Classes="small danger" Content="Delete this message…" HorizontalAlignment="Left"
-                    ToolTip.Tip="Kafka deletes by key: sends a tombstone for this message's key (compacted topics only)"
-                    Command="{Binding DeleteSelectedCommand}"
-                    IsVisible="{Binding !HasDeletePanel}" />
-            <StackPanel IsVisible="{Binding HasDeletePanel}">
-              <TextBlock Classes="danger" Text="{Binding DeletePanelText}" TextWrapping="Wrap" Margin="0,0,0,4" />
-              <StackPanel Orientation="Horizontal">
-                <Button Classes="small danger" Content="Delete" Margin="0,0,4,0" Command="{Binding ConfirmDeleteCommand}"
-                        IsVisible="{Binding IsDeleteConfirmPending}" />
-                <Button Classes="small ghost" Content="Cancel" Command="{Binding CancelDeleteCommand}"
-                        IsVisible="{Binding IsDeleteConfirmPending}" />
-                <Button Classes="small" Content="OK" Command="{Binding CancelDeleteCommand}"
-                        IsVisible="{Binding !IsDeleteConfirmPending}" />
+        <TabControl Classes="inspector" x:Name="DetailTabs">
+          <TabItem Header="Message">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                <Button Classes="small danger" Content="Delete this message…" HorizontalAlignment="Left"
+                        ToolTip.Tip="Kafka deletes by key: sends a tombstone for this message's key (compacted topics only)"
+                        Command="{Binding DeleteSelectedCommand}"
+                        IsVisible="{Binding !HasDeletePanel}" />
+                <StackPanel IsVisible="{Binding HasDeletePanel}">
+                  <TextBlock Classes="danger" Text="{Binding DeletePanelText}" TextWrapping="Wrap" Margin="0,0,0,4" />
+                  <StackPanel Orientation="Horizontal">
+                    <Button Classes="small danger" Content="Delete" Margin="0,0,4,0" Command="{Binding ConfirmDeleteCommand}"
+                            IsVisible="{Binding IsDeleteConfirmPending}" />
+                    <Button Classes="small ghost" Content="Cancel" Command="{Binding CancelDeleteCommand}"
+                            IsVisible="{Binding IsDeleteConfirmPending}" />
+                    <Button Classes="small" Content="OK" Command="{Binding CancelDeleteCommand}"
+                            IsVisible="{Binding !IsDeleteConfirmPending}" />
+                  </StackPanel>
+                </StackPanel>
               </StackPanel>
-            </StackPanel>
-          </StackPanel>
-          <shared:MessageDetailView Message="{Binding SelectedMessage}" Actions="{Binding Actions}" />
-        </DockPanel>
+              <shared:MessageDetailView Message="{Binding SelectedMessage}" Actions="{Binding Actions}" />
+            </DockPanel>
+          </TabItem>
+
+          <TabItem Header="{Binding Partitions.Count, StringFormat='Partitions ({0})', FallbackValue=Partitions}">
+            <Panel>
+              <StackPanel Classes="emptyState" IsVisible="{Binding !HasTopicInfo}">
+                <PathIcon Data="{StaticResource Icon.topics}" />
+                <TextBlock Classes="emptyTitle" Text="No topic selected" />
+                <TextBlock Classes="emptyHint" Text="Select a topic to see its partitions, offsets and cleanup policy." />
+              </StackPanel>
+              <DockPanel IsVisible="{Binding HasTopicInfo}">
+                <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,0,0,10">
+                  <Grid.Styles>
+                    <Style Selector="TextBlock.label"><Setter Property="Margin" Value="0,0,12,4" /></Style>
+                    <Style Selector="SelectableTextBlock"><Setter Property="FontSize" Value="12" /><Setter Property="Margin" Value="0,0,0,4" /></Style>
+                  </Grid.Styles>
+                  <TextBlock Grid.Row="0" Classes="label" Text="TOPIC" />
+                  <SelectableTextBlock Grid.Row="0" Grid.Column="1" Classes="accent mono" Text="{Binding InfoTopic}" />
+                  <TextBlock Grid.Row="1" Classes="label" Text="MESSAGES" />
+                  <SelectableTextBlock Grid.Row="1" Grid.Column="1" Classes="mono" Text="{Binding InfoTotalMessages, StringFormat='{}{0:N0}'}" />
+                  <TextBlock Grid.Row="2" Classes="label" Text="REPLICAS" />
+                  <SelectableTextBlock Grid.Row="2" Grid.Column="1" Classes="mono" Text="{Binding InfoReplication}" />
+                  <TextBlock Grid.Row="3" Classes="label" Text="CLEANUP" />
+                  <SelectableTextBlock Grid.Row="3" Grid.Column="1" Classes="mono" Text="{Binding InfoCleanupPolicy}"
+                                       ToolTip.Tip="cleanup.policy: compact keeps the latest value per key (tombstone deletes work), delete drops old segments" />
+                </Grid>
+                <ProgressBar DockPanel.Dock="Top" Classes="busy" IsVisible="{Binding IsLoadingInfo}" Margin="0,0,0,6" />
+                <TextBlock DockPanel.Dock="Top" Classes="error" TextWrapping="Wrap" Margin="0,0,0,6"
+                           Text="{Binding InfoError, StringFormat='Could not read the topic: {0}'}"
+                           IsVisible="{Binding InfoError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <Border DockPanel.Dock="Top" Classes="tableHeader" Padding="0,0,0,6"><Grid ColumnDefinitions="40,52,*,*,70">
+                  <TextBlock Grid.Column="0" Text="#" ToolTip.Tip="Partition" />
+                  <TextBlock Grid.Column="1" Text="Leader" />
+                  <TextBlock Grid.Column="2" Text="Earliest" />
+                  <TextBlock Grid.Column="3" Text="Latest" />
+                  <TextBlock Grid.Column="4" Text="Messages" TextAlignment="Right" />
+                </Grid></Border>
+                <ListBox Classes="rows" ItemsSource="{Binding Partitions}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:PartitionRowViewModel">
+                      <Grid ColumnDefinitions="40,52,*,*,70" RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Column="0" Classes="mono accent" Text="{Binding Id}" />
+                        <TextBlock Grid.Column="1" Classes="mono muted" Text="{Binding Leader, StringFormat='b{0}'}" />
+                        <TextBlock Grid.Column="2" Classes="mono" Text="{Binding Earliest, StringFormat='{}{0:N0}'}" />
+                        <TextBlock Grid.Column="3" Classes="mono" Text="{Binding Latest, StringFormat='{}{0:N0}'}" />
+                        <TextBlock Grid.Column="4" Classes="mono" TextAlignment="Right" Text="{Binding Messages, StringFormat='{}{0:N0}'}" />
+                        <ProgressBar Grid.Row="1" Grid.ColumnSpan="5" Height="2" MinHeight="2" Margin="0,2,0,0"
+                                     Minimum="0" Maximum="100" Value="{Binding Share}" Background="{DynamicResource BorderBrush}" />
+                      </Grid>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </DockPanel>
+            </Panel>
+          </TabItem>
+        </TabControl>
       </Border>
     </Grid>
 
