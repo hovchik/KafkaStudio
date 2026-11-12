@@ -11,6 +11,13 @@ public sealed record KeyChain
 {
     public required string Name { get; init; }
     public List<string> Topics { get; init; } = new();
+
+    /// <summary>"orders → payments → shipments" for chain lists.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string PathText => Topics.Count == 0 ? "(no topics)" : string.Join(" → ", Topics);
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string CountText => Topics.Count == 1 ? "1 topic" : $"{Topics.Count} topics";
 }
 
 /// <summary>Persists named <see cref="KeyChain"/>s (<c>key-chains.json</c>).</summary>
