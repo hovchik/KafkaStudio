@@ -3,6 +3,7 @@
              xmlns:vm="using:KafkaStudio.App.ViewModels.KeyChains"
              xmlns:search="using:KafkaStudio.Search"
              xmlns:shared="using:KafkaStudio.App.Views.Shared"
+             xmlns:conv="using:KafkaStudio.App.Converters"
              x:Class="KafkaStudio.App.Views.KeyChains.KeyChainView"
              x:DataType="vm:KeyChainViewModel"
              x:CompileBindings="True">
@@ -21,80 +22,96 @@
       </Grid>
     </Border>
 
-    <Grid Grid.Row="1" ColumnDefinitions="340,8,*,8,420" Margin="0,8,0,0">
+    <Grid Grid.Row="1" ColumnDefinitions="340,8,*" Margin="0,8,0,0">
 
-      <!-- Chains: pick one, or build a new one -->
+      <!-- Chains: pick one, or build a new one. Sections stack at their natural height, so the editor's buttons
+           sit right under its topic list. -->
       <Border Grid.Column="0" Classes="pane">
-        <DockPanel>
-          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
-            <TextBlock Grid.Column="0" Classes="paneTitle" Text="Chains" VerticalAlignment="Center" />
-            <Button Grid.Column="1" Classes="small" Content="New chain" Command="{Binding NewChainCommand}" />
-          </Grid>
-          <Panel DockPanel.Dock="Top">
-            <TextBlock Classes="hint" Margin="2,2,0,4" Text="No saved chains yet - build one below and press Save chain."
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="0">
+
+            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+              <TextBlock Grid.Column="0" Classes="paneTitle" VerticalAlignment="Center">
+                <Run Text="Chains" /><Run Text="{Binding Chains.Count, StringFormat='  {0}'}" Foreground="{DynamicResource TextMutedBrush}" />
+              </TextBlock>
+              <Button Grid.Column="1" Classes="small" Content="+ New" ToolTip.Tip="Start a new, empty chain" Command="{Binding NewChainCommand}" />
+            </Grid>
+
+            <TextBlock Classes="hint" Margin="2,0,0,4" Text="No saved chains yet - build one below."
                        IsVisible="{Binding !Chains.Count}" TextWrapping="Wrap" />
-            <ListBox Classes="rows" MaxHeight="210" ItemsSource="{Binding Chains}" SelectedItem="{Binding SelectedChain}">
+            <ListBox Classes="rows" MaxHeight="190" ItemsSource="{Binding Chains}" SelectedItem="{Binding SelectedChain}"
+                     IsVisible="{Binding Chains.Count}">
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="search:KeyChain">
-                  <StackPanel Spacing="2" Margin="0,2">
+                  <StackPanel Spacing="1" Margin="0,1">
                     <Grid ColumnDefinitions="*,Auto">
                       <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                      <TextBlock Grid.Column="1" Classes="muted" FontSize="11" Text="{Binding CountText}" />
+                      <TextBlock Grid.Column="1" Classes="muted" FontSize="11" Margin="8,0,0,0" Text="{Binding CountText}" />
                     </Grid>
-                    <TextBlock Classes="muted mono" FontSize="11" Text="{Binding PathText}" TextWrapping="Wrap" MaxLines="3"
-                               TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding PathText}" />
+                    <TextBlock Classes="muted mono" FontSize="10.5" Text="{Binding PathText}" TextTrimming="CharacterEllipsis"
+                               ToolTip.Tip="{Binding PathText}" />
                   </StackPanel>
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
-          </Panel>
 
-          <TextBlock DockPanel.Dock="Top" Classes="paneTitle" Text="Chain editor" Margin="0,12,0,6" />
-          <TextBox DockPanel.Dock="Top" Text="{Binding ChainName}" Watermark="Chain name, e.g. Order flow" Margin="0,0,0,6" />
-          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
-            <AutoCompleteBox x:Name="TopicBox" Grid.Column="0" HorizontalAlignment="Stretch" Watermark="Type to filter topics…"
-                             ItemsSource="{Binding TopicNames}" Text="{Binding TopicToAdd}" FilterMode="Contains"
-                             MinimumPrefixLength="0" GotFocus="OnTopicBoxGotFocus">
-              <AutoCompleteBox.KeyBindings>
-                <KeyBinding Gesture="Ctrl+Enter" Command="{Binding AddTopicCommand}" />
-              </AutoCompleteBox.KeyBindings>
-            </AutoCompleteBox>
-            <Button Grid.Column="1" Content="Add" Command="{Binding AddTopicCommand}" Margin="6,0,0,0" />
-          </Grid>
-          <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
-            <Button Classes="primary" Content="Save chain" Command="{Binding SaveChainCommand}" />
-            <Button Content="Duplicate" ToolTip.Tip="Save a copy of the selected chain under a new name" Command="{Binding DuplicateChainCommand}" />
-            <Button Classes="danger" Content="Delete" Command="{Binding DeleteChainCommand}" />
-          </StackPanel>
-          <Panel>
-            <StackPanel Classes="emptyState" IsVisible="{Binding !HasTopics}">
-              <PathIcon Data="{StaticResource Icon.chain}" />
-              <TextBlock Classes="emptyTitle" Text="No topics in this chain" />
-              <TextBlock Classes="emptyHint" Text="Add topics in the order a message should pass through them." />
-            </StackPanel>
-            <ListBox Classes="rows" ItemsSource="{Binding ChainTopics}">
+            <Border Height="1" Margin="0,12,0,10" Background="{DynamicResource BorderBrush}" />
+
+            <TextBlock Classes="paneTitle" Text="Edit chain" Margin="0,0,0,6" />
+            <TextBox Text="{Binding ChainName}" Watermark="Chain name, e.g. Order flow" Margin="0,0,0,6" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+              <AutoCompleteBox x:Name="TopicBox" Grid.Column="0" HorizontalAlignment="Stretch" Watermark="Add a topic - type to filter…"
+                               ItemsSource="{Binding TopicNames}" Text="{Binding TopicToAdd}" FilterMode="Contains"
+                               MinimumPrefixLength="0" GotFocus="OnTopicBoxGotFocus">
+                <AutoCompleteBox.KeyBindings>
+                  <KeyBinding Gesture="Ctrl+Enter" Command="{Binding AddTopicCommand}" />
+                </AutoCompleteBox.KeyBindings>
+              </AutoCompleteBox>
+              <Button Grid.Column="1" Content="Add" Command="{Binding AddTopicCommand}" Margin="6,0,0,0" />
+            </Grid>
+
+            <!-- Steps: numbered, in the order a message should pass through them -->
+            <TextBlock Classes="hint" Margin="2,0,0,8" TextWrapping="Wrap" IsVisible="{Binding !HasTopics}"
+                       Text="No topics yet - add them in the order a message should pass through them." />
+            <ListBox Classes="rows" ItemsSource="{Binding ChainRows}" IsVisible="{Binding HasTopics}"
+                     SelectionMode="Single">
               <ListBox.ItemTemplate>
-                <DataTemplate x:DataType="x:String">
-                  <Grid ColumnDefinitions="*,Auto,Auto,Auto">
-                    <TextBlock Grid.Column="0" Classes="mono" Text="{Binding}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                    <Button Grid.Column="1" Classes="small" Content="↑" ToolTip.Tip="Move up"
-                            Command="{Binding $parent[ListBox].((vm:KeyChainViewModel)DataContext).MoveUpCommand}" CommandParameter="{Binding}" />
-                    <Button Grid.Column="2" Classes="small" Content="↓" ToolTip.Tip="Move down"
-                            Command="{Binding $parent[ListBox].((vm:KeyChainViewModel)DataContext).MoveDownCommand}" CommandParameter="{Binding}" />
-                    <Button Grid.Column="3" Classes="small" Content="✕" ToolTip.Tip="Remove from chain"
-                            Command="{Binding $parent[ListBox].((vm:KeyChainViewModel)DataContext).RemoveTopicCommand}" CommandParameter="{Binding}" />
+                <DataTemplate x:DataType="vm:ChainStepRow">
+                  <Grid ColumnDefinitions="22,*,Auto,Auto,Auto">
+                    <TextBlock Grid.Column="0" Classes="muted mono" FontSize="11" VerticalAlignment="Center"
+                               Text="{Binding Number}" />
+                    <TextBlock Grid.Column="1" Classes="mono" FontSize="12" Text="{Binding Topic}" TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" ToolTip.Tip="{Binding Topic}" />
+                    <Button Grid.Column="2" Classes="ghost icon small" Content="↑" ToolTip.Tip="Move up"
+                            Command="{Binding $parent[ListBox].((vm:KeyChainViewModel)DataContext).MoveUpCommand}" CommandParameter="{Binding Topic}" />
+                    <Button Grid.Column="3" Classes="ghost icon small" Content="↓" ToolTip.Tip="Move down"
+                            Command="{Binding $parent[ListBox].((vm:KeyChainViewModel)DataContext).MoveDownCommand}" CommandParameter="{Binding Topic}" />
+                    <Button Grid.Column="4" Classes="ghost icon small danger" Content="✕" ToolTip.Tip="Remove from chain"
+                            Command="{Binding $parent[ListBox].((vm:KeyChainViewModel)DataContext).RemoveTopicCommand}" CommandParameter="{Binding Topic}" />
                   </Grid>
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
-          </Panel>
-        </DockPanel>
+
+            <!-- Actions right under the steps -->
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,10,0,0">
+              <Button Grid.Column="0" Classes="primary" Content="Save" ToolTip.Tip="Save this chain (renames it if you changed the name)"
+                      Command="{Binding SaveChainCommand}" />
+              <Button Grid.Column="1" Content="Duplicate" Margin="6,0,0,0" ToolTip.Tip="Save a copy of the selected chain under a new name"
+                      Command="{Binding DuplicateChainCommand}" />
+              <Button Grid.Column="3" Classes="danger" Content="Delete" ToolTip.Tip="Delete the selected chain" Command="{Binding DeleteChainCommand}" />
+            </Grid>
+
+          </StackPanel>
+        </ScrollViewer>
       </Border>
 
       <GridSplitter Grid.Column="1" ResizeDirection="Columns" Width="8" />
 
       <!-- Analysis -->
-      <Border Grid.Column="2" Classes="pane">
+      <!-- Right side: analysis (results table) on top, the message viewer below, draggable splitter between -->
+      <Grid Grid.Column="2" RowDefinitions="*,8,320">
+      <Border Grid.Row="0" Classes="pane" MinHeight="180">
         <DockPanel>
           <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto,Auto,Auto">
             <TextBox Grid.Column="0" Text="{Binding Key}" FontFamily="{DynamicResource MonoFont}" Watermark="Text to look for - a key, id or any word in the message, e.g. ORD-1042">
@@ -129,7 +146,7 @@
               <TextBlock Grid.Column="0" Text="#" />
               <TextBlock Grid.Column="1" Text="TOPIC" />
               <TextBlock Grid.Column="2" Text="RESULT" />
-              <TextBlock Grid.Column="3" Text="TIME" Margin="0,0,8,0" Width="120" />
+              <TextBlock Grid.Column="3" Text="TIME" Width="150" />
               <TextBlock Grid.Column="4" Text="+PREV" ToolTip.Tip="Time since the previous topic of the chain that had the key" />
               <TextBlock Grid.Column="5" Text="+START" ToolTip.Tip="Time since the first topic of the chain that had the key" />
               <TextBlock Grid.Column="6" Text="POSITION" Margin="8,0,0,0" Width="90" />
@@ -146,14 +163,14 @@
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="search:ChainStepResult">
                   <Grid ColumnDefinitions="28,*,90,Auto,80,80,Auto">
-                    <TextBlock Grid.Column="0" Classes="muted" Text="{Binding Index}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="0" Classes="muted" Text="{Binding Number}" VerticalAlignment="Center" />
                     <TextBlock Grid.Column="1" Classes="mono" Text="{Binding Topic}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                       <Border Classes="badge ok" IsVisible="{Binding Found}"><TextBlock Text="found" /></Border>
                       <Border Classes="badge bad" IsVisible="{Binding IsMissing}"><TextBlock Text="missing" /></Border>
                       <Border Classes="badge warn" IsVisible="{Binding IsUnreadable}"><TextBlock Text="unreadable" /></Border>
                     </StackPanel>
-                    <StackPanel Grid.Column="3" Orientation="Horizontal" Width="128" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" Width="150" VerticalAlignment="Center">
                       <TextBlock Classes="muted mono" FontSize="11" Text="{Binding TimeText}" />
                       <TextBlock Classes="muted" FontSize="11" Margin="4,0,0,0" Text="{Binding CountText}" ToolTip.Tip="Several messages match - the earliest is shown" />
                     </StackPanel>
@@ -169,20 +186,19 @@
         </DockPanel>
       </Border>
 
-      <GridSplitter Grid.Column="3" ResizeDirection="Columns" Width="8" />
 
-      <!-- Preview of the selected topic's matching message (same inspector as Find Data / Consume) -->
-      <Border Grid.Column="4" Classes="pane">
+      <GridSplitter Grid.Row="1" ResizeDirection="Rows" Height="8" />
+
+      <!-- The selected topic's matching message (same inspector as Find Data / Consume) -->
+      <Border Grid.Row="2" Classes="pane" MinHeight="160">
         <DockPanel>
-          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,8">
-            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-              <TextBlock Classes="paneTitle" Text="Message" />
-              <TextBlock Classes="muted" FontSize="11" Text="{Binding MatchPosition}"
-                         IsVisible="{Binding HasSeveralMatches}" />
-            </StackPanel>
-            <Button Grid.Column="1" Classes="small" Content="◀" ToolTip.Tip="Previous matching message in this topic"
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,0,0,8">
+            <TextBlock Grid.Column="0" Classes="paneTitle" Text="Message" VerticalAlignment="Center" Margin="0,0,10,0" />
+            <TextBlock Grid.Column="1" Classes="muted" FontSize="11" VerticalAlignment="Center" Text="{Binding MatchPosition}"
+                       IsVisible="{Binding HasSeveralMatches}" />
+            <Button Grid.Column="2" Classes="small" Content="◀" ToolTip.Tip="Previous matching message in this topic"
                     Command="{Binding PreviousMatchCommand}" IsVisible="{Binding HasSeveralMatches}" Margin="0,0,4,0" />
-            <Button Grid.Column="2" Classes="small" Content="▶" ToolTip.Tip="Next matching message in this topic"
+            <Button Grid.Column="3" Classes="small" Content="▶" ToolTip.Tip="Next matching message in this topic"
                     Command="{Binding NextMatchCommand}" IsVisible="{Binding HasSeveralMatches}" />
           </Grid>
           <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,8" Foreground="{DynamicResource WarningBrush}"
@@ -190,6 +206,7 @@
           <shared:MessageDetailView Message="{Binding SelectedMessage}" Actions="{Binding Actions}" />
         </DockPanel>
       </Border>
+      </Grid>
     </Grid>
   </Grid>
 </UserControl>

@@ -50,6 +50,9 @@ public enum ChainStepStatus
 public sealed record ChainStepResult
 {
     public required int Index { get; init; }
+
+    /// <summary>1-based position in the chain, as shown in the results table.</summary>
+    public int Number => Index + 1;
     public required string Topic { get; init; }
     public required ChainStepStatus Status { get; init; }
 
